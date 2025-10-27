@@ -1,0 +1,20 @@
+{
+  "opencode": {
+    "apiKey": "your-opencode-zen-api-key",
+    "baseURL": "https://opencode.ai/zen/v1",
+    "model": "grok-code"
+  },
+  "maxSteps": 5,
+  "temperature": 0.3,
+  
+  "_comment": "Maple AI configuration (optional) - remove the underscore from _maple to enable",
+  "_maple": {
+    "enabled": true,
+    "apiUrl": "https://enclave.trymaple.ai",
+    "apiKey": "your-maple-api-key",
+    "model": "llama3-3-70b",
+    "pcr0Values": [
+      "79e7bd1e7df09fdb5b7098956a2268c278cc88be323c11975e2a2d080d65f30f8e0efe690edd450493c833b46f40ae1a"
+    ]
+  }
+}
