@@ -7,7 +7,7 @@
   },
   "maxSteps": 5,
   "temperature": 0.3,
-  
+
   "_comment": "Maple AI configuration (optional) - remove the underscore from _maple to enable, or use /models command",
   "_maple": {
     "apiUrl": "https://enclave.trymaple.ai",

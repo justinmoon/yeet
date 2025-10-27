@@ -1,6 +1,6 @@
 /**
  * Type definitions for Maple AI integration
- * 
+ *
  * Maple uses AWS Nitro Enclaves for secure inference with end-to-end encryption.
  * This module provides types for attestation and encryption operations.
  */

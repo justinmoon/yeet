@@ -19,19 +19,6 @@
             typescript
             just
           ];
-
-          shellHook = ''
-            echo "⚡ TypeScript/Bun development environment"
-            echo "Bun: $(bun --version)"
-            echo "Node: $(node --version)"
-            echo ""
-            echo "Available commands:"
-            echo "  just ci      - Run CI checks (typecheck, lint, format, test)"
-            echo "  just dev     - Run development server"
-            echo "  just test    - Run tests"
-            echo "  just fmt     - Format code"
-            echo "  just lint    - Run linter"
-          '';
         };
         
         apps.ci = {
