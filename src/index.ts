@@ -17,8 +17,10 @@ async function main() {
     // Create UI
     createUI(renderer, config)
 
-    // Start renderer (note: no console.log after this - TUI owns the terminal!)
+    // Start renderer
     renderer.start()
+
+    console.log("Yeet started. Type your message and press Enter to send (Shift+Enter for newlines).")
   } catch (error: any) {
     console.error(`Failed to start yeet: ${error.message}`)
     process.exit(1)

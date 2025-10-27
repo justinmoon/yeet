@@ -10,6 +10,14 @@ export interface Config {
   }
   maxSteps?: number
   temperature?: number
+  // Maple AI configuration (optional)
+  maple?: {
+    enabled: boolean
+    apiUrl: string
+    apiKey: string
+    model: string
+    pcr0Values: string[]
+  }
 }
 
 async function tryLoadOpenCodeCredentials(): Promise<string | null> {

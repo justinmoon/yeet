@@ -4,3 +4,5 @@ bun.lockb
 *.log
 dist/
 yeet
+.env.test
+.env.local

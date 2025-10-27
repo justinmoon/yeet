@@ -3,6 +3,7 @@ import { streamText } from "ai"
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible"
 import * as tools from "./tools"
 import type { Config } from "./config"
+import { createMapleFetch } from "./maple"
 
 const SYSTEM_PROMPT = `You are yeet, a minimal coding assistant.
 
@@ -31,14 +32,38 @@ export async function* runAgent(
   const messages = [{ role: "user" as const, content: message }]
 
   try {
-    const provider = createOpenAICompatible({
-      name: "opencode",
-      apiKey: config.opencode.apiKey,
-      baseURL: config.opencode.baseURL,
-    })
+    // Choose provider based on config
+    let provider;
+    let modelName: string;
+
+    if (config.maple?.enabled) {
+      // Use Maple AI with encrypted inference
+      console.log("🍁 Using Maple AI (encrypted)")
+      
+      const mapleFetch = await createMapleFetch({
+        apiUrl: config.maple.apiUrl,
+        apiKey: config.maple.apiKey,
+        pcr0Values: config.maple.pcr0Values,
+      })
+
+      provider = createOpenAICompatible({
+        name: "maple",
+        baseURL: `${config.maple.apiUrl}/v1`,
+        fetch: mapleFetch,
+      })
+      modelName = config.maple.model
+    } else {
+      // Use OpenCode
+      provider = createOpenAICompatible({
+        name: "opencode",
+        apiKey: config.opencode.apiKey,
+        baseURL: config.opencode.baseURL,
+      })
+      modelName = config.opencode.model
+    }
     
     const result = await streamText({
-      model: provider(config.opencode.model),
+      model: provider(modelName),
       system: SYSTEM_PROMPT,
       messages,
       tools: {
