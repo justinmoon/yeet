@@ -1,0 +1,9 @@
+{
+  "opencode": {
+    "apiKey": "your-opencode-zen-api-key",
+    "baseURL": "https://opencode.ai/zen/v1",
+    "model": "grok-code"
+  },
+  "maxSteps": 5,
+  "temperature": 0.3
+}
