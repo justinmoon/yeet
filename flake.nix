@@ -15,7 +15,6 @@
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             bun
-            nodejs_20
             typescript
             just
           ];
@@ -26,7 +25,6 @@
           program = "${pkgs.writeShellScript "ci" ''
             export PATH="${pkgs.lib.makeBinPath [
               pkgs.bun
-              pkgs.nodejs_20
             ]}:$PATH"
             
             exec ${./scripts/ci.sh}
