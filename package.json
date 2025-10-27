@@ -6,16 +6,6 @@
   "bin": {
     "yeet": "./src/index.ts"
   },
-  "scripts": {
-    "dev": "bun run src/index.ts",
-    "build": "bun build src/index.ts --compile --outfile yeet",
-    "test": "bun test",
-    "typecheck": "bun run tsc --noEmit",
-    "lint": "biome check .",
-    "lint:fix": "biome check --write .",
-    "fmt": "biome format --write .",
-    "fmt:check": "biome format ."
-  },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^1.0.0",
     "@opentui/core": "^0.1.30",

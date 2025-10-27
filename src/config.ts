@@ -71,8 +71,8 @@ async function createDefaultConfig(configPath: string): Promise<Config> {
       baseURL: "https://opencode.ai/zen/v1",
       model: "grok-code",
     },
-    maxSteps: 5,
-    temperature: 0.3,
+    maxSteps: 20,
+    temperature: 0.5,
   };
 
   // Create config directory if it doesn't exist
@@ -111,8 +111,8 @@ export async function loadConfig(): Promise<Config> {
 
   return {
     ...config,
-    maxSteps: config.maxSteps || 5,
-    temperature: config.temperature || 0.3,
+    maxSteps: config.maxSteps || 20,
+    temperature: config.temperature || 0.5,
   } as Config;
 }
 

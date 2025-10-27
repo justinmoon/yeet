@@ -8,9 +8,9 @@ default:
 ci:
     nix run .#ci
 
-# Run development server
+# Run yeet in development mode
 dev:
-    bun run dev
+    bun run src/index.ts
 
 # Run tests
 test:

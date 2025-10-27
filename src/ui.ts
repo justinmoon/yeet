@@ -6,7 +6,8 @@ import {
   TextRenderable,
   TextareaRenderable,
 } from "@opentui/core";
-import { type AgentEvent, runAgent } from "./agent";
+import { type AgentEvent, type ImageAttachment, runAgent } from "./agent";
+import { readImageFromClipboard } from "./clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "./commands";
 import type { Config } from "./config";
 import { logger } from "./logger";
@@ -17,10 +18,17 @@ export interface UI {
   output: TextRenderable;
   status: TextRenderable;
   contentBuffer: string;
-  conversationHistory: Array<{ role: "user" | "assistant"; content: string }>;
+  conversationHistory: Array<{
+    role: "user" | "assistant";
+    content:
+      | string
+      | Array<{ type: "text"; text: string } | { type: "image"; image: URL }>;
+  }>;
+  imageAttachments: ImageAttachment[];
   appendOutput: (text: string) => void;
   setStatus: (text: string) => void;
   clearInput: () => void;
+  clearAttachments: () => void;
   pendingMapleSetup?: {
     modelId: string;
   };
@@ -94,7 +102,7 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
     borderColor: "#58A6FF",
     title: "Your Message",
     titleAlignment: "left",
-    height: 5,
+    height: 6, // Increased to fit attachment indicator
     border: true,
     zIndex: 100, // High z-index to render on top
     backgroundColor: "#0D1117", // Solid background to block content below
@@ -114,15 +122,32 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
   inputBox.add(input);
   input.focus();
 
+  // Attachment indicator (shows when images are attached)
+  const attachmentIndicator = new TextRenderable(renderer, {
+    id: "attachment-indicator",
+    content: "",
+    fg: "#8B949E",
+  });
+  inputBox.add(attachmentIndicator);
+
+  const updateAttachmentIndicator = () => {
+    if (ui.imageAttachments.length > 0) {
+      attachmentIndicator.content = `📎 ${ui.imageAttachments.length} image(s) attached`;
+    } else {
+      attachmentIndicator.content = "";
+    }
+  };
+
   const ui: UI = {
     input,
     output,
     status,
-    contentBuffer: "", // Initialize as empty string
-    conversationHistory: [], // Initialize conversation history
+    contentBuffer: "",
+    conversationHistory: [],
+    imageAttachments: [],
     appendOutput: (text: string) => {
       ui.contentBuffer += text;
-      output.content = ui.contentBuffer; // Set the whole string, don't concatenate!
+      output.content = ui.contentBuffer;
 
       // Force layout recalculation and scroll to bottom
       // @ts-ignore - internal API but necessary for correct rendering
@@ -147,10 +172,28 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
     clearInput: () => {
       input.editBuffer.setText("", { history: false });
     },
+    clearAttachments: () => {
+      ui.imageAttachments = [];
+      updateAttachmentIndicator();
+    },
   };
 
-  // Handle Enter to submit (but allow Shift+Enter for newlines)
+  // Handle Ctrl-V for image paste
   renderer.keyInput.on("keypress", async (key: KeyEvent) => {
+    if (key.name === "v" && key.ctrl) {
+      key.preventDefault();
+      const image = await readImageFromClipboard();
+      if (image) {
+        ui.imageAttachments.push(image);
+        updateAttachmentIndicator();
+        logger.info("Image pasted from clipboard", {
+          count: ui.imageAttachments.length,
+          mimeType: image.mimeType,
+        });
+      }
+      return;
+    }
+
     if (key.name === "return" && !key.shift) {
       key.preventDefault();
       const message = input.editBuffer.getText();
@@ -179,14 +222,43 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
 }
 
 async function handleMessage(message: string, ui: UI, config: Config) {
-  logger.info("Handling user message", { messageLength: message.length });
+  logger.info("Handling user message", {
+    messageLength: message.length,
+    imageAttachments: ui.imageAttachments.length,
+  });
 
   // Add separator if there's already content
   if (ui.contentBuffer.length > 0) {
     ui.appendOutput("\n" + "─".repeat(60) + "\n\n");
   }
 
-  ui.appendOutput(`You: ${message}\n\n`);
+  // Build message content (text + images if any)
+  const hasImages = ui.imageAttachments.length > 0;
+  let messageContent:
+    | string
+    | Array<{ type: "text"; text: string } | { type: "image"; image: URL }> =
+    message;
+
+  if (hasImages) {
+    messageContent = [
+      { type: "text", text: message },
+      ...ui.imageAttachments.map((img) => ({
+        type: "image" as const,
+        // Vercel AI SDK expects URL object with data URL
+        image: new URL(`data:${img.mimeType};base64,${img.data}`),
+      })),
+    ];
+  }
+
+  // Display user message with attachment count
+  if (hasImages) {
+    ui.appendOutput(
+      `You: ${message} [${ui.imageAttachments.length} image(s)]\n\n`,
+    );
+  } else {
+    ui.appendOutput(`You: ${message}\n\n`);
+  }
+
   ui.clearInput();
   ui.setStatus("Agent thinking... • Press Enter to send");
 
@@ -196,11 +268,14 @@ async function handleMessage(message: string, ui: UI, config: Config) {
     // Build conversation history with current message
     const messages = [
       ...ui.conversationHistory,
-      { role: "user" as const, content: message },
+      { role: "user" as const, content: messageContent },
     ];
 
     let assistantResponse = "";
     let textChunks = 0;
+    let lastToolName = "";
+    let lastToolArgs: any = {};
+
     for await (const event of runAgent(messages, config, (tool) => {
       logger.debug("Tool called", { tool });
       ui.setStatus(`Running ${tool}... • Press Enter to send`);
@@ -217,27 +292,54 @@ async function handleMessage(message: string, ui: UI, config: Config) {
         assistantResponse += text;
         ui.appendOutput(text);
       } else if (event.type === "tool") {
-        // Show tool call with primary arg (e.g., "bash ls" instead of full JSON)
-        const primaryArg =
-          event.args?.command || event.args?.path || JSON.stringify(event.args);
-        ui.appendOutput(`\n[${event.name}] ${primaryArg}\n`);
-      } else if (event.type === "tool-result") {
-        // Display tool results - format nicely
-        if (typeof event.result === "string") {
-          ui.appendOutput(`${event.result}\n`);
-        } else if (event.result?.stdout) {
-          // Bash tool result - show stdout directly
-          ui.appendOutput(event.result.stdout);
-          if (event.result.stderr) {
-            ui.appendOutput(`stderr: ${event.result.stderr}`);
-          }
-          if (event.result.exitCode !== 0) {
-            ui.appendOutput(`(exit code: ${event.result.exitCode})\n`);
-          }
-        } else {
-          // Other tools - show JSON but formatted
-          ui.appendOutput(JSON.stringify(event.result, null, 2) + "\n");
+        lastToolName = event.name || "";
+        lastToolArgs = event.args || {};
+
+        // Show minimal tool call info
+        if (event.name === "bash") {
+          ui.appendOutput(`\n[bash] ${event.args?.command}\n`);
+        } else if (event.name === "read") {
+          ui.appendOutput(`\n[read] ${event.args?.path}\n`);
+        } else if (event.name === "write") {
+          ui.appendOutput(`\n[write] ${event.args?.path}\n`);
+        } else if (event.name === "edit") {
+          ui.appendOutput(`\n[edit] ${event.args?.path}\n`);
         }
+      } else if (event.type === "tool-result") {
+        // Display user-friendly tool results
+        if (lastToolName === "read") {
+          if (event.result?.error) {
+            ui.appendOutput(`❌ ${event.result.error}\n`);
+          } else {
+            ui.appendOutput(`✓ Read ${lastToolArgs.path}\n`);
+          }
+        } else if (lastToolName === "write") {
+          if (event.result?.error) {
+            ui.appendOutput(`❌ ${event.result.error}\n`);
+          } else {
+            ui.appendOutput(`✓ Created ${lastToolArgs.path}\n`);
+          }
+        } else if (lastToolName === "edit") {
+          if (event.result?.error) {
+            ui.appendOutput(`❌ ${event.result.error}\n`);
+          } else {
+            ui.appendOutput(`✓ Updated ${lastToolArgs.path}\n`);
+          }
+        } else if (lastToolName === "bash") {
+          // For bash, show stdout/stderr as before
+          if (event.result?.error) {
+            ui.appendOutput(`❌ ${event.result.error}\n`);
+          } else if (event.result?.stdout) {
+            ui.appendOutput(event.result.stdout);
+            if (event.result.stderr) {
+              ui.appendOutput(`stderr: ${event.result.stderr}\n`);
+            }
+            if (event.result.exitCode !== 0) {
+              ui.appendOutput(`(exit code: ${event.result.exitCode})\n`);
+            }
+          }
+        }
+        // Never display JSON
       } else if (event.type === "error") {
         ui.appendOutput(`\n❌ Error: ${event.error}\n`);
       }
@@ -245,13 +347,16 @@ async function handleMessage(message: string, ui: UI, config: Config) {
     ui.appendOutput("\n");
 
     // Save conversation to history
-    ui.conversationHistory.push({ role: "user", content: message });
+    ui.conversationHistory.push({ role: "user", content: messageContent });
     if (assistantResponse) {
       ui.conversationHistory.push({
         role: "assistant",
         content: assistantResponse,
       });
     }
+
+    // Clear image attachments after successful send
+    ui.clearAttachments();
 
     logger.info("Message handled successfully", {
       textChunks,

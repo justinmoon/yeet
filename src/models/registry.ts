@@ -8,6 +8,30 @@ export interface ModelInfo {
 export const MODELS: ModelInfo[] = [
   { id: "grok-code", provider: "opencode", name: "Grok Code", pricing: "FREE" },
   {
+    id: "claude-sonnet-4-5",
+    provider: "opencode",
+    name: "Claude Sonnet 4.5",
+    pricing: "$3/$15",
+  },
+  {
+    id: "claude-haiku-4-5",
+    provider: "opencode",
+    name: "Claude Haiku 4.5",
+    pricing: "$1/$5",
+  },
+  {
+    id: "claude-3-5-haiku",
+    provider: "opencode",
+    name: "Claude 3.5 Haiku",
+    pricing: "$1/$5",
+  },
+  {
+    id: "claude-sonnet-4",
+    provider: "opencode",
+    name: "Claude Sonnet 4",
+    pricing: "$3/$15",
+  },
+  {
     id: "qwen3-coder",
     provider: "opencode",
     name: "Qwen3 Coder",

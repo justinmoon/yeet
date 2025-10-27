@@ -24,6 +24,11 @@ RIGHT: Call bash tool with "ls"
 
 Be concise. Execute the work, don't describe it.`;
 
+export interface ImageAttachment {
+  data: string; // base64
+  mimeType: string;
+}
+
 export interface AgentEvent {
   type: "text" | "tool" | "tool-result" | "done" | "error";
   content?: string;
@@ -33,8 +38,12 @@ export interface AgentEvent {
   error?: string;
 }
 
+type MessageContent =
+  | string
+  | Array<{ type: "text"; text: string } | { type: "image"; image: URL }>;
+
 export async function* runAgent(
-  messages: Array<{ role: "user" | "assistant"; content: string }>,
+  messages: Array<{ role: "user" | "assistant"; content: MessageContent }>,
   config: Config,
   onToolCall?: (tool: string) => void,
 ): AsyncGenerator<AgentEvent> {

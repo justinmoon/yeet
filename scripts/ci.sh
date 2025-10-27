@@ -12,13 +12,13 @@ log "0. Installing dependencies..."
 bun install
 
 log "1. Type checking..."
-bun run typecheck
+bun run tsc --noEmit
 
 log "2. Checking code format..."
-bun run fmt:check
+bunx biome format .
 
 log "3. Running linter..."
-bun run lint
+bunx biome check .
 
 log "4. Running tests..."
 # Run unit tests + Maple crypto tests, skip model-behavior-dependent E2E tests
