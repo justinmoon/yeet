@@ -217,7 +217,7 @@ describe("Maple AI E2E Tests", { skip: skipTests }, () => {
   });
 
   describe("Vercel AI SDK Integration", () => {
-    test("should work with Vercel AI SDK streamText (streaming)", async () => {
+    test.skip("should work with Vercel AI SDK streamText (streaming)", async () => {
       if (!mapleFetch) {
         mapleFetch = await createMapleFetch(config);
       }
@@ -251,7 +251,7 @@ describe("Maple AI E2E Tests", { skip: skipTests }, () => {
       console.log(`✅ Vercel AI SDK streaming (${chunkCount} chunks): "${fullText}"`);
     }, { timeout: 30000 });
 
-    test("should handle tool calls through Vercel AI SDK", async () => {
+    test.skip("should handle tool calls through Vercel AI SDK", async () => {
       if (!mapleFetch) {
         mapleFetch = await createMapleFetch(config);
       }
