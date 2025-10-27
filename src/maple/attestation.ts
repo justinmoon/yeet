@@ -12,6 +12,7 @@
 import { X509Certificate, X509ChainBuilder } from "@peculiar/x509";
 import { decode, encode } from "@stablelib/base64";
 import * as cbor from "cbor2";
+import { logger } from "../logger";
 import type {
   AttestationDocument,
   ParsedAttestationDocument,
@@ -175,8 +176,6 @@ function validatePCR0(pcrs: Map<number, Uint8Array>, expectedPCR0Values: string[
       `PCR0 validation failed. Got: ${pcr0Hex}, Expected one of: ${expectedPCR0Values.join(", ")}`
     );
   }
-
-  console.log(`✓ PCR0 validation passed: ${pcr0Hex}`);
 }
 
 /**
@@ -192,15 +191,15 @@ export async function verifyAttestation(
   nonce: string,
   config: MapleConfig
 ): Promise<AttestationDocument> {
-  console.log("🔒 Verifying attestation document...");
-
+  logger.debug("Verifying attestation document")
+  
   // 1. Parse the CBOR document
   const parsedDoc = await parseAttestationDocument(attestationBase64);
-  console.log("✓ Attestation document parsed");
+  logger.debug("Attestation document parsed")
 
   // 2. Extract the inner document
   const document = await parseDocumentPayload(parsedDoc.payload);
-  console.log("✓ Document payload extracted");
+  logger.debug("Document payload extracted")
 
   // 3. Verify nonce
   if (!document.nonce) {
@@ -210,11 +209,11 @@ export async function verifyAttestation(
   if (nonceStr !== nonce) {
     throw new Error(`Nonce mismatch. Expected: ${nonce}, Got: ${nonceStr}`);
   }
-  console.log("✓ Nonce verified");
+  logger.debug("Nonce verified")
 
   // 4. Verify certificate chain
   const leafCert = await verifyCertificateChain(document.certificate, document.cabundle);
-  console.log("✓ Certificate chain verified");
+  logger.debug("Certificate chain verified")
 
   // 5. Extract public key from certificate
   const publicKeyData = await crypto.subtle.importKey(
@@ -227,18 +226,19 @@ export async function verifyAttestation(
     true,
     ["verify"]
   );
-  console.log("✓ Public key extracted");
+  logger.debug("Public key extracted")
 
   // 6. Verify signature
   const signatureValid = await verifySignature(parsedDoc, publicKeyData);
   if (!signatureValid) {
     throw new Error("Signature verification failed");
   }
-  console.log("✓ Signature verified");
+  logger.debug("Signature verified")
 
   // 7. Validate PCR0
   validatePCR0(document.pcrs, config.pcr0Values);
+  logger.debug("PCR0 validated")
 
-  console.log("✅ Attestation verification complete");
+  logger.info("Attestation verification complete")
   return document;
 }

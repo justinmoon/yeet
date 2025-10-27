@@ -1,4 +1,5 @@
 {
+  "activeProvider": "opencode",
   "opencode": {
     "apiKey": "your-opencode-zen-api-key",
     "baseURL": "https://opencode.ai/zen/v1",
@@ -7,15 +8,17 @@
   "maxSteps": 5,
   "temperature": 0.3,
   
-  "_comment": "Maple AI configuration (optional) - remove the underscore from _maple to enable",
+  "_comment": "Maple AI configuration (optional) - remove the underscore from _maple to enable, or use /models command",
   "_maple": {
-    "enabled": true,
     "apiUrl": "https://enclave.trymaple.ai",
     "apiKey": "your-maple-api-key",
     "model": "mistral-small-3-1-24b",
     "_comment_model": "Cheapest: mistral-small-3-1-24b (24B). Others: llama3-3-70b, qwen2-5-72b, gpt-oss-120b",
     "pcr0Values": [
-      "79e7bd1e7df09fdb5b7098956a2268c278cc88be323c11975e2a2d080d65f30f8e0efe690edd450493c833b46f40ae1a"
+      "79e7bd1e7df09fdb5b7098956a2268c278cc88be323c11975e2a2d080d65f30f8e0efe690edd450493c833b46f40ae1a",
+      "ed9109c16f30a470cf0ea2251816789b4ffa510c990118323ce94a2364b9bf05bdb8777959cbac86f5cabc4852e0da71",
+      "4f2bcdf16c38842e1a45defd944d24ea58bb5bcb76491843223022acfe9eb6f1ff79b2cb9a6b2a9219daf9c7bf40fa37",
+      "b8ee4b511ef2c9c6ab3e5c0840c5df2218fbb4d9df88254ece7af9462677e55aa5a03838f3ae432d86ca1cb6f992eee7"
     ]
   }
 }

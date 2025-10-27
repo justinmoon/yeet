@@ -1,0 +1,5 @@
+"/Users/justin/code/yeet/tool-calling-format-explained.md"
+"/Users/justin/code/yeet/agents.md"
+"/Users/justin/code/yeet/src/agent.ts"
+"/Users/justin/code/yeet/.gitignore"
+"/Users/justin/code/yeet/plans/model-switching.md"

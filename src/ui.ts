@@ -8,15 +8,22 @@ import {
 } from "@opentui/core"
 import { runAgent, type AgentEvent } from "./agent"
 import type { Config } from "./config"
+import { parseCommand, executeCommand, handleMapleSetup } from "./commands"
+import { getModelInfo } from "./models/registry"
+import { logger } from "./logger"
 
 export interface UI {
   input: TextareaRenderable
   output: TextRenderable
   status: TextRenderable
-  contentBuffer: string  // Track content as a string
+  contentBuffer: string
+  conversationHistory: Array<{ role: "user" | "assistant"; content: string }>
   appendOutput: (text: string) => void
   setStatus: (text: string) => void
   clearInput: () => void
+  pendingMapleSetup?: {
+    modelId: string
+  }
 }
 
 export function createUI(renderer: CliRenderer, config: Config): UI {
@@ -29,10 +36,17 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
   })
   renderer.root.add(container)
 
+  // Get current model info for status
+  const currentModelId = config.activeProvider === "opencode" 
+    ? config.opencode.model 
+    : config.maple?.model || ""
+  const modelInfo = getModelInfo(currentModelId)
+  const modelDisplay = modelInfo ? `${modelInfo.name} (${config.activeProvider})` : currentModelId
+
   // Status bar at top
   const status = new TextRenderable(renderer, {
     id: "status",
-    content: "Ready • Press Enter to send",
+    content: `Ready • ${modelDisplay} • Press Enter to send`,
     fg: "#8B949E",
     height: 1,
   })
@@ -102,6 +116,7 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
     output,
     status,
     contentBuffer: "",  // Initialize as empty string
+    conversationHistory: [],  // Initialize conversation history
     appendOutput: (text: string) => {
       ui.contentBuffer += text
       output.content = ui.contentBuffer  // Set the whole string, don't concatenate!
@@ -115,6 +130,7 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
       const maxScroll = Math.max(0, scrollBox.scrollHeight - scrollBox.viewport.height)
       scrollBox.scrollTop = maxScroll
       
+      // @ts-ignore - optional internal API for forcing re-render
       renderer.requestAnimationFrame?.(() => {
         // Double render to ensure layout is correct
       })
@@ -133,7 +149,22 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
       key.preventDefault()
       const message = input.editBuffer.getText()
       if (message.trim()) {
-        await handleMessage(message, ui, config)
+        // Check if we're waiting for Maple API key
+        if (ui.pendingMapleSetup) {
+          const apiKey = message
+          const modelId = ui.pendingMapleSetup.modelId
+          ui.pendingMapleSetup = undefined
+          ui.clearInput()
+          await handleMapleSetup(apiKey, modelId, ui, config)
+        } else {
+          const parsed = parseCommand(message)
+          if (parsed.isCommand && parsed.command) {
+            ui.clearInput()
+            await executeCommand(parsed.command, parsed.args, ui, config)
+          } else {
+            await handleMessage(message, ui, config)
+          }
+        }
       }
     }
   })
@@ -142,6 +173,8 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
 }
 
 async function handleMessage(message: string, ui: UI, config: Config) {
+  logger.info("Handling user message", { messageLength: message.length })
+  
   // Add separator if there's already content
   if (ui.contentBuffer.length > 0) {
     ui.appendOutput("\n" + "─".repeat(60) + "\n\n")
@@ -153,11 +186,27 @@ async function handleMessage(message: string, ui: UI, config: Config) {
 
   try {
     ui.appendOutput("Assistant: ")
-    for await (const event of runAgent(message, config, (tool) => {
+    
+    // Build conversation history with current message
+    const messages = [
+      ...ui.conversationHistory,
+      { role: "user" as const, content: message }
+    ]
+    
+    let assistantResponse = ""
+    let textChunks = 0
+    for await (const event of runAgent(messages, config, (tool) => {
+      logger.debug("Tool called", { tool })
       ui.setStatus(`Running ${tool}... • Press Enter to send`)
     })) {
+      logger.debug("Agent event", { type: event.type })
+      
       if (event.type === "text") {
-        ui.appendOutput(event.content || "")
+        textChunks++
+        logger.debug("Text chunk received", { content: event.content?.substring(0, 50), chunkNumber: textChunks })
+        const text = event.content || ""
+        assistantResponse += text
+        ui.appendOutput(text)
       } else if (event.type === "tool") {
         // Show tool call with primary arg (e.g., "bash ls" instead of full JSON)
         const primaryArg = event.args?.command || event.args?.path || JSON.stringify(event.args)
@@ -184,9 +233,23 @@ async function handleMessage(message: string, ui: UI, config: Config) {
       }
     }
     ui.appendOutput("\n")
+    
+    // Save conversation to history
+    ui.conversationHistory.push({ role: "user", content: message })
+    if (assistantResponse) {
+      ui.conversationHistory.push({ role: "assistant", content: assistantResponse })
+    }
+    
+    logger.info("Message handled successfully", { textChunks, historyLength: ui.conversationHistory.length })
   } catch (error: any) {
+    logger.error("Error handling message", { error: error.message, stack: error.stack })
     ui.appendOutput(`\n❌ Error: ${error.message}\n`)
   }
 
-  ui.setStatus("Ready • Press Enter to send")
+  const currentModelId = config.activeProvider === "opencode" 
+    ? config.opencode.model 
+    : config.maple?.model || ""
+  const modelInfo = getModelInfo(currentModelId)
+  const modelDisplay = modelInfo ? `${modelInfo.name} (${config.activeProvider})` : currentModelId
+  ui.setStatus(`Ready • ${modelDisplay} • Press Enter to send`)
 }

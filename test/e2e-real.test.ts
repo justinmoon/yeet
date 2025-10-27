@@ -41,7 +41,13 @@ test("E2E with REAL API - bash tool with clean output", async () => {
     // Import here to ensure fresh module
     const { runAgent } = await import("../src/agent")
     
-    for await (const event of runAgent(message, config, (tool) => {
+    // Build messages array with history
+    const messages = [
+      ...ui.conversationHistory,
+      { role: "user" as const, content: message }
+    ]
+    
+    for await (const event of runAgent(messages, config, (tool) => {
       ui.setStatus(`Running ${tool}...`)
     })) {
       if (event.type === "text") {

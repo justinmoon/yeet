@@ -13,6 +13,7 @@
 import nacl from "tweetnacl";
 import { ChaCha20Poly1305 } from "@stablelib/chacha20poly1305";
 import { encode, decode } from "@stablelib/base64";
+import { logger } from "../logger";
 import { verifyAttestation } from "./attestation";
 import { encryptMessage, decryptMessage } from "./encryption";
 import type { MapleConfig, Attestation, KeyExchangeResponse } from "./types";
@@ -73,18 +74,19 @@ async function performKeyExchange(
  * 5. Decrypt the session key
  */
 async function establishSession(config: MapleConfig): Promise<Attestation> {
-  console.log("🔐 Establishing secure session with Maple...");
-
+  logger.debug("Establishing secure session with Maple", { apiUrl: config.apiUrl })
+  
   // 1. Generate nonce for replay attack protection
   const nonce = crypto.randomUUID();
-  console.log(`Generated nonce: ${nonce}`);
+  logger.debug("Generated nonce", { nonce })
 
   // 2. Fetch attestation document
   const attestationBase64 = await fetchAttestationDocument(config.apiUrl, nonce);
-  console.log("Fetched attestation document");
+  logger.debug("Fetched attestation document")
 
   // 3. Verify attestation
   const document = await verifyAttestation(attestationBase64, nonce, config);
+  logger.debug("Attestation verified")
 
   if (!document.public_key) {
     throw new Error("Attestation document missing public key");
@@ -92,7 +94,7 @@ async function establishSession(config: MapleConfig): Promise<Attestation> {
 
   // 4. Generate client keypair for key exchange
   const clientKeyPair = nacl.box.keyPair();
-  console.log("Generated client keypair");
+  logger.debug("Generated client keypair")
 
   // 5. Perform key exchange with enclave
   const { encrypted_session_key, session_id } = await performKeyExchange(
@@ -100,7 +102,7 @@ async function establishSession(config: MapleConfig): Promise<Attestation> {
     encode(clientKeyPair.publicKey),
     nonce
   );
-  console.log("Key exchange completed");
+  logger.debug("Key exchange completed", { sessionId: session_id })
 
   // 6. Derive shared secret using X25519
   const serverPublicKey = new Uint8Array(document.public_key);
@@ -119,7 +121,7 @@ async function establishSession(config: MapleConfig): Promise<Attestation> {
     throw new Error("Failed to decrypt session key");
   }
 
-  console.log("✅ Secure session established");
+  logger.info("Secure session established with Maple")
 
   return {
     sessionKey,
@@ -181,9 +183,25 @@ function decryptSSEStream(
                 } else {
                   try {
                     const decrypted = decryptMessage(sessionKey, data);
-                    controller.enqueue(encoder.encode(`data: ${decrypted}\n`));
+                    
+                    // Normalize Maple's response to match OpenAI format
+                    // Maple returns role:"" but AI SDK expects role:"assistant"
+                    try {
+                      const parsed = JSON.parse(decrypted);
+                      if (parsed.choices) {
+                        for (const choice of parsed.choices) {
+                          if (choice.delta && choice.delta.role === "") {
+                            choice.delta.role = "assistant";
+                          }
+                        }
+                      }
+                      controller.enqueue(encoder.encode(`data: ${JSON.stringify(parsed)}\n`));
+                    } catch {
+                      // Not JSON or parsing failed, pass through as-is
+                      controller.enqueue(encoder.encode(`data: ${decrypted}\n`));
+                    }
                   } catch (error) {
-                    console.error("Failed to decrypt SSE chunk:", error);
+                    logger.error("Failed to decrypt SSE chunk", { error: String(error) })
                     // Skip corrupted chunks
                   }
                 }
@@ -316,7 +334,7 @@ export async function createMapleFetch(
         return decryptJSONResponse(response, sessionKey);
       }
     } catch (error) {
-      console.error("Maple fetch error:", error);
+      logger.error("Maple fetch error", { error: String(error), url: input.toString() })
       throw error;
     }
   };

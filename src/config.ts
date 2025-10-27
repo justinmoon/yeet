@@ -3,6 +3,7 @@ import os from "os"
 import { mkdir, chmod } from "fs/promises"
 
 export interface Config {
+  activeProvider: "opencode" | "maple"
   opencode: {
     apiKey: string
     baseURL: string
@@ -12,7 +13,6 @@ export interface Config {
   temperature?: number
   // Maple AI configuration (optional)
   maple?: {
-    enabled: boolean
     apiUrl: string
     apiKey: string
     model: string
@@ -59,10 +59,11 @@ async function createDefaultConfig(configPath: string): Promise<Config> {
   }
 
   const config: Config = {
+    activeProvider: "opencode",
     opencode: {
       apiKey,
       baseURL: "https://opencode.ai/zen/v1",
-      model: "grok-code",  // Free model on OpenCode Zen
+      model: "grok-code",
     },
     maxSteps: 5,
     temperature: 0.3,
@@ -92,10 +93,25 @@ export async function loadConfig(): Promise<Config> {
     return await createDefaultConfig(configPath)
   }
 
-  const config = (await file.json()) as Config
+  const config = (await file.json()) as any
+  
+  // Migrate old config: set activeProvider based on maple.enabled
+  if (!config.activeProvider) {
+    config.activeProvider = config.maple?.enabled ? "maple" : "opencode"
+  }
+  if (config.maple?.enabled !== undefined) {
+    delete config.maple.enabled
+  }
+  
   return {
     ...config,
     maxSteps: config.maxSteps || 5,
     temperature: config.temperature || 0.3,
-  }
+  } as Config
+}
+
+export async function saveConfig(config: Config): Promise<void> {
+  const configPath = path.join(os.homedir(), ".yeet", "config.json")
+  await Bun.write(configPath, JSON.stringify(config, null, 2))
+  await chmod(configPath, 0o600)
 }

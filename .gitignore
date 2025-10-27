@@ -6,3 +6,4 @@ dist/
 yeet
 .env.test
 .env.local
+.env
