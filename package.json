@@ -10,7 +10,11 @@
     "dev": "bun run src/index.ts",
     "build": "bun build src/index.ts --compile --outfile yeet",
     "test": "bun test",
-    "typecheck": "bun run tsc --noEmit"
+    "typecheck": "bun run tsc --noEmit",
+    "lint": "biome check .",
+    "lint:fix": "biome check --write .",
+    "fmt": "biome format --write .",
+    "fmt:check": "biome format ."
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^1.0.0",
@@ -26,6 +30,7 @@
     "zod-to-json-schema": "^3.24.6"
   },
   "devDependencies": {
+    "@biomejs/biome": "^1.9.4",
     "@types/bun": "latest",
     "typescript": "^5.8.2"
   }
