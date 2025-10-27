@@ -11,14 +11,5 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: DeterminateSystems/nix-installer-action@v12
-
-      - name: Configure cache
-        uses: DeterminateSystems/magic-nix-cache-action@v8
-
-      - name: Run flake checks
-        run: nix flake check
-
       - name: Run CI
         run: nix run .#ci
