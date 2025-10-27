@@ -1,6 +1,6 @@
 /**
  * AWS Nitro Enclave attestation verification
- * 
+ *
  * This module verifies that we're communicating with a legitimate AWS Nitro Enclave
  * running trusted code. It performs:
  * 1. Certificate chain verification
@@ -15,8 +15,8 @@ import * as cbor from "cbor2";
 import { logger } from "../logger";
 import type {
   AttestationDocument,
-  ParsedAttestationDocument,
   MapleConfig,
+  ParsedAttestationDocument,
 } from "./types";
 
 // AWS Nitro Enclaves root certificate (from AWS docs)
@@ -40,7 +40,7 @@ IwLz3/Y=
  * Parses the CBOR-encoded attestation document
  */
 async function parseAttestationDocument(
-  attestationBase64: string
+  attestationBase64: string,
 ): Promise<ParsedAttestationDocument> {
   try {
     const attestationBuffer = decode(attestationBase64);
@@ -64,15 +64,17 @@ async function parseAttestationDocument(
 /**
  * Parses the inner attestation document payload
  */
-async function parseDocumentPayload(payload: Uint8Array): Promise<AttestationDocument> {
+async function parseDocumentPayload(
+  payload: Uint8Array,
+): Promise<AttestationDocument> {
   try {
     const documentData = cbor.decode(payload) as any;
-    
+
     // Convert pcrs object to Map if it's not already
     if (documentData.pcrs && !(documentData.pcrs instanceof Map)) {
       documentData.pcrs = new Map(Object.entries(documentData.pcrs));
     }
-    
+
     return documentData as AttestationDocument;
   } catch (error) {
     throw new Error(`Failed to parse document payload: ${error}`);
@@ -82,7 +84,10 @@ async function parseDocumentPayload(payload: Uint8Array): Promise<AttestationDoc
 /**
  * Creates a COSE Signature1 structure for verification
  */
-function createSigStructure(bodyProtected: Uint8Array, payload: Uint8Array): Uint8Array {
+function createSigStructure(
+  bodyProtected: Uint8Array,
+  payload: Uint8Array,
+): Uint8Array {
   const sig1 = [
     "Signature1",
     bodyProtected,
@@ -97,10 +102,13 @@ function createSigStructure(bodyProtected: Uint8Array, payload: Uint8Array): Uin
  */
 async function verifySignature(
   parsedDoc: ParsedAttestationDocument,
-  publicKey: CryptoKey
+  publicKey: CryptoKey,
 ): Promise<boolean> {
   try {
-    const signatureBytes = createSigStructure(parsedDoc.protected, parsedDoc.payload);
+    const signatureBytes = createSigStructure(
+      parsedDoc.protected,
+      parsedDoc.payload,
+    );
 
     const verified = await crypto.subtle.verify(
       {
@@ -109,7 +117,7 @@ async function verifySignature(
       },
       publicKey,
       parsedDoc.signature,
-      signatureBytes
+      signatureBytes,
     );
 
     return verified;
@@ -123,7 +131,7 @@ async function verifySignature(
  */
 async function verifyCertificateChain(
   certificate: Uint8Array,
-  cabundle: Uint8Array[]
+  cabundle: Uint8Array[],
 ): Promise<X509Certificate> {
   try {
     // Parse the leaf certificate
@@ -141,7 +149,7 @@ async function verifyCertificateChain(
     });
 
     const chain = await chainBuilder.build(leafCert);
-    
+
     if (chain.length === 0) {
       throw new Error("Failed to build certificate chain");
     }
@@ -155,7 +163,10 @@ async function verifyCertificateChain(
 /**
  * Validates PCR0 value against expected values
  */
-function validatePCR0(pcrs: Map<number, Uint8Array>, expectedPCR0Values: string[]): void {
+function validatePCR0(
+  pcrs: Map<number, Uint8Array>,
+  expectedPCR0Values: string[],
+): void {
   const pcr0 = pcrs.get(0);
   if (!pcr0) {
     throw new Error("PCR0 not found in attestation document");
@@ -168,19 +179,19 @@ function validatePCR0(pcrs: Map<number, Uint8Array>, expectedPCR0Values: string[
 
   // Check if it matches any of the expected values
   const isValid = expectedPCR0Values.some(
-    (expected) => expected.toLowerCase() === pcr0Hex.toLowerCase()
+    (expected) => expected.toLowerCase() === pcr0Hex.toLowerCase(),
   );
 
   if (!isValid) {
     throw new Error(
-      `PCR0 validation failed. Got: ${pcr0Hex}, Expected one of: ${expectedPCR0Values.join(", ")}`
+      `PCR0 validation failed. Got: ${pcr0Hex}, Expected one of: ${expectedPCR0Values.join(", ")}`,
     );
   }
 }
 
 /**
  * Main attestation verification function
- * 
+ *
  * @param attestationBase64 - Base64-encoded attestation document
  * @param nonce - The nonce that should be in the attestation document
  * @param config - Maple configuration with expected PCR0 values
@@ -189,17 +200,17 @@ function validatePCR0(pcrs: Map<number, Uint8Array>, expectedPCR0Values: string[
 export async function verifyAttestation(
   attestationBase64: string,
   nonce: string,
-  config: MapleConfig
+  config: MapleConfig,
 ): Promise<AttestationDocument> {
-  logger.debug("Verifying attestation document")
-  
+  logger.debug("Verifying attestation document");
+
   // 1. Parse the CBOR document
   const parsedDoc = await parseAttestationDocument(attestationBase64);
-  logger.debug("Attestation document parsed")
+  logger.debug("Attestation document parsed");
 
   // 2. Extract the inner document
   const document = await parseDocumentPayload(parsedDoc.payload);
-  logger.debug("Document payload extracted")
+  logger.debug("Document payload extracted");
 
   // 3. Verify nonce
   if (!document.nonce) {
@@ -209,11 +220,14 @@ export async function verifyAttestation(
   if (nonceStr !== nonce) {
     throw new Error(`Nonce mismatch. Expected: ${nonce}, Got: ${nonceStr}`);
   }
-  logger.debug("Nonce verified")
+  logger.debug("Nonce verified");
 
   // 4. Verify certificate chain
-  const leafCert = await verifyCertificateChain(document.certificate, document.cabundle);
-  logger.debug("Certificate chain verified")
+  const leafCert = await verifyCertificateChain(
+    document.certificate,
+    document.cabundle,
+  );
+  logger.debug("Certificate chain verified");
 
   // 5. Extract public key from certificate
   const publicKeyData = await crypto.subtle.importKey(
@@ -224,21 +238,21 @@ export async function verifyAttestation(
       namedCurve: "P-384",
     },
     true,
-    ["verify"]
+    ["verify"],
   );
-  logger.debug("Public key extracted")
+  logger.debug("Public key extracted");
 
   // 6. Verify signature
   const signatureValid = await verifySignature(parsedDoc, publicKeyData);
   if (!signatureValid) {
     throw new Error("Signature verification failed");
   }
-  logger.debug("Signature verified")
+  logger.debug("Signature verified");
 
   // 7. Validate PCR0
   validatePCR0(document.pcrs, config.pcr0Values);
-  logger.debug("PCR0 validated")
+  logger.debug("PCR0 validated");
 
-  logger.info("Attestation verification complete")
+  logger.info("Attestation verification complete");
   return document;
 }

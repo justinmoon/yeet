@@ -8,7 +8,25 @@
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true
+      "recommended": true,
+      "suspicious": {
+        "noExplicitAny": "off",
+        "noImplicitAnyLet": "off",
+        "noAssignInExpressions": "off"
+      },
+      "style": {
+        "noNonNullAssertion": "off",
+        "noUnusedTemplateLiteral": "off",
+        "useNodejsImportProtocol": "off",
+        "useTemplate": "off",
+        "noUselessElse": "off"
+      },
+      "performance": {
+        "noDelete": "off"
+      },
+      "security": {
+        "noGlobalEval": "off"
+      }
     }
   },
   "javascript": {

@@ -1,5 +1,9 @@
 #!/usr/bin/env just --justfile
 
+# Show available commands
+default:
+    @just --list
+
 # Run all CI checks
 ci:
     nix run .#ci

@@ -1,8 +1,8 @@
 /**
  * Maple AI Integration
- * 
+ *
  * Provides end-to-end encrypted inference using AWS Nitro Enclaves.
- * 
+ *
  * @module maple
  */
 
