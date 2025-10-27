@@ -117,7 +117,7 @@ describe("Maple AI E2E Tests", { skip: skipTests }, () => {
       }
 
       const requestBody = JSON.stringify({
-        model: "llama3-3-70b",
+        model: "mistral-small-3-1-24b",  // Smallest/cheapest model (24B params)
         messages: [
           { role: "user", content: "Say 'test successful' and nothing else." }
         ],
@@ -154,7 +154,7 @@ describe("Maple AI E2E Tests", { skip: skipTests }, () => {
       }
 
       const requestBody = JSON.stringify({
-        model: "llama3-3-70b",
+        model: "mistral-small-3-1-24b",  // Smallest/cheapest model (24B params)
         messages: [
           { role: "user", content: "Count from 1 to 3, separated by spaces." }
         ],
@@ -229,7 +229,7 @@ describe("Maple AI E2E Tests", { skip: skipTests }, () => {
       });
 
       const result = await streamText({
-        model: provider("llama3-3-70b"),
+        model: provider("mistral-small-3-1-24b"),  // Smallest/cheapest model
         messages: [
           { role: "user", content: "Say exactly: Hello from Maple!" }
         ],
@@ -263,7 +263,7 @@ describe("Maple AI E2E Tests", { skip: skipTests }, () => {
       });
 
       const result = await streamText({
-        model: provider("llama3-3-70b"),
+        model: provider("mistral-small-3-1-24b"),  // Smallest/cheapest model
         messages: [
           { role: "user", content: "What is 2+2? Use the calculator tool." }
         ],
