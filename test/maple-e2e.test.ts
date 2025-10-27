@@ -52,7 +52,7 @@ if (skipTests) {
   console.log("   MAPLE_API_KEY=xxx bun test test/maple-e2e.test.ts");
 }
 
-describe("Maple AI E2E Tests", () => {
+(skipTests ? describe.skip : describe)("Maple AI E2E Tests", () => {
   let config: MapleConfig;
   let mapleFetch: typeof fetch;
 
@@ -67,7 +67,7 @@ describe("Maple AI E2E Tests", () => {
     console.log(`🔑 API key: ${MAPLE_API_KEY?.slice(0, 8)}...`);
   });
 
-  describe("Attestation & Key Exchange", { skip: skipTests }, () => {
+  describe("Attestation & Key Exchange", () => {
     test(
       "should establish secure session",
       async () => {
@@ -104,7 +104,7 @@ describe("Maple AI E2E Tests", () => {
     );
   });
 
-  describe("Raw API Calls", { skip: skipTests }, () => {
+  describe("Raw API Calls", () => {
     test(
       "should list available models",
       async () => {
@@ -256,7 +256,7 @@ describe("Maple AI E2E Tests", () => {
     );
   });
 
-  describe("Vercel AI SDK Integration", { skip: skipTests }, () => {
+  describe("Vercel AI SDK Integration", () => {
     test.skip(
       "should work with Vercel AI SDK streamText (streaming)",
       async () => {
@@ -360,7 +360,7 @@ describe("Maple AI E2E Tests", () => {
     );
   });
 
-  describe("Error Handling", { skip: skipTests }, () => {
+  describe("Error Handling", () => {
     test(
       "should handle invalid API key gracefully",
       async () => {
@@ -415,7 +415,7 @@ describe("Maple AI E2E Tests", () => {
     );
   });
 
-  describe("Performance", { skip: skipTests }, () => {
+  describe("Performance", () => {
     test(
       "should establish session in reasonable time",
       async () => {
