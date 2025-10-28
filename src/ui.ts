@@ -6,12 +6,23 @@ import {
   TextRenderable,
   TextareaRenderable,
 } from "@opentui/core";
-import { type AgentEvent, type ImageAttachment, runAgent } from "./agent";
+import {
+  type AgentEvent,
+  type ImageAttachment,
+  type MessageContent,
+  runAgent,
+} from "./agent";
 import { readImageFromClipboard } from "./clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "./commands";
 import type { Config } from "./config";
 import { logger } from "./logger";
 import { getModelInfo } from "./models/registry";
+import {
+  calculateContextUsage,
+  countMessageTokens,
+  formatTokenCount,
+  truncateMessages,
+} from "./tokens";
 
 export interface UI {
   input: TextareaRenderable;
@@ -20,15 +31,15 @@ export interface UI {
   contentBuffer: string;
   conversationHistory: Array<{
     role: "user" | "assistant";
-    content:
-      | string
-      | Array<{ type: "text"; text: string } | { type: "image"; image: URL }>;
+    content: MessageContent;
   }>;
   imageAttachments: ImageAttachment[];
+  currentTokens: number;
   appendOutput: (text: string) => void;
   setStatus: (text: string) => void;
   clearInput: () => void;
   clearAttachments: () => void;
+  updateTokenCount: () => void;
   pendingMapleSetup?: {
     modelId: string;
   };
@@ -57,7 +68,7 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
   // Status bar at top
   const status = new TextRenderable(renderer, {
     id: "status",
-    content: `Ready • ${modelDisplay} • Press Enter to send`,
+    content: `Tokens: 0/${modelInfo?.contextWindow || "?"} (0%) • Press Enter to send`,
     fg: "#8B949E",
     height: 1,
   });
@@ -145,6 +156,7 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
     contentBuffer: "",
     conversationHistory: [],
     imageAttachments: [],
+    currentTokens: 0,
     appendOutput: (text: string) => {
       ui.contentBuffer += text;
       output.content = ui.contentBuffer;
@@ -175,6 +187,39 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
     clearAttachments: () => {
       ui.imageAttachments = [];
       updateAttachmentIndicator();
+    },
+    updateTokenCount: () => {
+      const modelId =
+        config.activeProvider === "maple"
+          ? config.maple!.model
+          : config.opencode.model;
+      const modelInfo = getModelInfo(modelId);
+
+      if (!modelInfo) {
+        ui.currentTokens = 0;
+        return;
+      }
+
+      // Count tokens in conversation
+      const tokens = countMessageTokens(ui.conversationHistory, modelId);
+      ui.currentTokens = tokens;
+
+      // Update status with token info
+      const tokenDisplay = formatTokenCount(tokens);
+      const maxTokens = modelInfo.contextWindow;
+      const usage = calculateContextUsage(tokens, maxTokens);
+      const maxDisplay = formatTokenCount(maxTokens);
+
+      // Warn if approaching limit
+      if (usage >= 80) {
+        ui.setStatus(
+          `⚠️  Tokens: ${tokenDisplay}/${maxDisplay} (${usage}%) • Press Enter to send`,
+        );
+      } else {
+        ui.setStatus(
+          `Tokens: ${tokenDisplay}/${maxDisplay} (${usage}%) • Press Enter to send`,
+        );
+      }
     },
   };
 
@@ -265,11 +310,42 @@ async function handleMessage(message: string, ui: UI, config: Config) {
   try {
     ui.appendOutput("Assistant: ");
 
+    // Get model info for context window limits
+    const modelId =
+      config.activeProvider === "maple"
+        ? config.maple!.model
+        : config.opencode.model;
+    const modelInfo = getModelInfo(modelId);
+
     // Build conversation history with current message
-    const messages = [
+    let messages = [
       ...ui.conversationHistory,
       { role: "user" as const, content: messageContent },
     ];
+
+    // Truncate if approaching context limit
+    if (modelInfo) {
+      const SYSTEM_PROMPT_TOKENS = 200; // Estimate for system prompt
+      const originalLength = messages.length;
+      messages = truncateMessages(
+        messages,
+        modelInfo.contextWindow,
+        modelId,
+        SYSTEM_PROMPT_TOKENS,
+      );
+
+      // Warn user if we had to truncate
+      if (messages.length < originalLength) {
+        const removed = originalLength - messages.length;
+        ui.appendOutput(
+          `\n⚠️  Truncated ${removed} old message(s) to fit context window\n\n`,
+        );
+        logger.info("Truncated conversation history", {
+          removed,
+          remaining: messages.length,
+        });
+      }
+    }
 
     let assistantResponse = "";
     let textChunks = 0;
@@ -358,9 +434,13 @@ async function handleMessage(message: string, ui: UI, config: Config) {
     // Clear image attachments after successful send
     ui.clearAttachments();
 
+    // Update token count display
+    ui.updateTokenCount();
+
     logger.info("Message handled successfully", {
       textChunks,
       historyLength: ui.conversationHistory.length,
+      tokens: ui.currentTokens,
     });
   } catch (error: any) {
     logger.error("Error handling message", {
@@ -368,15 +448,6 @@ async function handleMessage(message: string, ui: UI, config: Config) {
       stack: error.stack,
     });
     ui.appendOutput(`\n❌ Error: ${error.message}\n`);
+    ui.updateTokenCount();
   }
-
-  const currentModelId =
-    config.activeProvider === "opencode"
-      ? config.opencode.model
-      : config.maple?.model || "";
-  const modelInfo = getModelInfo(currentModelId);
-  const modelDisplay = modelInfo
-    ? `${modelInfo.name} (${config.activeProvider})`
-    : currentModelId;
-  ui.setStatus(`Ready • ${modelDisplay} • Press Enter to send`);
 }

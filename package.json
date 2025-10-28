@@ -15,6 +15,7 @@
     "@stablelib/random": "^2.0.1",
     "ai": "^5.0.8",
     "cbor2": "^2.0.1",
+    "tiktoken": "^1.0.22",
     "tweetnacl": "^1.0.3",
     "zod": "^4.1.8",
     "zod-to-json-schema": "^3.24.6"

@@ -38,7 +38,7 @@ export interface AgentEvent {
   error?: string;
 }
 
-type MessageContent =
+export type MessageContent =
   | string
   | Array<{ type: "text"; text: string } | { type: "image"; image: URL }>;
 
