@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XState Agent Loop - Visualizer</title>
+  
+  <!-- React Flow CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xyflow/react@12.3.4/dist/style.min.css">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #1e1e1e;
+      color: #e0e0e0;
+      overflow: hidden;
+    }
+
+    #root {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: #252526;
+      border-bottom: 1px solid #3e3e42;
+      padding: 1rem;
+    }
+
+    .header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #e0e0e0;
+    }
+
+    .main {
+      flex: 1;
+      background: #1e1e1e;
+    }
+
+    .status {
+      padding: 1rem;
+      color: #8e8e93;
+      font-size: 0.875rem;
+    }
+
+    /* React Flow custom styles */
+    .react-flow {
+      background: #1e1e1e;
+    }
+
+    .react-flow__node {
+      background: #2d2d30;
+      border: 2px solid #007acc;
+      border-radius: 8px;
+      padding: 12px 20px;
+      color: #e0e0e0;
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="header">
+      <h1>XState Agent Loop</h1>
+    </div>
+    <div class="main" id="reactflow-container"></div>
+    <div class="status" id="status">Loading React Flow...</div>
+  </div>
+
+  <!-- Load libraries -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- React Flow UMD needs jsx-runtime polyfill -->
+  <script>
+    window['react/jsx-runtime'] = {
+      jsx: React.createElement,
+      jsxs: React.createElement,
+      Fragment: React.Fragment
+    };
+  </script>
+  
+  <script src="https://cdn.jsdelivr.net/npm/@xyflow/react@12.3.4/dist/umd/index.min.js"></script>
+
+  <script>
+    // Check if libraries loaded
+    console.log('React loaded:', typeof React !== 'undefined');
+    console.log('ReactDOM loaded:', typeof ReactDOM !== 'undefined');
+    console.log('ReactFlow loaded:', typeof window.ReactFlow !== 'undefined');
+
+    if (typeof React === 'undefined' || typeof ReactDOM === 'undefined' || typeof window.ReactFlow === 'undefined') {
+      document.getElementById('status').textContent = 'Error: Failed to load libraries. Check console.';
+      throw new Error('Libraries not loaded');
+    }
+
+    // Extract from window.ReactFlow
+    const { ReactFlow, Background, Controls } = window.ReactFlow;
+
+    // Simple example: 2 nodes, 1 edge
+    const initialNodes = [
+      {
+        id: '1',
+        type: 'default',
+        position: { x: 100, y: 100 },
+        data: { label: 'Node 1' }
+      },
+      {
+        id: '2',
+        type: 'default',
+        position: { x: 300, y: 100 },
+        data: { label: 'Node 2' }
+      }
+    ];
+
+    const initialEdges = [
+      {
+        id: 'e1-2',
+        source: '1',
+        target: '2',
+        label: 'connects'
+      }
+    ];
+
+    // Create React component
+    function Flow() {
+      return React.createElement(
+        ReactFlow,
+        {
+          nodes: initialNodes,
+          edges: initialEdges,
+          fitView: true
+        },
+        React.createElement(Background, { color: '#3e3e42', gap: 16 }),
+        React.createElement(Controls)
+      );
+    }
+
+    // Mount
+    const container = document.getElementById('reactflow-container');
+    const root = ReactDOM.createRoot(container);
+    root.render(React.createElement(Flow));
+    
+    document.getElementById('status').textContent = 'React Flow loaded successfully';
+    console.log('App mounted');
+  </script>
+</body>
+</html>

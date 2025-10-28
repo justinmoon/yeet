@@ -10,13 +10,6 @@ import { expect, test } from "@playwright/test";
 const GUI_URL = "http://localhost:3456";
 const TEST_TIMEOUT = 10000;
 
-// Helper to start GUI server before tests
-test.beforeAll(async () => {
-  // Note: Server should be running before tests
-  // Run with: bun run gui
-  // Could auto-start here but keeping it simple for now
-});
-
 test.describe("Phase 1: Static Visualization", () => {
   test("loads the GUI and displays header", async ({ page }) => {
     await page.goto(GUI_URL);

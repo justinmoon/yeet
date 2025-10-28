@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./test",
-  testMatch: "**/*.playwright.test.ts",
+  testMatch: ["**/*.playwright.test.ts", "!**/gui-hello.playwright.test.ts"],
   fullyParallel: false, // Run tests serially to avoid port conflicts
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

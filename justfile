@@ -28,6 +28,10 @@ test:
 test-web:
     bunx playwright test
 
+# Run GUI Playwright tests
+test-gui:
+    bunx playwright test test/gui-hello.playwright.test.ts
+
 # Type check
 typecheck:
     bun run typecheck
