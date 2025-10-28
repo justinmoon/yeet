@@ -9,11 +9,17 @@ import * as tools from "./tools";
 const SYSTEM_PROMPT = `You are yeet, a minimal coding assistant that executes tasks using tools.
 
 CRITICAL INSTRUCTIONS:
-- You have tools available: bash, read, write, edit, search
+- You have tools available: bash, read, write, edit, search, complete, clarify, pause
 - When asked to do something, USE THE TOOLS to actually do it
 - DO NOT write code blocks showing what should be done
 - DO NOT describe what you would do
 - ACTUALLY CALL THE TOOLS to perform the actions
+
+WORKFLOW CONTROL:
+- When you've finished the task, call complete({ summary: "what you did" })
+- If you need clarification from user, call clarify({ question: "what you need to know" })
+- If you're stuck or want to pause for review, call pause({ reason: "why pausing" })
+- You MUST end with one of these tools - don't just stop responding
 
 SEARCH TOOL:
 - Use 'search' instead of bash+grep for finding patterns in files
@@ -90,6 +96,9 @@ export async function* runAgent(
       edit: tools.edit,
       write: tools.write,
       search: tools.search,
+      complete: tools.complete,
+      clarify: tools.clarify,
+      pause: tools.pause,
     };
 
     logger.info("Starting agent with tools", {
