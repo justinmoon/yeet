@@ -175,10 +175,12 @@ export function App() {
             fitView
             fitViewOptions={{
               padding: 0.2,
-              minZoom: 0.4,
-              maxZoom: 1.2,
+              minZoom: 0.3,
+              maxZoom: 1.5,
             }}
-            nodeTypes={{}}
+            defaultEdgeOptions={{
+              type: "smoothstep",
+            }}
           >
             <Background color="#3e3e42" gap={16} />
             <Controls />

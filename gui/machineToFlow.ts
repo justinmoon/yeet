@@ -196,14 +196,16 @@ function getLayoutedElements(
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
 
-  // Better layout settings
+  // Better layout settings - optimized to reduce edge crossings
   dagreGraph.setGraph({
     rankdir: direction,
-    nodesep: 100, // Horizontal spacing between nodes
-    ranksep: 120, // Vertical spacing between ranks
-    marginx: 40,
-    marginy: 40,
-    align: "DL", // Align nodes
+    nodesep: 120, // Increased horizontal spacing
+    ranksep: 150, // Increased vertical spacing
+    ranker: "tight-tree", // Better for hierarchical flows
+    marginx: 50,
+    marginy: 50,
+    align: "DL", // Align down-left
+    acyclicer: "greedy", // Better cycle handling
   });
 
   const nodeWidth = 220;
