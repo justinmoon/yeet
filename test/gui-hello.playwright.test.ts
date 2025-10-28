@@ -8,11 +8,12 @@ import { expect, test } from "@playwright/test";
 const GUI_URL = "http://localhost:3456";
 
 test.describe("GUI Hello World", () => {
-  test("page loads and displays header", async ({ page }) => {
+  test("page loads and control panel is visible", async ({ page }) => {
     await page.goto(GUI_URL);
 
-    const header = page.locator("h1");
-    await expect(header).toHaveText("XState Agent Loop");
+    // Check control panel elements instead of header
+    await expect(page.getByPlaceholder(/enter task/i)).toBeVisible();
+    await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
   });
 
   test("React loads without errors", async ({ page }) => {
