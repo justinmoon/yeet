@@ -68,7 +68,7 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
   // Status bar at top
   const status = new TextRenderable(renderer, {
     id: "status",
-    content: `Tokens: 0/${modelInfo?.contextWindow || "?"} (0%) • Press Enter to send`,
+    content: `${modelDisplay} | 0/${modelInfo?.contextWindow || "?"} (0%)`,
     fg: "#8B949E",
     height: 1,
   });
@@ -213,11 +213,11 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
       // Warn if approaching limit
       if (usage >= 80) {
         ui.setStatus(
-          `⚠️  Tokens: ${tokenDisplay}/${maxDisplay} (${usage}%) • Press Enter to send`,
+          `⚠️  ${modelInfo.name} | ${tokenDisplay}/${maxDisplay} (${usage}%)`,
         );
       } else {
         ui.setStatus(
-          `Tokens: ${tokenDisplay}/${maxDisplay} (${usage}%) • Press Enter to send`,
+          `${modelInfo.name} | ${tokenDisplay}/${maxDisplay} (${usage}%)`,
         );
       }
     },
