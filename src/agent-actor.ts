@@ -45,16 +45,19 @@ export async function* createAgentActor(
         // Check if it's a control flow tool
         if (event.name === "complete") {
           yield { type: "AGENT_DONE" };
+          return; // Stop consuming agent stream
         } else if (event.name === "clarify") {
           yield {
             type: "AGENT_CLARIFICATION",
             question: event.args?.question || "Need clarification",
           };
+          return; // Stop after clarification request
         } else if (event.name === "pause") {
           yield {
             type: "AGENT_PAUSED",
             reason: event.args?.reason || "Agent paused",
           };
+          return; // Stop after pause
         } else {
           // Regular tool call
           yield {

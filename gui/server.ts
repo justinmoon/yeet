@@ -35,7 +35,11 @@ const server = Bun.serve({
             const { agentMachine } = await import("../src/agent-machine.ts");
             const { createActor } = await import("xstate");
 
-            console.log(`[API] Starting execution for task: ${task.substring(0, 50)}...`);
+            console.log(
+              `[API] Starting execution for task: ${task.substring(0, 50)}...`,
+            );
+
+            send({ type: "started", task });
 
             // Create actor - agentMachine already has initial context
             const actor = createActor(agentMachine);
@@ -51,6 +55,20 @@ const server = Bun.serve({
                   maxSteps: state.context.maxSteps,
                 },
               });
+
+              // Send tool call info when in executingTool state
+              if (
+                state.matches("executingTool") &&
+                state.context.pendingToolCall
+              ) {
+                send({
+                  type: "tool",
+                  tool: state.context.pendingToolCall.name,
+                  args: JSON.stringify(
+                    state.context.pendingToolCall.args,
+                  ).substring(0, 100),
+                });
+              }
             });
 
             // Start the actor

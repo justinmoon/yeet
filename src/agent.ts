@@ -106,12 +106,14 @@ export async function* runAgent(
       messagesCount: messages.length,
     });
 
+    // Don't use maxSteps here - let XState control the loop externally
+    // We break after first tool call and let XState execute it
     const result = await streamText({
       model: provider(modelName),
       system: SYSTEM_PROMPT,
       messages,
       tools: toolSet,
-      maxSteps: config.maxSteps || 5,
+      maxSteps: 20, // High limit, but we break early on tool calls
       temperature: config.temperature || 0.3,
     });
 

@@ -149,7 +149,41 @@ export const agentMachine = setup({
           },
         ];
       },
+      // Add tool call and result to messages for next agent invocation
+      messages: ({ context, event }) => {
+        if (!context.pendingToolCall) {
+          return context.messages;
+        }
+
+        // Get tool result from event.output (from executeTool actor)
+        const toolResult = (event as any).output?.result?.result;
+        const toolError = (event as any).output?.result?.error;
+
+        // Add assistant message (if we have response text), then tool result as user message
+        // This tells the agent what happened with the tool
+        const newMessages: Message[] = [...context.messages];
+
+        if (context.currentResponse) {
+          newMessages.push({
+            role: "assistant" as const,
+            content: context.currentResponse,
+          });
+        }
+
+        // Add tool result as user message so agent sees what happened
+        const resultMessage = toolError
+          ? `Tool ${context.pendingToolCall.name} failed: ${toolError}`
+          : `Tool ${context.pendingToolCall.name} succeeded. Result: ${JSON.stringify(toolResult)}`;
+
+        newMessages.push({
+          role: "user" as const,
+          content: resultMessage,
+        });
+
+        return newMessages;
+      },
       pendingToolCall: undefined,
+      currentResponse: "", // Reset for next turn
     }),
 
     updateSnapshot: assign({
@@ -273,19 +307,35 @@ export const agentMachine = setup({
     capturingSnapshot: {
       invoke: {
         src: fromPromise(async ({ input }: { input: AgentContext }) => {
-          const { FilesystemSnapshot } = await import("./filesystem-snapshot");
-          const snapshot = new FilesystemSnapshot(input.workingDirectory);
-          const meta = await snapshot.capture(
-            `After ${input.pendingToolCall?.name}`,
-          );
-          return { snapshot: meta };
+          try {
+            const { FilesystemSnapshot } = await import(
+              "./filesystem-snapshot"
+            );
+            const snapshot = new FilesystemSnapshot(input.workingDirectory);
+            const meta = await snapshot.capture(
+              `After ${input.pendingToolCall?.name}`,
+            );
+            return { snapshot: meta };
+          } catch (error) {
+            // If snapshot fails (e.g., no git repo), return empty snapshot
+            return {
+              snapshot: {
+                treeHash: "",
+                timestamp: Date.now(),
+                description: `After ${input.pendingToolCall?.name} (no snapshot)`,
+              },
+            };
+          }
         }),
         input: ({ context }) => context,
         onDone: {
           target: "thinking",
           actions: "updateSnapshot",
         },
-        onError: "error",
+        onError: {
+          // If snapshot capture fails, continue anyway
+          target: "thinking",
+        },
       },
     },
 
