@@ -59,6 +59,17 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
             type: MarkerType.ArrowClosed,
             color: "#6b7280",
           },
+          labelStyle: {
+            fill: "#e0e0e0",
+            fontSize: 12,
+            fontWeight: 500,
+          },
+          labelBgStyle: {
+            fill: "#1e1e1e",
+            fillOpacity: 0.9,
+          },
+          labelBgPadding: [4, 4] as [number, number],
+          labelBgBorderRadius: 4,
         });
       }
     }
@@ -91,6 +102,17 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
                 type: MarkerType.ArrowClosed,
                 color: hasGuard ? "#9ca3af" : "#6b7280",
               },
+              labelStyle: {
+                fill: hasGuard ? "#9ca3af" : "#d4d4d8",
+                fontSize: 11,
+                fontStyle: hasGuard ? "italic" : "normal",
+              },
+              labelBgStyle: {
+                fill: "#1e1e1e",
+                fillOpacity: 0.95,
+              },
+              labelBgPadding: [3, 3] as [number, number],
+              labelBgBorderRadius: 3,
               style: hasGuard
                 ? { strokeDasharray: "5,5", opacity: 0.7 }
                 : undefined,
@@ -117,6 +139,17 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
               type: MarkerType.ArrowClosed,
               color: "#ef4444",
             },
+            labelStyle: {
+              fill: "#fca5a5",
+              fontSize: 12,
+              fontWeight: 600,
+            },
+            labelBgStyle: {
+              fill: "#7f1d1d",
+              fillOpacity: 0.95,
+            },
+            labelBgPadding: [4, 6] as [number, number],
+            labelBgBorderRadius: 4,
             style: { stroke: "#ef4444", strokeWidth: 2 },
           });
         }
