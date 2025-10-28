@@ -1,60 +1,114 @@
 /**
- * Simple Bun HTTP server for React Flow GUI
+ * API server for executing agent workflows
+ * Provides SSE endpoint for real-time state updates
  */
 
-import path from "node:path";
 import { file } from "bun";
 
-const PORT = 3456;
-const GUI_DIR = import.meta.dir;
+const PORT = 3457; // Different port from vite dev server
 
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
-    let filepath = url.pathname;
 
-    // Default to index.html
-    if (filepath === "/") {
-      filepath = "/index.html";
-    }
-
-    // Serve static files from gui directory
-    const fullPath = path.join(GUI_DIR, filepath);
-
-    try {
-      const fileContent = file(fullPath);
-      const exists = await fileContent.exists();
-
-      if (!exists) {
-        return new Response("Not Found", { status: 404 });
+    // SSE endpoint for executing workflows
+    if (url.pathname === "/api/execute") {
+      const task = url.searchParams.get("task");
+      if (!task) {
+        return new Response("Missing task parameter", { status: 400 });
       }
 
-      // Determine content type
-      const ext = path.extname(fullPath).toLowerCase();
-      const contentTypes: Record<string, string> = {
-        ".html": "text/html",
-        ".js": "application/javascript",
-        ".css": "text/css",
-        ".json": "application/json",
-        ".png": "image/png",
-        ".jpg": "image/jpeg",
-        ".svg": "image/svg+xml",
-      };
+      // Set up SSE headers
+      const stream = new ReadableStream({
+        async start(controller) {
+          const encoder = new TextEncoder();
 
-      const contentType = contentTypes[ext] || "application/octet-stream";
+          const send = (data: any) => {
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(data)}\n\n`),
+            );
+          };
 
-      return new Response(fileContent, {
-        headers: {
-          "Content-Type": contentType,
+          try {
+            // Import agent machine and run workflow
+            const { agentMachine } = await import("../src/agent-machine.ts");
+            const { createActor } = await import("xstate");
+
+            // Create actor
+            const actor = createActor(agentMachine, {
+              input: {
+                currentSnapshot: { treeHash: "", timestamp: Date.now() },
+                snapshotHistory: [],
+                messages: [{ role: "user", content: task }],
+                currentResponse: "",
+                toolHistory: [],
+                currentStep: 0,
+                maxSteps: 10,
+                workingDirectory: process.cwd(),
+              },
+            });
+
+            // Subscribe to state changes
+            actor.subscribe((state) => {
+              send({
+                type: "state",
+                state: state.value,
+                context: {
+                  step: state.context.currentStep,
+                  maxSteps: state.context.maxSteps,
+                },
+              });
+            });
+
+            // Start the actor
+            actor.start();
+
+            // Send initial user message
+            actor.send({ type: "USER_MESSAGE", content: task });
+
+            // Wait for completion or error
+            await new Promise<void>((resolve) => {
+              const checkDone = () => {
+                const snapshot = actor.getSnapshot();
+                if (
+                  snapshot.matches("idle") &&
+                  snapshot.context.currentStep > 0
+                ) {
+                  send({ type: "done" });
+                  resolve();
+                } else if (snapshot.matches("error")) {
+                  send({ type: "error", error: "Agent encountered an error" });
+                  resolve();
+                } else {
+                  setTimeout(checkDone, 100);
+                }
+              };
+              checkDone();
+            });
+
+            controller.close();
+          } catch (error: any) {
+            send({ type: "error", error: error.message || String(error) });
+            controller.close();
+          }
         },
       });
-    } catch (error) {
-      console.error(`Error serving ${fullPath}:`, error);
-      return new Response("Internal Server Error", { status: 500 });
+
+      return new Response(stream, {
+        headers: {
+          "Content-Type": "text/event-stream",
+          "Cache-Control": "no-cache",
+          Connection: "keep-alive",
+        },
+      });
     }
+
+    return new Response("Not found", { status: 404 });
   },
 });
 
-console.log(`🚀 GUI Server running at http://localhost:${PORT}`);
-console.log(`   Open in browser to view state machine visualization`);
+console.log(`🚀 API server running at http://localhost:${PORT}`);
+console.log(
+  `   SSE endpoint: http://localhost:${PORT}/api/execute?task=<task>`,
+);

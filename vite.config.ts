@@ -6,6 +6,12 @@ export default defineConfig({
   root: "gui",
   server: {
     port: 3456,
+    proxy: {
+      "/api": {
+        target: "http://localhost:3457",
+        changeOrigin: true,
+      },
+    },
   },
   build: {
     outDir: "../dist/gui",
