@@ -8,9 +8,16 @@ default:
 ci:
     nix run .#ci
 
-# Run GUI dev server (React Flow visualization)
+# Run GUI dev server (starts both API and Vite)
 gui:
-    bun vite
+    bash scripts/gui.sh
+
+# Stop GUI services
+stop-gui:
+    @echo "Stopping GUI services..."
+    @-lsof -ti:3457 | xargs kill -9 2>/dev/null || true
+    @-lsof -ti:3456 | xargs kill -9 2>/dev/null || true
+    @echo "✓ GUI services stopped"
 
 # Run yeet TUI
 tui:
