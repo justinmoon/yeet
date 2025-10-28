@@ -128,6 +128,49 @@ export const agentMachine = setup({
       ],
       currentResponse: "",
     }),
+
+    recordToolSuccess: assign({
+      toolHistory: ({ context, event }) => [
+        ...context.toolHistory,
+        {
+          call: context.pendingToolCall!,
+          result: (event as any).output.result,
+        },
+      ],
+      messages: ({ context, event }) => {
+        const output = (event as any).output;
+        const messages = [...context.messages];
+
+        // Add current response if any
+        if (context.currentResponse.trim()) {
+          messages.push({
+            role: "assistant" as const,
+            content: context.currentResponse,
+          });
+        }
+
+        // Add tool result
+        messages.push({
+          role: "user" as const,
+          content: `Tool ${context.pendingToolCall!.name} succeeded. Result: ${JSON.stringify(output.result.result)}`,
+        });
+
+        return messages;
+      },
+      currentSnapshot: ({ context, event }) =>
+        (event as any).output.snapshot || {
+          treeHash: "",
+          timestamp: 0,
+        },
+      snapshotHistory: ({ context, event }) => {
+        const snapshot = (event as any).output.snapshot;
+        return snapshot
+          ? [...context.snapshotHistory, snapshot]
+          : context.snapshotHistory;
+      },
+      pendingToolCall: undefined,
+      currentResponse: "",
+    }),
   },
 }).createMachine({
   id: "agent",
@@ -225,44 +268,7 @@ export const agentMachine = setup({
         }),
         onDone: {
           target: "thinking",
-          actions: assign(({ context, event }: any) => {
-            const output = event.output;
-            const messages = [...context.messages];
-
-            // Add current response if any
-            if (context.currentResponse.trim()) {
-              messages.push({
-                role: "assistant" as const,
-                content: context.currentResponse,
-              });
-            }
-
-            // Add tool result
-            messages.push({
-              role: "user" as const,
-              content: `Tool ${context.pendingToolCall.name} succeeded. Result: ${JSON.stringify(output.result.result)}`,
-            });
-
-            return {
-              toolHistory: [
-                ...context.toolHistory,
-                {
-                  call: context.pendingToolCall,
-                  result: output.result,
-                },
-              ],
-              messages,
-              currentSnapshot: output.snapshot || {
-                treeHash: "",
-                timestamp: 0,
-              },
-              snapshotHistory: output.snapshot
-                ? [...context.snapshotHistory, output.snapshot]
-                : context.snapshotHistory,
-              pendingToolCall: undefined,
-              currentResponse: "",
-            };
-          }),
+          actions: "recordToolSuccess",
         },
         onError: {
           target: "thinking",

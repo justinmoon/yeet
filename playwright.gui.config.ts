@@ -25,7 +25,7 @@ export default defineConfig({
     },
   ],
   timeout: 30000,
-  
+
   // Auto-start both servers
   webServer: [
     {

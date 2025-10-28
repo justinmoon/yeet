@@ -56,10 +56,10 @@ describe("XState Agent E2E", () => {
         const snapshot = actor.getSnapshot();
 
         // Check if agent called complete tool (implied done)
-        if (snapshot.matches("idle") && snapshot.context.currentStep > 0) {
+        if (snapshot.value === "idle" && snapshot.context.currentStep > 0) {
           clearTimeout(timeout);
           resolve();
-        } else if (snapshot.matches("error")) {
+        } else if (snapshot.value === "error") {
           clearTimeout(timeout);
           reject(new Error("Agent encountered an error"));
         } else {
@@ -108,10 +108,10 @@ describe("XState Agent E2E", () => {
       const checkDone = () => {
         const snapshot = actor.getSnapshot();
 
-        if (snapshot.matches("idle") && snapshot.context.currentStep > 0) {
+        if (snapshot.value === "idle" && snapshot.context.currentStep > 0) {
           clearTimeout(timeout);
           resolve();
-        } else if (snapshot.matches("error")) {
+        } else if (snapshot.value === "error") {
           clearTimeout(timeout);
           reject(new Error("Agent encountered an error"));
         } else {
