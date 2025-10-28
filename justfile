@@ -8,13 +8,25 @@ default:
 ci:
     nix run .#ci
 
-# Run yeet in development mode
-dev:
-    bun run src/index.ts
+# Run yeet TUI
+tui:
+    bun run src/tui.ts
+
+# Run yeet Web UI (adapter-based, for custom UI)
+web:
+    bun run src/web.ts
+
+# Run yeet Web UI (streams actual TUI to browser)
+web-pty:
+    bun run src/web-pty.ts
 
 # Run tests
 test:
     bun test
+
+# Run Playwright tests for web UI
+test-web:
+    bunx playwright test
 
 # Type check
 typecheck:

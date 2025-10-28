@@ -116,8 +116,8 @@ async function verifySignature(
         hash: "SHA-384",
       },
       publicKey,
-      parsedDoc.signature,
-      signatureBytes,
+      parsedDoc.signature as BufferSource,
+      signatureBytes as BufferSource,
     );
 
     return verified;
@@ -135,10 +135,12 @@ async function verifyCertificateChain(
 ): Promise<X509Certificate> {
   try {
     // Parse the leaf certificate
-    const leafCert = new X509Certificate(certificate);
+    const leafCert = new X509Certificate(certificate as BufferSource);
 
     // Parse CA bundle
-    const caCerts = cabundle.map((cert) => new X509Certificate(cert));
+    const caCerts = cabundle.map(
+      (cert) => new X509Certificate(cert as BufferSource),
+    );
 
     // Parse root certificate
     const rootCert = new X509Certificate(AWS_ROOT_CERT_PEM);

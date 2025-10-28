@@ -1,12 +1,12 @@
-import { describe, expect, test, beforeEach, afterEach } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import {
   createSession,
-  saveSession,
-  loadSession,
-  listSessions,
   deleteSession,
+  listSessions,
+  loadSession,
+  saveSession,
   updateSessionName,
 } from "../src/sessions";
 
@@ -17,7 +17,7 @@ const originalHomedir = require("node:os").homedir;
 beforeEach(() => {
   require("node:os").homedir = () => process.cwd();
   process.env.HOME = process.cwd();
-  
+
   // Clean up test directory
   if (existsSync(join(process.cwd(), ".config"))) {
     rmSync(join(process.cwd(), ".config"), { recursive: true });
@@ -91,9 +91,7 @@ describe("Session Management", () => {
     // Add small delay to ensure different IDs
     const session2 = createSession("claude-sonnet-4-5", "opencode");
 
-    session1.conversationHistory = [
-      { role: "user", content: "Test 1" },
-    ];
+    session1.conversationHistory = [{ role: "user", content: "Test 1" }];
     session2.conversationHistory = [
       { role: "user", content: "Test 2" },
       { role: "assistant", content: "Response 2" },
@@ -106,9 +104,9 @@ describe("Session Management", () => {
     expect(sessions.length).toBeGreaterThanOrEqual(2);
 
     // Find our sessions
-    const foundSession1 = sessions.find(s => s.id === session1.id);
-    const foundSession2 = sessions.find(s => s.id === session2.id);
-    
+    const foundSession1 = sessions.find((s) => s.id === session1.id);
+    const foundSession2 = sessions.find((s) => s.id === session2.id);
+
     expect(foundSession1).toBeDefined();
     expect(foundSession2).toBeDefined();
   });
