@@ -35,9 +35,10 @@ const MAPLE_API_URL =
 // Current PCR0 values (update these when Maple updates their enclave)
 // Get latest from: curl https://enclave.trymaple.ai/attestation/{nonce} | jq
 const PCR0_VALUES = [
-  // Current production PCR0 (as of 2025-10-27)
-  "79e7bd1e7df09fdb5b7098956a2268c278cc88be323c11975e2a2d080d65f30f8e0efe690edd450493c833b46f40ae1a",
+  // Current production PCR0 (as of 2025-10-28)
+  "cec198f5e2b22822ba443eb67c9200498d1c4c54c0bd10915382eb5e149ad8b2639291d703062acc3594dcf9b9a2762c",
   // Previous PCR0 values (kept for rollback support)
+  "79e7bd1e7df09fdb5b7098956a2268c278cc88be323c11975e2a2d080d65f30f8e0efe690edd450493c833b46f40ae1a",
   "ed9109c16f30a470cf0ea2251816789b4ffa510c990118323ce94a2364b9bf05bdb8777959cbac86f5cabc4852e0da71",
   "4f2bcdf16c38842e1a45defd944d24ea58bb5bcb76491843223022acfe9eb6f1ff79b2cb9a6b2a9219daf9c7bf40fa37",
   "b8ee4b511ef2c9c6ab3e5c0840c5df2218fbb4d9df88254ece7af9462677e55aa5a03838f3ae432d86ca1cb6f992eee7",
@@ -257,7 +258,7 @@ if (skipTests) {
   });
 
   describe("Vercel AI SDK Integration", () => {
-    test.skip(
+    test(
       "should work with Vercel AI SDK streamText (streaming)",
       async () => {
         if (!mapleFetch) {
@@ -297,7 +298,7 @@ if (skipTests) {
       { timeout: 30000 },
     );
 
-    test.skip(
+    test(
       "should handle tool calls through Vercel AI SDK",
       async () => {
         if (!mapleFetch) {
@@ -311,7 +312,7 @@ if (skipTests) {
         });
 
         const result = await streamText({
-          model: provider("mistral-small-3-1-24b"), // Smallest/cheapest model
+          model: provider("qwen3-coder-30b-a3b"), // Cheap model with working tool calling
           messages: [
             { role: "user", content: "What is 2+2? Use the calculator tool." },
           ],
@@ -329,7 +330,6 @@ if (skipTests) {
                 required: ["expression"],
               },
               execute: async ({ expression }: { expression: string }) => {
-                console.log(`   🔧 Tool called: calculator("${expression}")`);
                 // Simple eval for testing (don't use in production!)
                 return { result: eval(expression) };
               },
@@ -338,23 +338,16 @@ if (skipTests) {
           maxSteps: 3,
         });
 
-        let fullText = "";
         let toolCallCount = 0;
 
         for await (const chunk of result.fullStream) {
-          if (chunk.type === "text-delta") {
-            fullText += chunk.text;
-          }
           if (chunk.type === "tool-call") {
             toolCallCount++;
-            console.log(`   Tool call: ${chunk.toolName}`);
           }
         }
 
         expect(toolCallCount).toBeGreaterThan(0);
-
-        console.log(`✅ Tool calls: ${toolCallCount} tool(s) called`);
-        console.log(`   Final response: "${fullText}"`);
+        console.log(`   ✅ Tool calls: ${toolCallCount}`);
       },
       { timeout: 30000 },
     );

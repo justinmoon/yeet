@@ -34,8 +34,8 @@ describe("tool.search", () => {
 
   test("search with context lines", async () => {
     const result = await search.execute({
-      pattern: "createUI",
-      path: "src/ui.ts",
+      pattern: "UIAdapter",
+      path: "src/ui/interface.ts",
       context_lines: 2,
     });
 

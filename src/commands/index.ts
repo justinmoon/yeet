@@ -1,7 +1,7 @@
 import type { Config } from "../config";
 import { saveConfig } from "../config";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
-import type { UI } from "../ui";
+import type { UIAdapter } from "../ui/interface";
 
 export interface ParsedCommand {
   isCommand: boolean;
@@ -29,7 +29,7 @@ export function parseCommand(input: string): ParsedCommand {
 export async function executeCommand(
   command: string,
   args: string[],
-  ui: UI,
+  ui: UIAdapter,
   config: Config,
 ): Promise<void> {
   switch (command) {
@@ -57,7 +57,7 @@ export async function executeCommand(
   }
 }
 
-async function handleHelpCommand(ui: UI): Promise<void> {
+async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("Available commands:\n");
   ui.appendOutput("  /models [model-id]  - List or switch models\n");
   ui.appendOutput("  /sessions           - List saved sessions\n");
@@ -65,9 +65,16 @@ async function handleHelpCommand(ui: UI): Promise<void> {
   ui.appendOutput("  /save <name>        - Name current session\n");
   ui.appendOutput("  /clear              - Clear current session\n");
   ui.appendOutput("  /help               - Show this help\n");
+  ui.appendOutput("\nMaple AI models with tool calling support:\n");
+  ui.appendOutput("  ✓ deepseek-r1-0528, deepseek-v31-terminus\n");
+  ui.appendOutput("  ✓ qwen3-coder-480b, qwen3-coder-30b-a3b, qwen2-5-72b\n");
+  ui.appendOutput("  ✓ gpt-oss-120b\n");
+  ui.appendOutput(
+    "  ✗ mistral-small-3-1-24b, llama-3.3-70b (no tool calling)\n",
+  );
 }
 
-async function handleSessionsCommand(ui: UI): Promise<void> {
+async function handleSessionsCommand(ui: UIAdapter): Promise<void> {
   const { listSessions } = require("../sessions");
   const sessions = listSessions();
 
@@ -94,7 +101,7 @@ async function handleSessionsCommand(ui: UI): Promise<void> {
   ui.appendOutput("Usage: /load <id> to resume a session\n");
 }
 
-async function handleLoadCommand(args: string[], ui: UI): Promise<void> {
+async function handleLoadCommand(args: string[], ui: UIAdapter): Promise<void> {
   if (args.length === 0) {
     ui.appendOutput("❌ Usage: /load <session-id>\n");
     return;
@@ -138,7 +145,7 @@ async function handleLoadCommand(args: string[], ui: UI): Promise<void> {
   ui.currentTokens = session.currentTokens;
 
   // Display conversation history
-  ui.contentBuffer = "";
+  ui.clearOutput();
   ui.appendOutput(`✓ Loaded session ${session.id}\n`);
   if (session.name) {
     ui.appendOutput(`  Name: ${session.name}\n`);
@@ -171,7 +178,7 @@ async function handleLoadCommand(args: string[], ui: UI): Promise<void> {
   ui.updateTokenCount();
 }
 
-async function handleSaveCommand(args: string[], ui: UI): Promise<void> {
+async function handleSaveCommand(args: string[], ui: UIAdapter): Promise<void> {
   if (args.length === 0) {
     ui.appendOutput("❌ Usage: /save <name>\n");
     return;
@@ -192,11 +199,11 @@ async function handleSaveCommand(args: string[], ui: UI): Promise<void> {
   }
 }
 
-async function handleClearCommand(ui: UI): Promise<void> {
+async function handleClearCommand(ui: UIAdapter): Promise<void> {
   ui.conversationHistory = [];
   ui.currentTokens = 0;
   ui.currentSessionId = null;
-  ui.contentBuffer = "";
+  ui.clearOutput();
   ui.appendOutput("✓ Session cleared. Starting fresh.\n\n");
   ui.updateTokenCount();
 }
@@ -213,7 +220,7 @@ function getTimeAgo(date: Date): string {
 
 async function handleModelsCommand(
   args: string[],
-  ui: UI,
+  ui: UIAdapter,
   config: Config,
 ): Promise<void> {
   // Direct switch: /models <model-id>
@@ -292,7 +299,7 @@ async function handleModelsCommand(
 export async function handleMapleSetup(
   apiKey: string,
   modelId: string,
-  ui: UI,
+  ui: UIAdapter,
   config: Config,
 ): Promise<void> {
   const modelInfo = getModelInfo(modelId);

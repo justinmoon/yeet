@@ -20,9 +20,12 @@ bunx biome format .
 log "3. Running linter..."
 bunx biome check .
 
-log "4. Running tests..."
+log "4. Running unit tests..."
 # Run unit tests + Maple crypto tests, skip model-behavior-dependent E2E tests
-bun test test/tools test/maple-e2e.test.ts
+bun test test/tools test/sessions.test.ts test/tokens.test.ts
+
+log "5. Running Playwright tests..."
+bunx playwright test
 
 echo ""
 log "✅ All CI checks passed!"

@@ -22,7 +22,9 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",
+    "@playwright/test": "1.54.1",
     "@types/bun": "latest",
+    "playwright": "1.54.1",
     "typescript": "^5.8.2"
   }
 }

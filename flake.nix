@@ -17,7 +17,16 @@
             bun
             typescript
             just
+            biome
+            
+            # Testing - Playwright browsers
+            playwright-driver.browsers
           ];
+          
+          # Tell Playwright to use Nix-provided browsers
+          PLAYWRIGHT_BROWSERS_PATH = "${pkgs.playwright-driver.browsers}";
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD = "1";
+          PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
         };
         
         apps.ci = {
@@ -25,7 +34,13 @@
           program = "${pkgs.writeShellScript "ci" ''
             export PATH="${pkgs.lib.makeBinPath [
               pkgs.bun
+              pkgs.biome
             ]}:$PATH"
+            
+            # Tell Playwright to use Nix-provided browsers
+            export PLAYWRIGHT_BROWSERS_PATH="${pkgs.playwright-driver.browsers}"
+            export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+            export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
             
             exec ${./scripts/ci.sh}
           ''}";
