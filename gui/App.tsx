@@ -43,21 +43,26 @@ export function App() {
           setActiveState(data.state);
           setLogs((prev) => [...prev, `→ ${data.state}`]);
 
-          // Highlight active node - use style instead of className to avoid layout shifts
+          // Highlight active node with inline animation styles
           setNodes((nodes) =>
-            nodes.map((node) => ({
-              ...node,
-              data: {
-                ...node.data,
-                isActive: node.id === data.state,
-              },
-              style:
-                node.id === data.state
+            nodes.map((node) => {
+              const isActive = node.id === data.state;
+              return {
+                ...node,
+                data: {
+                  ...node.data,
+                  isActive,
+                },
+                style: isActive
                   ? {
-                      ...node.style,
+                      borderWidth: "3px",
+                      borderColor: "#3b82f6",
+                      boxShadow: "0 0 20px rgba(59, 130, 246, 0.8)",
+                      animation: "pulse 1.5s ease-in-out infinite",
                     }
-                  : node.style,
-            })),
+                  : {},
+              };
+            }),
           );
         } else if (data.type === "tool") {
           setLogs((prev) => [...prev, `🔧 ${data.tool}: ${data.args}`]);
