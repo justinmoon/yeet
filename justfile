@@ -28,9 +28,9 @@ test:
 test-web:
     bunx playwright test
 
-# Run GUI Playwright tests
+# Run GUI Playwright tests (auto-starts Vite server)
 test-gui:
-    bunx playwright test test/gui-hello.playwright.test.ts
+    bunx playwright test --config=playwright.gui.config.ts
 
 # Type check
 typecheck:
