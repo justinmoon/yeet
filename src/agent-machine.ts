@@ -186,7 +186,7 @@ export const agentMachine = setup({
     toolHistory: [],
     currentStep: 0,
     maxSteps: 10,
-    workingDirectory: process.cwd(),
+    workingDirectory: typeof process !== "undefined" ? process.cwd() : "/",
   },
   states: {
     idle: {
