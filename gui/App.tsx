@@ -164,14 +164,14 @@ export function App() {
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
-            nodesDraggable={false}
+            nodesDraggable={true}
             nodesConnectable={false}
             elementsSelectable={true}
             fitView
             fitViewOptions={{
               padding: 0.2,
-              minZoom: 0.5,
-              maxZoom: 1.5,
+              minZoom: 0.4,
+              maxZoom: 1.2,
             }}
           >
             <Background color="#3e3e42" gap={16} />

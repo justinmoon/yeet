@@ -40,7 +40,6 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
         isActive: false,
       },
       className: stateKey, // For styling
-      draggable: false, // Prevent layout shifts
     });
 
     // Extract transitions
@@ -102,10 +101,11 @@ function getLayoutedElements(
   // Better layout settings
   dagreGraph.setGraph({
     rankdir: direction,
-    nodesep: 80, // Horizontal spacing between nodes
-    ranksep: 150, // Vertical spacing between ranks
-    marginx: 50,
-    marginy: 50,
+    nodesep: 100, // Horizontal spacing between nodes
+    ranksep: 120, // Vertical spacing between ranks
+    marginx: 40,
+    marginy: 40,
+    align: "DL", // Align nodes
   });
 
   const nodeWidth = 220;

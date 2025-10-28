@@ -219,7 +219,7 @@ export const agentMachine = setup({
     currentResponse: "",
     toolHistory: [],
     currentStep: 0,
-    maxSteps: 10,
+    maxSteps: 50, // Increased from 10 - complex tasks need more steps
     workingDirectory: typeof process !== "undefined" ? process.cwd() : "/",
   },
   states: {
