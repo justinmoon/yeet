@@ -189,7 +189,7 @@
 
   <script type="module">
     const { useState, useCallback, useEffect } = React;
-    const { ReactFlow, Controls, Background, useNodesState, useEdgesState } = ReactFlowRenderer;
+    const { ReactFlow, Controls, Background, useNodesState, useEdgesState } = window.ReactFlow;
 
     // Parse state machine definition and create nodes/edges
     function createNodesAndEdges() {
