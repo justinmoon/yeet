@@ -1,0 +1,1 @@
+- Don't write markdown files unless asked to
