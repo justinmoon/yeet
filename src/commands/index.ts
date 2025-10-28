@@ -36,6 +36,18 @@ export async function executeCommand(
     case "models":
       await handleModelsCommand(args, ui, config);
       break;
+    case "sessions":
+      await handleSessionsCommand(ui);
+      break;
+    case "load":
+      await handleLoadCommand(args, ui);
+      break;
+    case "save":
+      await handleSaveCommand(args, ui);
+      break;
+    case "clear":
+      await handleClearCommand(ui);
+      break;
     case "help":
       await handleHelpCommand(ui);
       break;
@@ -48,7 +60,155 @@ export async function executeCommand(
 async function handleHelpCommand(ui: UI): Promise<void> {
   ui.appendOutput("Available commands:\n");
   ui.appendOutput("  /models [model-id]  - List or switch models\n");
+  ui.appendOutput("  /sessions           - List saved sessions\n");
+  ui.appendOutput("  /load <id>          - Load a session by ID\n");
+  ui.appendOutput("  /save <name>        - Name current session\n");
+  ui.appendOutput("  /clear              - Clear current session\n");
   ui.appendOutput("  /help               - Show this help\n");
+}
+
+async function handleSessionsCommand(ui: UI): Promise<void> {
+  const { listSessions } = require("../sessions");
+  const sessions = listSessions();
+
+  if (sessions.length === 0) {
+    ui.appendOutput("No saved sessions found.\n");
+    return;
+  }
+
+  ui.appendOutput(`Found ${sessions.length} session(s):\n\n`);
+
+  for (const session of sessions.slice(0, 20)) {
+    const updated = new Date(session.updated);
+    const timeAgo = getTimeAgo(updated);
+    const name = session.name ? ` "${session.name}"` : "";
+    ui.appendOutput(
+      `  ${session.id}${name}\n    ${session.model} • ${session.totalMessages} messages • ${timeAgo}\n\n`,
+    );
+  }
+
+  if (sessions.length > 20) {
+    ui.appendOutput(`  ... and ${sessions.length - 20} more\n\n`);
+  }
+
+  ui.appendOutput("Usage: /load <id> to resume a session\n");
+}
+
+async function handleLoadCommand(args: string[], ui: UI): Promise<void> {
+  if (args.length === 0) {
+    ui.appendOutput("❌ Usage: /load <session-id>\n");
+    return;
+  }
+
+  const { loadSession, listSessions } = require("../sessions");
+  const searchId = args[0];
+
+  // Try exact match first
+  let session = loadSession(searchId);
+
+  // If not found, try partial match
+  if (!session) {
+    const sessions = listSessions();
+    const matches = sessions.filter((s: any) => s.id.startsWith(searchId));
+
+    if (matches.length === 0) {
+      ui.appendOutput(`❌ Session not found: ${searchId}\n`);
+      return;
+    }
+
+    if (matches.length > 1) {
+      ui.appendOutput(`❌ Multiple sessions match "${searchId}":\n`);
+      for (const match of matches) {
+        ui.appendOutput(`  ${match.id}\n`);
+      }
+      return;
+    }
+
+    session = loadSession(matches[0].id);
+  }
+
+  if (!session) {
+    ui.appendOutput(`❌ Failed to load session: ${searchId}\n`);
+    return;
+  }
+
+  // Load session into UI
+  ui.currentSessionId = session.id;
+  ui.conversationHistory = session.conversationHistory;
+  ui.currentTokens = session.currentTokens;
+
+  // Display conversation history
+  ui.contentBuffer = "";
+  ui.appendOutput(`✓ Loaded session ${session.id}\n`);
+  if (session.name) {
+    ui.appendOutput(`  Name: ${session.name}\n`);
+  }
+  ui.appendOutput(`  ${session.model} • ${session.totalMessages} messages\n\n`);
+
+  // Replay conversation
+  for (const message of session.conversationHistory) {
+    if (message.role === "user") {
+      const hasImages =
+        Array.isArray(message.content) &&
+        message.content.some((p: any) => p.type === "image");
+      if (hasImages) {
+        const imageCount = (message.content as any[]).filter(
+          (p) => p.type === "image",
+        ).length;
+        const text = (message.content as any[])
+          .filter((p) => p.type === "text")
+          .map((p) => p.text)
+          .join("");
+        ui.appendOutput(`You: ${text} [${imageCount} image(s)]\n\n`);
+      } else {
+        ui.appendOutput(`You: ${message.content}\n\n`);
+      }
+    } else {
+      ui.appendOutput(`Assistant: ${message.content}\n\n`);
+    }
+  }
+
+  ui.updateTokenCount();
+}
+
+async function handleSaveCommand(args: string[], ui: UI): Promise<void> {
+  if (args.length === 0) {
+    ui.appendOutput("❌ Usage: /save <name>\n");
+    return;
+  }
+
+  if (!ui.currentSessionId) {
+    ui.appendOutput("❌ No active session to name\n");
+    return;
+  }
+
+  const name = args.join(" ");
+  const { updateSessionName } = require("../sessions");
+
+  if (updateSessionName(ui.currentSessionId, name)) {
+    ui.appendOutput(`✓ Session named: ${name}\n`);
+  } else {
+    ui.appendOutput(`❌ Failed to save session name\n`);
+  }
+}
+
+async function handleClearCommand(ui: UI): Promise<void> {
+  ui.conversationHistory = [];
+  ui.currentTokens = 0;
+  ui.currentSessionId = null;
+  ui.contentBuffer = "";
+  ui.appendOutput("✓ Session cleared. Starting fresh.\n\n");
+  ui.updateTokenCount();
+}
+
+function getTimeAgo(date: Date): string {
+  const seconds = Math.floor((Date.now() - date.getTime()) / 1000);
+
+  if (seconds < 60) return `${seconds}s ago`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+  if (seconds < 2592000) return `${Math.floor(seconds / 86400)}d ago`;
+  return `${Math.floor(seconds / 2592000)}mo ago`;
 }
 
 async function handleModelsCommand(

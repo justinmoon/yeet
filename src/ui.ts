@@ -35,11 +35,13 @@ export interface UI {
   }>;
   imageAttachments: ImageAttachment[];
   currentTokens: number;
+  currentSessionId: string | null;
   appendOutput: (text: string) => void;
   setStatus: (text: string) => void;
   clearInput: () => void;
   clearAttachments: () => void;
   updateTokenCount: () => void;
+  saveCurrentSession: () => void;
   pendingMapleSetup?: {
     modelId: string;
   };
@@ -151,6 +153,7 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
     conversationHistory: [],
     imageAttachments: [],
     currentTokens: 0,
+    currentSessionId: null,
     appendOutput: (text: string) => {
       ui.contentBuffer += text;
       output.content = ui.contentBuffer;
@@ -214,6 +217,38 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
           `${modelInfo.name} | ${tokenDisplay}/${maxDisplay} (${usage}%)`,
         );
       }
+    },
+    saveCurrentSession: () => {
+      const modelId =
+        config.activeProvider === "maple"
+          ? config.maple!.model
+          : config.opencode.model;
+
+      // Import sessions module dynamically to avoid circular deps
+      const { createSession, saveSession, loadSession } = require("./sessions");
+
+      // Create session if it doesn't exist
+      if (!ui.currentSessionId) {
+        const session = createSession(modelId, config.activeProvider);
+        ui.currentSessionId = session.id;
+        logger.info("Created new session", { id: session.id });
+      }
+
+      // Load or create session object
+      let session = loadSession(ui.currentSessionId);
+      if (!session) {
+        session = createSession(modelId, config.activeProvider);
+        session.id = ui.currentSessionId;
+      }
+
+      // Update session data
+      session.conversationHistory = ui.conversationHistory;
+      session.currentTokens = ui.currentTokens;
+      session.model = modelId;
+      session.provider = config.activeProvider;
+
+      // Save to disk
+      saveSession(session);
     },
   };
 
@@ -458,10 +493,14 @@ async function handleMessage(message: string, ui: UI, config: Config) {
     // Update token count display
     ui.updateTokenCount();
 
+    // Auto-save session after each message
+    ui.saveCurrentSession();
+
     logger.info("Message handled successfully", {
       textChunks,
       historyLength: ui.conversationHistory.length,
       tokens: ui.currentTokens,
+      sessionId: ui.currentSessionId,
     });
   } catch (error: any) {
     logger.error("Error handling message", {
