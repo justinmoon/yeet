@@ -42,33 +42,21 @@ export async function* createAgentActor(
         break;
 
       case "tool":
-        // Check if it's a control flow tool
+        // Check if it's the complete tool - signals workflow done
         if (event.name === "complete") {
           yield { type: "AGENT_DONE" };
           return; // Stop consuming agent stream
-        } else if (event.name === "clarify") {
-          yield {
-            type: "AGENT_CLARIFICATION",
-            question: event.args?.question || "Need clarification",
-          };
-          return; // Stop after clarification request
-        } else if (event.name === "pause") {
-          yield {
-            type: "AGENT_PAUSED",
-            reason: event.args?.reason || "Agent paused",
-          };
-          return; // Stop after pause
-        } else {
-          // Regular tool call
-          yield {
-            type: "TOOL_CALL",
-            toolCall: {
-              id: `tool-${Date.now()}-${Math.random()}`,
-              name: event.name!,
-              args: event.args || {},
-            },
-          };
         }
+
+        // Regular tool call
+        yield {
+          type: "TOOL_CALL",
+          toolCall: {
+            id: `tool-${Date.now()}-${Math.random()}`,
+            name: event.name!,
+            args: event.args || {},
+          },
+        };
         break;
 
       case "tool-result":
@@ -77,8 +65,7 @@ export async function* createAgentActor(
         break;
 
       case "done":
-        // If agent finishes without calling complete/clarify/pause,
-        // treat it as implicit completion
+        // If agent finishes without calling complete, treat as implicit completion
         yield { type: "AGENT_DONE" };
         break;
 

@@ -252,38 +252,101 @@ export const agentMachine = setup({
           target: "idle",
           actions: "finalizeResponse",
         },
-        AGENT_PAUSED: {
-          target: "paused",
-          actions: "finalizeResponse",
-        },
-        AGENT_CLARIFICATION: {
-          target: "awaitingClarification",
-          actions: "finalizeResponse",
-        },
         ERROR: "error",
       },
     },
 
     executingTool: {
       invoke: {
-        src: "executeTool",
+        src: fromPromise(
+          async ({
+            input,
+          }: {
+            input: {
+              toolCall: ToolCall;
+              workingDir: string;
+              context: AgentContext;
+            };
+          }) => {
+            const { executeTool } = await import("./tool-executor");
+
+            // Execute the tool
+            const result = await executeTool(input.toolCall, input.workingDir);
+
+            // If tool modifies files, capture snapshot internally
+            const toolName = input.toolCall.name;
+            let snapshot: SnapshotMetadata | undefined;
+
+            if (toolName === "write" || toolName === "edit") {
+              try {
+                const { FilesystemSnapshot } = await import(
+                  "./filesystem-snapshot"
+                );
+                const fs = new FilesystemSnapshot(input.workingDir);
+                snapshot = await fs.capture(`After ${toolName}`);
+              } catch (error) {
+                // If snapshot fails, continue without it
+                console.warn("Snapshot capture failed:", error);
+                snapshot = {
+                  treeHash: "",
+                  timestamp: Date.now(),
+                  description: `After ${toolName} (no snapshot)`,
+                };
+              }
+            }
+
+            return { result, snapshot };
+          },
+        ),
         input: ({ context }) => ({
           toolCall: context.pendingToolCall!,
           workingDir: context.workingDirectory,
+          context,
         }),
-        onDone: [
-          {
-            // If tool modifies files, capture snapshot
-            guard: "isFileModifyingTool",
-            target: "capturingSnapshot",
-            actions: "recordToolResult",
-          },
-          {
-            // Otherwise go back to thinking
-            target: "thinking",
-            actions: "recordToolResult",
-          },
-        ],
+        onDone: {
+          target: "thinking",
+          actions: assign({
+            toolHistory: ({ context, event }) => [
+              ...context.toolHistory,
+              {
+                call: context.pendingToolCall!,
+                result: (event as any).output.result,
+              },
+            ],
+            messages: ({ context, event }) => {
+              const result = (event as any).output.result;
+              const messages = [...context.messages];
+
+              // Add current response if any
+              if (context.currentResponse.trim()) {
+                messages.push({
+                  role: "assistant" as const,
+                  content: context.currentResponse,
+                });
+              }
+
+              // Add tool result
+              messages.push({
+                role: "user" as const,
+                content: `Tool ${context.pendingToolCall!.name} succeeded. Result: ${JSON.stringify(result.result)}`,
+              });
+
+              return messages;
+            },
+            currentSnapshot: ({ event }) => {
+              const snapshot = (event as any).output.snapshot;
+              return snapshot || { treeHash: "", timestamp: 0 };
+            },
+            snapshotHistory: ({ context, event }) => {
+              const snapshot = (event as any).output.snapshot;
+              return snapshot
+                ? [...context.snapshotHistory, snapshot]
+                : context.snapshotHistory;
+            },
+            pendingToolCall: undefined,
+            currentResponse: "",
+          }),
+        },
         onError: {
           target: "thinking",
           actions: assign({
@@ -300,60 +363,6 @@ export const agentMachine = setup({
             ],
             pendingToolCall: undefined,
           }),
-        },
-      },
-    },
-
-    capturingSnapshot: {
-      invoke: {
-        src: fromPromise(async ({ input }: { input: AgentContext }) => {
-          try {
-            const { FilesystemSnapshot } = await import(
-              "./filesystem-snapshot"
-            );
-            const snapshot = new FilesystemSnapshot(input.workingDirectory);
-            const meta = await snapshot.capture(
-              `After ${input.pendingToolCall?.name}`,
-            );
-            return { snapshot: meta };
-          } catch (error) {
-            // If snapshot fails (e.g., no git repo), return empty snapshot
-            return {
-              snapshot: {
-                treeHash: "",
-                timestamp: Date.now(),
-                description: `After ${input.pendingToolCall?.name} (no snapshot)`,
-              },
-            };
-          }
-        }),
-        input: ({ context }) => context,
-        onDone: {
-          target: "thinking",
-          actions: "updateSnapshot",
-        },
-        onError: {
-          // If snapshot capture fails, continue anyway
-          target: "thinking",
-        },
-      },
-    },
-
-    paused: {
-      on: {
-        CONTINUE: "thinking",
-        USER_MESSAGE: {
-          target: "thinking",
-          actions: ["addUserMessage", "incrementStep"],
-        },
-      },
-    },
-
-    awaitingClarification: {
-      on: {
-        USER_MESSAGE: {
-          target: "thinking",
-          actions: ["addUserMessage", "incrementStep"],
         },
       },
     },
