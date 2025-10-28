@@ -277,11 +277,11 @@ export const agentMachine = setup({
               context,
             }),
             onDone: {
-              target: ".thinking",
+              target: "thinking",
               actions: "recordToolSuccess",
             },
             onError: {
-              target: ".thinking",
+              target: "thinking",
               actions: assign({
                 toolHistory: ({ context, event }) => [
                   ...context.toolHistory,

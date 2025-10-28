@@ -51,12 +51,21 @@ const server = Bun.serve({
             const subscription = actor.subscribe((state) => {
               if (completed) return;
 
-              console.log(`[API] State transition: ${String(state.value)}`);
+              // Handle nested states - extract the deepest state name
+              const stateValue = state.value;
+              const currentState =
+                typeof stateValue === "object"
+                  ? Object.keys(stateValue)[0] +
+                    "." +
+                    (stateValue as any)[Object.keys(stateValue)[0]]
+                  : String(stateValue);
+
+              console.log(`[API] State transition: ${currentState}`);
 
               try {
                 send({
                   type: "state",
-                  state: String(state.value),
+                  state: currentState,
                   context: {
                     step: state.context.currentStep,
                     maxSteps: state.context.maxSteps,
@@ -65,7 +74,7 @@ const server = Bun.serve({
 
                 // Send tool call info when in executingTool state
                 if (
-                  state.matches("executingTool") &&
+                  state.matches({ running: "executingTool" }) &&
                   state.context.pendingToolCall
                 ) {
                   send({
