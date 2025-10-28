@@ -92,31 +92,25 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
   });
   container.add(scrollBox);
 
-  // Wrap text in a box (like the examples do)
-  const outputBox = new BoxRenderable(renderer, {
-    id: "output-wrapper",
-    width: "auto",
-  });
-
+  // Output text (no wrapper box)
   const output = new TextRenderable(renderer, {
     id: "output",
     content: "",
     fg: "#C9D1D9",
   });
-  outputBox.add(output);
-  scrollBox.add(outputBox);
+  scrollBox.add(output);
 
-  // Input area (fixed height at bottom) - with high z-index to prevent overlap
+  // Input area (auto-height at bottom)
   const inputBox = new BoxRenderable(renderer, {
     id: "input-box",
     borderStyle: "single",
     borderColor: "#58A6FF",
     title: "Your Message",
     titleAlignment: "left",
-    height: 6, // Increased to fit attachment indicator
+    height: "auto", // Auto-expand based on content
     border: true,
-    zIndex: 100, // High z-index to render on top
-    backgroundColor: "#0D1117", // Solid background to block content below
+    zIndex: 100,
+    backgroundColor: "#0D1117",
   });
   container.add(inputBox);
 
@@ -129,6 +123,7 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
     wrapMode: "word",
     showCursor: true,
     cursorColor: "#58A6FF",
+    height: 1, // Start with 1 line
   });
   inputBox.add(input);
   input.focus();
