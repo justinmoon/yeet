@@ -106,14 +106,19 @@ export async function* runAgent(
       messagesCount: messages.length,
     });
 
-    // Don't use maxSteps here - let XState control the loop externally
-    // We break after first tool call and let XState execute it
+    // CRITICAL: maxSteps: 1
+    // XState owns the tool execution loop. The SDK executes ONE step:
+    // - LLM generates text and/or makes ONE tool call
+    // - We yield the tool call event
+    // - XState executes the tool in a separate state
+    // - XState re-invokes this agent with updated messages including tool result
+    // This gives us tool execution as XState states for visibility and control
     const result = await streamText({
       model: provider(modelName),
       system: SYSTEM_PROMPT,
       messages,
       tools: toolSet,
-      maxSteps: 20, // High limit, but we break early on tool calls
+      maxSteps: 1, // ⚠️ Only ONE step - XState controls the loop
       temperature: config.temperature || 0.3,
     });
 
