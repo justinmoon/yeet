@@ -46,7 +46,8 @@ export interface UI {
 }
 
 export function createUI(renderer: CliRenderer, config: Config): UI {
-  renderer.setBackgroundColor("#0D1117");
+  // Use terminal's default colors instead of hardcoded hex values
+  // renderer.setBackgroundColor() - not called, uses terminal default
 
   // Main container
   const container = new BoxRenderable(renderer, {
@@ -69,7 +70,7 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
   const status = new TextRenderable(renderer, {
     id: "status",
     content: `${modelDisplay} | 0/${modelInfo?.contextWindow || "?"} (0%)`,
-    fg: "#8B949E",
+    fg: "gray", // Use terminal's gray color
     height: 1,
   });
   container.add(status);
@@ -78,7 +79,7 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
   const scrollBox = new ScrollBoxRenderable(renderer, {
     id: "output-scroll",
     borderStyle: "single",
-    borderColor: "#30363D",
+    borderColor: "gray", // Use terminal's gray
     flexGrow: 1,
     flexShrink: 1,
     border: true,
@@ -94,7 +95,7 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
   const output = new TextRenderable(renderer, {
     id: "output",
     content: "",
-    fg: "#C9D1D9",
+    // fg not specified - use terminal default text color
   });
   scrollBox.add(output);
 
@@ -102,23 +103,23 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
   const inputBox = new BoxRenderable(renderer, {
     id: "input-box",
     borderStyle: "single",
-    borderColor: "#58A6FF",
+    borderColor: "blue", // Use terminal's blue
     height: 3, // Fixed: 1 line content + 2 for borders
     border: true,
     zIndex: 100,
-    backgroundColor: "#0D1117",
+    // backgroundColor not specified - use terminal default
   });
   container.add(inputBox);
 
   const input = new TextareaRenderable(renderer, {
     id: "input",
-    textColor: "#F0F6FC",
-    backgroundColor: "#0D1117",
+    // textColor not specified - use terminal default
+    // backgroundColor not specified - use terminal default
     placeholder: "Type your message...",
-    placeholderColor: "#6E7681",
+    placeholderColor: "gray", // Use terminal's gray
     wrapMode: "word",
     showCursor: true,
-    cursorColor: "#58A6FF",
+    cursorColor: "blue", // Use terminal's blue
     height: 1,
   });
   inputBox.add(input);
