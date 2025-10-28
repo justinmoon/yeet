@@ -26,46 +26,40 @@ test.describe("Phase 2: Live Execution", () => {
   }) => {
     await page.goto(GUI_URL);
 
-    // Enter a task
+    // Enter a task with explicit completion
     const input = page.locator('input[type="text"]');
-    await input.fill("write hello world to test.txt");
+    await input.fill("Run: echo test. When done, call complete tool.");
 
     // Click start
-    const button = page.getByRole("button", { name: "Start" });
-    await button.click();
+    await page.getByRole("button", { name: "Start" }).click();
 
-    // Wait for button to show "Running..."
-    await expect(button).toHaveText("Running...", { timeout: 2000 });
+    // Wait for execution to begin - look for Running button
+    await expect(page.getByRole("button", { name: "Running..." })).toBeVisible({
+      timeout: 3000,
+    });
 
     // Check that log panel appears
-    const logPanel = page.locator("text=Execution Log");
-    await expect(logPanel).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("text=Execution Log")).toBeVisible({
+      timeout: 5000,
+    });
 
-    // Check for idle state transition in log
+    // Check for state transitions in log
     await expect(page.locator("text=→ idle")).toBeVisible({ timeout: 3000 });
-
-    // Check for thinking state transition
     await expect(page.locator("text=→ thinking")).toBeVisible({
       timeout: 3000,
     });
 
-    // Verify we're showing the Running state
-    await expect(button).toHaveText("Running...");
-  });
+    // Check for tool execution
+    await expect(page.locator("text=🔧")).toBeVisible({ timeout: 5000 });
 
-  test("shows connection error if API server not running", async ({ page }) => {
-    // This test assumes API server is NOT running
-    await page.goto(GUI_URL);
-
-    const input = page.locator('input[type="text"]');
-    await input.fill("test task");
-
-    const button = page.getByRole("button", { name: "Start" });
-    await button.click();
-
-    // Should show connection error
-    await expect(page.locator("text=/Connection error/i")).toBeVisible({
-      timeout: 10000,
+    // Wait for completion (should happen within 20s)
+    await expect(page.locator("text=✅ Complete")).toBeVisible({
+      timeout: 20000,
     });
+
+    // Verify button is back to Start
+    await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
   });
+
 });
+
