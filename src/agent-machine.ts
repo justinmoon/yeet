@@ -189,13 +189,16 @@ export const agentMachine = setup({
     idle: {
       on: {
         USER_MESSAGE: {
-          target: "thinking",
+          target: "running",
           actions: ["addUserMessage", "incrementStep"],
         },
       },
     },
 
-    thinking: {
+    // Main execution state - agent runs here until complete
+    running: {
+      initial: "thinking",
+      // Invoke agent at this level so it stays alive across thinking/executingTool transitions
       invoke: {
         src: "streamAgent",
         input: ({ context }) => ({
@@ -204,11 +207,12 @@ export const agentMachine = setup({
         }),
       },
       on: {
+        // Handle agent events at running level
         TEXT_DELTA: {
           actions: "appendText",
         },
         TOOL_CALL: {
-          target: "executingTool",
+          target: ".executingTool",
           actions: "recordToolCall",
         },
         AGENT_DONE: {
@@ -217,75 +221,83 @@ export const agentMachine = setup({
         },
         ERROR: "error",
       },
-    },
-
-    executingTool: {
-      invoke: {
-        src: fromPromise(
-          async ({
-            input,
-          }: {
-            input: {
-              toolCall: ToolCall;
-              workingDir: string;
-              context: AgentContext;
-            };
-          }) => {
-            const { executeTool } = await import("./tool-executor");
-
-            // Execute the tool
-            const result = await executeTool(input.toolCall, input.workingDir);
-
-            // If tool modifies files, capture snapshot internally
-            const toolName = input.toolCall.name;
-            let snapshot: SnapshotMetadata | undefined;
-
-            if (toolName === "write" || toolName === "edit") {
-              try {
-                const { FilesystemSnapshot } = await import(
-                  "./filesystem-snapshot"
-                );
-                const fs = new FilesystemSnapshot(input.workingDir);
-                snapshot = await fs.capture(`After ${toolName}`);
-              } catch (error) {
-                // If snapshot fails, continue without it
-                console.warn("Snapshot capture failed:", error);
-                snapshot = {
-                  treeHash: "",
-                  timestamp: Date.now(),
-                  description: `After ${toolName} (no snapshot)`,
-                };
-              }
-            }
-
-            return { result, snapshot };
-          },
-        ),
-        input: ({ context }) => ({
-          toolCall: context.pendingToolCall!,
-          workingDir: context.workingDirectory,
-          context,
-        }),
-        onDone: {
-          target: "thinking",
-          actions: "recordToolSuccess",
+      states: {
+        thinking: {
+          // No invoke here - parent handles it
         },
-        onError: {
-          target: "thinking",
-          actions: assign({
-            toolHistory: ({ context, event }) => [
-              ...context.toolHistory,
-              {
-                call: context.pendingToolCall!,
-                result: {
-                  toolCallId: context.pendingToolCall!.id,
-                  error: (event as any).error?.message || "Unknown error",
-                  result: null,
-                },
+
+        executingTool: {
+          invoke: {
+            src: fromPromise(
+              async ({
+                input,
+              }: {
+                input: {
+                  toolCall: ToolCall;
+                  workingDir: string;
+                  context: AgentContext;
+                };
+              }) => {
+                const { executeTool } = await import("./tool-executor");
+
+                // Execute the tool
+                const result = await executeTool(
+                  input.toolCall,
+                  input.workingDir,
+                );
+
+                // If tool modifies files, capture snapshot internally
+                const toolName = input.toolCall.name;
+                let snapshot: SnapshotMetadata | undefined;
+
+                if (toolName === "write" || toolName === "edit") {
+                  try {
+                    const { FilesystemSnapshot } = await import(
+                      "./filesystem-snapshot"
+                    );
+                    const fs = new FilesystemSnapshot(input.workingDir);
+                    snapshot = await fs.capture(`After ${toolName}`);
+                  } catch (error) {
+                    // If snapshot fails, continue without it
+                    console.warn("Snapshot capture failed:", error);
+                    snapshot = {
+                      treeHash: "",
+                      timestamp: Date.now(),
+                      description: `After ${toolName} (no snapshot)`,
+                    };
+                  }
+                }
+
+                return { result, snapshot };
               },
-            ],
-            pendingToolCall: undefined,
-          }),
+            ),
+            input: ({ context }) => ({
+              toolCall: context.pendingToolCall!,
+              workingDir: context.workingDirectory,
+              context,
+            }),
+            onDone: {
+              target: ".thinking",
+              actions: "recordToolSuccess",
+            },
+            onError: {
+              target: ".thinking",
+              actions: assign({
+                toolHistory: ({ context, event }) => [
+                  ...context.toolHistory,
+                  {
+                    call: context.pendingToolCall!,
+                    result: {
+                      toolCallId: context.pendingToolCall!.id,
+                      error: (event as any).error?.message || "Unknown error",
+                      result: null,
+                    },
+                  },
+                ],
+                pendingToolCall: undefined,
+              }),
+            },
+          },
         },
       },
     },
@@ -293,7 +305,7 @@ export const agentMachine = setup({
     error: {
       on: {
         USER_MESSAGE: {
-          target: "thinking",
+          target: "running",
           actions: ["addUserMessage", "incrementStep"],
         },
       },
