@@ -69,7 +69,9 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("  ✓ deepseek-r1-0528, deepseek-v31-terminus\n");
   ui.appendOutput("  ✓ qwen3-coder-480b, qwen3-coder-30b-a3b, qwen2-5-72b\n");
   ui.appendOutput("  ✓ gpt-oss-120b\n");
-  ui.appendOutput("  ✗ mistral-small-3-1-24b, llama-3.3-70b (no tool calling)\n");
+  ui.appendOutput(
+    "  ✗ mistral-small-3-1-24b, llama-3.3-70b (no tool calling)\n",
+  );
 }
 
 async function handleSessionsCommand(ui: UIAdapter): Promise<void> {
