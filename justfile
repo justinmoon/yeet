@@ -8,6 +8,10 @@ default:
 ci:
     nix run .#ci
 
+# Run GUI dev server (React Flow visualization)
+gui:
+    bun vite
+
 # Run yeet TUI
 tui:
     bun run src/tui.ts
