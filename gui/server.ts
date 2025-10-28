@@ -35,25 +35,17 @@ const server = Bun.serve({
             const { agentMachine } = await import("../src/agent-machine.ts");
             const { createActor } = await import("xstate");
 
-            // Create actor
-            const actor = createActor(agentMachine, {
-              input: {
-                currentSnapshot: { treeHash: "", timestamp: Date.now() },
-                snapshotHistory: [],
-                messages: [{ role: "user", content: task }],
-                currentResponse: "",
-                toolHistory: [],
-                currentStep: 0,
-                maxSteps: 10,
-                workingDirectory: process.cwd(),
-              },
-            });
+            console.log(`[API] Starting execution for task: ${task.substring(0, 50)}...`);
+
+            // Create actor - agentMachine already has initial context
+            const actor = createActor(agentMachine);
 
             // Subscribe to state changes
             actor.subscribe((state) => {
+              console.log(`[API] State transition: ${String(state.value)}`);
               send({
                 type: "state",
-                state: state.value,
+                state: String(state.value),
                 context: {
                   step: state.context.currentStep,
                   maxSteps: state.context.maxSteps,
@@ -63,8 +55,10 @@ const server = Bun.serve({
 
             // Start the actor
             actor.start();
+            console.log("[API] Actor started");
 
             // Send initial user message
+            console.log("[API] Sending USER_MESSAGE event");
             actor.send({ type: "USER_MESSAGE", content: task });
 
             // Wait for completion or error

@@ -26,11 +26,19 @@ export default defineConfig({
   ],
   timeout: 30000,
   
-  // Auto-start Vite server
-  webServer: {
-    command: "bun vite",
-    url: "http://localhost:3456",
-    timeout: 120000,
-    reuseExistingServer: !process.env.CI,
-  },
+  // Auto-start both servers
+  webServer: [
+    {
+      command: "bun gui/server.ts",
+      url: "http://localhost:3457",
+      timeout: 120000,
+      reuseExistingServer: !process.env.CI,
+    },
+    {
+      command: "bun vite",
+      url: "http://localhost:3456",
+      timeout: 120000,
+      reuseExistingServer: !process.env.CI,
+    },
+  ],
 });
