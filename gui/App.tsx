@@ -43,14 +43,26 @@ export function App() {
           setActiveState(data.state);
           setLogs((prev) => [...prev, `→ ${data.state}`]);
 
-          // Highlight active node - add className for CSS animation
+          // Highlight active node and reset tool label when leaving executingTool
           setNodes((nodes) =>
             nodes.map((node) => {
               const isActive = node.id === data.state;
+
+              // Reset executingTool label when transitioning away
+              let label = node.data.label;
+              if (
+                node.id === "executingTool" &&
+                !isActive &&
+                node.data.baseLabel
+              ) {
+                label = node.data.baseLabel;
+              }
+
               return {
                 ...node,
                 data: {
                   ...node.data,
+                  label,
                   isActive,
                 },
                 className: isActive ? `${node.id} active-state` : node.id,
@@ -67,6 +79,23 @@ export function App() {
           );
         } else if (data.type === "tool") {
           setLogs((prev) => [...prev, `🔧 ${data.tool}: ${data.args}`]);
+
+          // Update executingTool label to show current tool
+          setNodes((nodes) =>
+            nodes.map((node) => {
+              if (node.id === "executingTool") {
+                return {
+                  ...node,
+                  data: {
+                    ...node.data,
+                    label: `🔧 ${data.tool}`,
+                    baseLabel: node.data.baseLabel || "Executing Tool",
+                  },
+                };
+              }
+              return node;
+            }),
+          );
         } else if (data.type === "done") {
           setLogs((prev) => [...prev, "✅ Complete"]);
           setIsRunning(false);
