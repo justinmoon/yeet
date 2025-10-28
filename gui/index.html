@@ -249,12 +249,7 @@
           id,
           type: 'default',
           data: { 
-            label: (
-              React.createElement('div', null,
-                React.createElement('div', { className: 'node-label' }, state.label),
-                React.createElement('div', { className: 'node-type' }, state.type)
-              )
-            )
+            label: state.label
           },
           position: { 
             x: nodeWithPosition.x - 90, 
@@ -287,30 +282,33 @@
       const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
       const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
-      return React.createElement(ReactFlow, {
-        nodes,
-        edges,
-        onNodesChange,
-        onEdgesChange,
-        fitView: true,
-        attributionPosition: 'bottom-left',
-        children: [
-          React.createElement(Controls, { key: 'controls' }),
-          React.createElement(Background, { key: 'background', color: '#3e3e42', gap: 16 })
-        ]
-      });
+      return React.createElement(
+        ReactFlow,
+        {
+          nodes: nodes,
+          edges: edges,
+          onNodesChange: onNodesChange,
+          onEdgesChange: onEdgesChange,
+          fitView: true,
+          attributionPosition: 'bottom-left'
+        },
+        React.createElement(Controls, { key: 'controls' }),
+        React.createElement(Background, { key: 'background', color: '#3e3e42', gap: 16 })
+      );
     }
 
     function App() {
-      return React.createElement('div', { style: { width: '100%', height: '100%' } },
-        React.createElement(FlowCanvas)
+      return React.createElement(
+        'div',
+        { style: { width: '100%', height: '100%' } },
+        React.createElement(FlowCanvas, null)
       );
     }
 
     // Mount the app
     const container = document.getElementById('canvas');
     const root = ReactDOM.createRoot(container);
-    root.render(React.createElement(App));
+    root.render(React.createElement(App, null));
   </script>
 </body>
 </html>
