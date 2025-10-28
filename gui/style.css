@@ -26,10 +26,53 @@ body {
   border-radius: 8px;
   padding: 12px 20px;
   color: #e0e0e0;
+  min-width: 180px;
+  text-align: center;
 }
 
 .react-flow__node:hover {
   border-color: #4a9eff;
+}
+
+/* State-specific colors */
+.react-flow__node.idle {
+  border-color: #6b7280;
+  background: #374151;
+}
+
+.react-flow__node.thinking {
+  border-color: #3b82f6;
+  background: #1e3a8a;
+}
+
+.react-flow__node.executingTool {
+  border-color: #f59e0b;
+  background: #78350f;
+}
+
+.react-flow__node.capturingSnapshot {
+  border-color: #8b5cf6;
+  background: #4c1d95;
+}
+
+.react-flow__node.paused {
+  border-color: #eab308;
+  background: #713f12;
+}
+
+.react-flow__node.awaitingClarification {
+  border-color: #06b6d4;
+  background: #164e63;
+}
+
+.react-flow__node.error {
+  border-color: #ef4444;
+  background: #7f1d1d;
+}
+
+.react-flow__node.completed {
+  border-color: #10b981;
+  background: #064e3b;
 }
 
 .react-flow__edge-path {

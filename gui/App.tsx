@@ -1,38 +1,18 @@
 import {
   Background,
   Controls,
-  type Edge,
-  type Node,
   ReactFlow,
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
-import { useCallback } from "react";
 import "@xyflow/react/dist/style.css";
+import { agentMachine } from "../src/agent-machine";
+import { machineToFlow } from "./machineToFlow";
 
-const initialNodes: Node[] = [
-  {
-    id: "1",
-    type: "default",
-    position: { x: 100, y: 100 },
-    data: { label: "Node 1" },
-  },
-  {
-    id: "2",
-    type: "default",
-    position: { x: 300, y: 100 },
-    data: { label: "Node 2" },
-  },
-];
-
-const initialEdges: Edge[] = [
-  {
-    id: "e1-2",
-    source: "1",
-    target: "2",
-    label: "connects",
-  },
-];
+// Convert XState machine to React Flow
+const { nodes: initialNodes, edges: initialEdges } = machineToFlow(
+  agentMachine.config,
+);
 
 export function App() {
   const [nodes, , onNodesChange] = useNodesState(initialNodes);

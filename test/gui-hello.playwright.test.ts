@@ -38,31 +38,33 @@ test.describe("GUI Hello World", () => {
     await expect(canvas).toBeVisible({ timeout: 10000 });
   });
 
-  test("displays 2 nodes", async ({ page }) => {
+  test("displays agent machine states (7 expected)", async ({ page }) => {
     await page.goto(GUI_URL);
     await page.waitForSelector(".react-flow", { timeout: 10000 });
 
     const nodes = page.locator(".react-flow__node");
-    await expect(nodes).toHaveCount(2);
+    // Agent machine has: idle, thinking, executingTool, capturingSnapshot, paused, awaitingClarification, error
+    await expect(nodes).toHaveCount(7);
   });
 
-  test("nodes have correct labels", async ({ page }) => {
+  test("displays state nodes with correct labels", async ({ page }) => {
     await page.goto(GUI_URL);
     await page.waitForSelector(".react-flow", { timeout: 10000 });
 
-    const node1 = page.locator(".react-flow__node").first();
-    await expect(node1).toContainText("Node 1");
-
-    const node2 = page.locator(".react-flow__node").nth(1);
-    await expect(node2).toContainText("Node 2");
+    // Check for key states
+    await expect(page.locator(".react-flow__node").filter({ hasText: "Idle" })).toBeVisible();
+    await expect(page.locator(".react-flow__node").filter({ hasText: "Thinking" })).toBeVisible();
+    await expect(page.locator(".react-flow__node").filter({ hasText: "Executing Tool" })).toBeVisible();
   });
 
-  test("displays 1 edge", async ({ page }) => {
+  test("displays edges for state transitions", async ({ page }) => {
     await page.goto(GUI_URL);
     await page.waitForSelector(".react-flow", { timeout: 10000 });
 
+    // Should have multiple edges connecting states
     const edges = page.locator(".react-flow__edge");
-    await expect(edges).toHaveCount(1);
+    const count = await edges.count();
+    expect(count).toBeGreaterThan(5); // At least several transitions
   });
 
   test("React Flow renders successfully", async ({ page }) => {
