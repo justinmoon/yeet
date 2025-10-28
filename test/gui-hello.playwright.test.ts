@@ -39,13 +39,13 @@ test.describe("GUI Hello World", () => {
     await expect(canvas).toBeVisible({ timeout: 10000 });
   });
 
-  test("displays agent machine states (7 expected)", async ({ page }) => {
+  test("displays agent machine states (4 expected)", async ({ page }) => {
     await page.goto(GUI_URL);
     await page.waitForSelector(".react-flow", { timeout: 10000 });
 
     const nodes = page.locator(".react-flow__node");
-    // Agent machine has: idle, thinking, executingTool, capturingSnapshot, paused, awaitingClarification, error
-    await expect(nodes).toHaveCount(7);
+    // Agent machine has: idle, thinking, executingTool, error
+    await expect(nodes).toHaveCount(4);
   });
 
   test("displays state nodes with correct labels", async ({ page }) => {
