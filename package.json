@@ -6,6 +6,11 @@
   "bin": {
     "yeet": "./src/index.ts"
   },
+  "scripts": {
+    "gui": "bun gui/server.ts",
+    "test": "bun test",
+    "test:gui": "bun test test/gui-agent-loop.spec.ts"
+  },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^1.0.0",
     "@opentui/core": "^0.1.30",

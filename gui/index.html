@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>XState Agent Loop - Visualizer</title>
+  
+  <!-- React Flow CSS -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xyflow/react@12.3.4/dist/style.min.css">
+  
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+      background: #1e1e1e;
+      color: #e0e0e0;
+      overflow: hidden;
+    }
+
+    #root {
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .header {
+      background: #252526;
+      border-bottom: 1px solid #3e3e42;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    .header h1 {
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #e0e0e0;
+    }
+
+    .header .subtitle {
+      font-size: 0.875rem;
+      color: #8e8e93;
+      margin-left: 1rem;
+    }
+
+    .main {
+      flex: 1;
+      display: flex;
+      overflow: hidden;
+    }
+
+    .canvas-container {
+      flex: 1;
+      background: #1e1e1e;
+      position: relative;
+    }
+
+    /* React Flow custom styles */
+    .react-flow__node {
+      background: #2d2d30;
+      border: 2px solid #3e3e42;
+      border-radius: 8px;
+      padding: 12px 20px;
+      font-size: 14px;
+      color: #e0e0e0;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+      transition: all 0.2s ease;
+    }
+
+    .react-flow__node:hover {
+      border-color: #007acc;
+      box-shadow: 0 6px 12px rgba(0, 122, 204, 0.3);
+    }
+
+    .react-flow__node.idle {
+      border-color: #4a9eff;
+      background: #2d3748;
+    }
+
+    .react-flow__node.thinking {
+      border-color: #f59e0b;
+      background: #3d3020;
+    }
+
+    .react-flow__node.executingTool {
+      border-color: #10b981;
+      background: #203d30;
+    }
+
+    .react-flow__node.capturingSnapshot {
+      border-color: #8b5cf6;
+      background: #3d2d48;
+    }
+
+    .react-flow__node.paused {
+      border-color: #f97316;
+      background: #3d2d20;
+    }
+
+    .react-flow__node.awaitingClarification {
+      border-color: #06b6d4;
+      background: #203d3d;
+    }
+
+    .react-flow__node.error {
+      border-color: #ef4444;
+      background: #3d2020;
+    }
+
+    .react-flow__edge-path {
+      stroke: #6b7280;
+      stroke-width: 2;
+    }
+
+    .react-flow__edge.animated .react-flow__edge-path {
+      stroke-dasharray: 5;
+      animation: dashdraw 0.5s linear infinite;
+    }
+
+    @keyframes dashdraw {
+      to {
+        stroke-dashoffset: -10;
+      }
+    }
+
+    .react-flow__controls {
+      background: #2d2d30;
+      border: 1px solid #3e3e42;
+      border-radius: 8px;
+    }
+
+    .react-flow__controls-button {
+      background: #2d2d30;
+      border-bottom: 1px solid #3e3e42;
+      color: #e0e0e0;
+    }
+
+    .react-flow__controls-button:hover {
+      background: #3e3e42;
+    }
+
+    .node-label {
+      font-weight: 500;
+      text-align: center;
+    }
+
+    .node-type {
+      font-size: 0.75rem;
+      color: #8e8e93;
+      margin-top: 4px;
+      text-align: center;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      height: 100%;
+      font-size: 1.125rem;
+      color: #8e8e93;
+    }
+  </style>
+</head>
+<body>
+  <div id="root">
+    <div class="header">
+      <div>
+        <h1>XState Agent Loop</h1>
+        <span class="subtitle">State Machine Visualizer</span>
+      </div>
+    </div>
+    <div class="main">
+      <div class="canvas-container" id="canvas"></div>
+    </div>
+  </div>
+
+  <!-- React and React Flow from CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@xyflow/react@12.3.4/dist/umd/index.min.js"></script>
+  <script src="https://unpkg.com/dagre@0.8.5/dist/dagre.min.js"></script>
+
+  <script type="module">
+    const { useState, useCallback, useEffect } = React;
+    const { ReactFlow, Controls, Background, useNodesState, useEdgesState } = ReactFlowRenderer;
+
+    // Parse state machine definition and create nodes/edges
+    function createNodesAndEdges() {
+      // Define states from our agent machine
+      const states = {
+        idle: { type: 'initial', label: 'Idle' },
+        thinking: { type: 'active', label: 'Thinking' },
+        executingTool: { type: 'active', label: 'Executing Tool' },
+        capturingSnapshot: { type: 'active', label: 'Capturing Snapshot' },
+        paused: { type: 'waiting', label: 'Paused' },
+        awaitingClarification: { type: 'waiting', label: 'Awaiting Clarification' },
+        error: { type: 'error', label: 'Error' }
+      };
+
+      // Define transitions
+      const transitions = [
+        { from: 'idle', to: 'thinking', label: 'USER_MESSAGE' },
+        { from: 'thinking', to: 'thinking', label: 'TEXT_DELTA' },
+        { from: 'thinking', to: 'executingTool', label: 'TOOL_CALL' },
+        { from: 'thinking', to: 'idle', label: 'AGENT_DONE' },
+        { from: 'thinking', to: 'paused', label: 'AGENT_PAUSED' },
+        { from: 'thinking', to: 'awaitingClarification', label: 'AGENT_CLARIFICATION' },
+        { from: 'thinking', to: 'error', label: 'ERROR' },
+        { from: 'executingTool', to: 'capturingSnapshot', label: 'file modified' },
+        { from: 'executingTool', to: 'thinking', label: 'read-only tool' },
+        { from: 'executingTool', to: 'thinking', label: 'onError' },
+        { from: 'capturingSnapshot', to: 'thinking', label: 'snapshot saved' },
+        { from: 'capturingSnapshot', to: 'error', label: 'onError' },
+        { from: 'paused', to: 'thinking', label: 'CONTINUE' },
+        { from: 'paused', to: 'thinking', label: 'USER_MESSAGE' },
+        { from: 'awaitingClarification', to: 'thinking', label: 'USER_MESSAGE' },
+        { from: 'error', to: 'thinking', label: 'USER_MESSAGE' }
+      ];
+
+      // Use dagre for automatic layout
+      const dagreGraph = new dagre.graphlib.Graph();
+      dagreGraph.setDefaultEdgeLabel(() => ({}));
+      dagreGraph.setGraph({ rankdir: 'TB', ranksep: 80, nodesep: 60 });
+
+      // Add nodes to dagre
+      Object.entries(states).forEach(([id, state]) => {
+        dagreGraph.setNode(id, { width: 180, height: 60 });
+      });
+
+      // Add edges to dagre
+      transitions.forEach(edge => {
+        dagreGraph.setEdge(edge.from, edge.to);
+      });
+
+      // Calculate layout
+      dagre.layout(dagreGraph);
+
+      // Create React Flow nodes
+      const nodes = Object.entries(states).map(([id, state]) => {
+        const nodeWithPosition = dagreGraph.node(id);
+        return {
+          id,
+          type: 'default',
+          data: { 
+            label: (
+              React.createElement('div', null,
+                React.createElement('div', { className: 'node-label' }, state.label),
+                React.createElement('div', { className: 'node-type' }, state.type)
+              )
+            )
+          },
+          position: { 
+            x: nodeWithPosition.x - 90, 
+            y: nodeWithPosition.y - 30 
+          },
+          className: id,
+          style: {
+            width: 180,
+            height: 60
+          }
+        };
+      });
+
+      // Create React Flow edges
+      const edges = transitions.map((edge, idx) => ({
+        id: `e${idx}`,
+        source: edge.from,
+        target: edge.to,
+        label: edge.label,
+        animated: false,
+        style: { stroke: '#6b7280' },
+        labelStyle: { fill: '#8e8e93', fontSize: 11 }
+      }));
+
+      return { nodes, edges };
+    }
+
+    function FlowCanvas() {
+      const { nodes: initialNodes, edges: initialEdges } = createNodesAndEdges();
+      const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+      const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+
+      return React.createElement(ReactFlow, {
+        nodes,
+        edges,
+        onNodesChange,
+        onEdgesChange,
+        fitView: true,
+        attributionPosition: 'bottom-left',
+        children: [
+          React.createElement(Controls, { key: 'controls' }),
+          React.createElement(Background, { key: 'background', color: '#3e3e42', gap: 16 })
+        ]
+      });
+    }
+
+    function App() {
+      return React.createElement('div', { style: { width: '100%', height: '100%' } },
+        React.createElement(FlowCanvas)
+      );
+    }
+
+    // Mount the app
+    const container = document.getElementById('canvas');
+    const root = ReactDOM.createRoot(container);
+    root.render(React.createElement(App));
+  </script>
+</body>
+</html>
