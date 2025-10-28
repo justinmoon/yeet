@@ -5,7 +5,7 @@ This document outlines planned improvements to make yeet more robust and product
 
 ---
 
-## 1. Context Window Management 🔴 Critical
+## 1. Context Window Management ✅ IMPLEMENTED
 
 ### Problem
 Conversation history grows unbounded → will hit token limits and incur high API costs. Long sessions will eventually fail.
@@ -31,7 +31,7 @@ Makes yeet usable for long sessions without manual intervention or unexpected fa
 
 ---
 
-## 2. File Search Tool 🟡 High Value
+## 2. File Search Tool ✅ IMPLEMENTED
 
 ### Problem
 Agent currently uses bash+grep to search files, which is clunky, error-prone, and produces messy output that's hard to parse.
