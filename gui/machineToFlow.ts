@@ -42,7 +42,7 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
       className: stateKey, // For styling
     });
 
-    // Extract transitions
+    // Extract event-based transitions (state.on)
     const transitions = state.on || {};
     for (const [event, target] of Object.entries(transitions)) {
       const targetState = typeof target === "string" ? target : target.target;
@@ -55,6 +55,58 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
           label: formatEventLabel(event),
           type: "smoothstep",
         });
+      }
+    }
+
+    // Extract invoke-based transitions (state.invoke.onDone, onError)
+    if (state.invoke) {
+      const invoke = state.invoke;
+
+      // Handle onDone transitions
+      if (invoke.onDone) {
+        const onDoneTransitions = Array.isArray(invoke.onDone)
+          ? invoke.onDone
+          : [invoke.onDone];
+
+        for (const transition of onDoneTransitions) {
+          const targetState =
+            typeof transition === "string" ? transition : transition.target;
+
+          if (targetState && targetState !== stateKey) {
+            const hasGuard = typeof transition === "object" && transition.guard;
+            const label = hasGuard ? `Done (${transition.guard})` : "Done";
+
+            edges.push({
+              id: `${stateKey}-onDone-${targetState}-${hasGuard || "default"}`,
+              source: stateKey,
+              target: targetState,
+              label,
+              type: "smoothstep",
+              style: hasGuard
+                ? { strokeDasharray: "5,5", opacity: 0.7 }
+                : undefined,
+            });
+          }
+        }
+      }
+
+      // Handle onError transitions
+      if (invoke.onError) {
+        const targetState =
+          typeof invoke.onError === "string"
+            ? invoke.onError
+            : invoke.onError.target;
+
+        if (targetState && targetState !== stateKey) {
+          edges.push({
+            id: `${stateKey}-onError-${targetState}`,
+            source: stateKey,
+            target: targetState,
+            label: "Error",
+            type: "smoothstep",
+            style: { stroke: "#ef4444", strokeWidth: 2 },
+          });
+        }
       }
     }
   }
