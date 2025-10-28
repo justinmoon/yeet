@@ -164,6 +164,10 @@ async function verifyCertificateChain(
 
 /**
  * Validates PCR0 value against expected values
+ * 
+ * TODO: Implement remote signed attestation like OpenSecret-SDK
+ * See: ~/code/OpenSecret-SDK/src/lib/pcr.ts for reference
+ * Pattern: Fetch signed PCR history from GitHub, verify signatures with public key
  */
 function validatePCR0(
   pcrs: Map<number, Uint8Array>,

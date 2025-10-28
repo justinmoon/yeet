@@ -22,6 +22,9 @@ export interface MapleConfig {
    * Expected PCR0 values (enclave code measurements)
    * These verify that the enclave is running trusted code.
    * Multiple values support gradual rollout/rollback.
+   * 
+   * TODO: Implement remote signed attestation like OpenSecret-SDK
+   * See: ~/code/OpenSecret-SDK/src/lib/pcr.ts for reference implementation
    */
   pcr0Values: string[];
 }
