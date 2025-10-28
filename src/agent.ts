@@ -15,11 +15,11 @@ CRITICAL INSTRUCTIONS:
 - DO NOT describe what you would do
 - ACTUALLY CALL THE TOOLS to perform the actions
 
-WORKFLOW CONTROL:
-- When you've finished the task, call complete({ summary: "what you did" })
+WORKFLOW CONTROL (OPTIONAL):
+- When you've finished the task, you can call complete({ summary: "what you did" })
 - If you need clarification from user, call clarify({ question: "what you need to know" })
 - If you're stuck or want to pause for review, call pause({ reason: "why pausing" })
-- You MUST end with one of these tools - don't just stop responding
+- These tools are available but not required for every interaction
 
 SEARCH TOOL:
 - Use 'search' instead of bash+grep for finding patterns in files

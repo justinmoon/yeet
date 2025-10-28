@@ -132,6 +132,12 @@ export async function handleMessage(
           ui.appendOutput(
             `\n[search] "${event.args?.pattern}"${event.args?.path ? ` in ${event.args.path}` : ""}\n`,
           );
+        } else if (event.name === "complete") {
+          ui.appendOutput(`\n✓ Task complete: ${event.args?.summary || ""}\n`);
+        } else if (event.name === "clarify") {
+          ui.appendOutput(`\n❓ ${event.args?.question || ""}\n`);
+        } else if (event.name === "pause") {
+          ui.appendOutput(`\n⏸️  Paused: ${event.args?.reason || ""}\n`);
         }
       } else if (event.type === "tool-result") {
         if (lastToolName === "read") {
