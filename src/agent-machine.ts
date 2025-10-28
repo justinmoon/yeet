@@ -89,27 +89,8 @@ export const agentMachine = setup({
         // Could cancel agent here if needed
       };
     }),
-
-    // Execute a tool and capture new snapshot
-    executeTool: fromPromise(
-      async ({
-        input,
-      }: {
-        input: { toolCall: ToolCall; workingDir: string };
-      }): Promise<{ result: ToolResult; snapshot?: SnapshotMetadata }> => {
-        const { executeTool } = await import("./tool-executor");
-        return executeTool(input.toolCall, input.workingDir);
-      },
-    ),
   },
-  guards: {
-    hasReachedMaxSteps: ({ context }) =>
-      context.currentStep >= context.maxSteps,
-    isFileModifyingTool: ({ context }) => {
-      const toolName = context.pendingToolCall?.name;
-      return toolName === "write" || toolName === "edit";
-    },
-  },
+  guards: {},
   actions: {
     addUserMessage: assign({
       messages: ({ context, event }) => {
@@ -133,67 +114,6 @@ export const agentMachine = setup({
       pendingToolCall: ({ event }) => {
         if (event.type !== "TOOL_CALL") return undefined;
         return event.toolCall;
-      },
-    }),
-
-    recordToolResult: assign({
-      toolHistory: ({ context, event }) => {
-        if (event.type !== "TOOL_RESULT" || !context.pendingToolCall) {
-          return context.toolHistory;
-        }
-        return [
-          ...context.toolHistory,
-          {
-            call: context.pendingToolCall,
-            result: event.result,
-          },
-        ];
-      },
-      // Add tool call and result to messages for next agent invocation
-      messages: ({ context, event }) => {
-        if (!context.pendingToolCall) {
-          return context.messages;
-        }
-
-        // Get tool result from event.output (from executeTool actor)
-        const toolResult = (event as any).output?.result?.result;
-        const toolError = (event as any).output?.result?.error;
-
-        // Add assistant message (if we have response text), then tool result as user message
-        // This tells the agent what happened with the tool
-        const newMessages: Message[] = [...context.messages];
-
-        if (context.currentResponse) {
-          newMessages.push({
-            role: "assistant" as const,
-            content: context.currentResponse,
-          });
-        }
-
-        // Add tool result as user message so agent sees what happened
-        const resultMessage = toolError
-          ? `Tool ${context.pendingToolCall.name} failed: ${toolError}`
-          : `Tool ${context.pendingToolCall.name} succeeded. Result: ${JSON.stringify(toolResult)}`;
-
-        newMessages.push({
-          role: "user" as const,
-          content: resultMessage,
-        });
-
-        return newMessages;
-      },
-      pendingToolCall: undefined,
-      currentResponse: "", // Reset for next turn
-    }),
-
-    updateSnapshot: assign({
-      currentSnapshot: ({ event }) => {
-        // @ts-ignore - we'll properly type this when implementing
-        return event.output.snapshot;
-      },
-      snapshotHistory: ({ context, event }) => {
-        // @ts-ignore
-        return [...context.snapshotHistory, event.output.snapshot];
       },
     }),
 
