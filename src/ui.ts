@@ -79,16 +79,14 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
     id: "output-scroll",
     borderStyle: "single",
     borderColor: "#30363D",
-    title: "Conversation",
-    titleAlignment: "left",
     flexGrow: 1,
-    flexShrink: 1, // Allow shrinking to not overlap input
+    flexShrink: 1,
     border: true,
     stickyScroll: true,
     stickyStart: "bottom",
     scrollY: true,
     scrollX: false,
-    overflow: "hidden", // Clip content that would overflow
+    overflow: "hidden",
   });
   container.add(scrollBox);
 
@@ -100,14 +98,12 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
   });
   scrollBox.add(output);
 
-  // Input area (auto-height at bottom)
+  // Input area - single line, no title
   const inputBox = new BoxRenderable(renderer, {
     id: "input-box",
     borderStyle: "single",
     borderColor: "#58A6FF",
-    title: "Your Message",
-    titleAlignment: "left",
-    height: "auto", // Auto-expand based on content
+    height: 3, // Fixed: 1 line content + 2 for borders
     border: true,
     zIndex: 100,
     backgroundColor: "#0D1117",
@@ -123,24 +119,26 @@ export function createUI(renderer: CliRenderer, config: Config): UI {
     wrapMode: "word",
     showCursor: true,
     cursorColor: "#58A6FF",
-    height: 1, // Start with 1 line
+    height: 1,
   });
   inputBox.add(input);
   input.focus();
 
-  // Attachment indicator (shows when images are attached)
-  const attachmentIndicator = new TextRenderable(renderer, {
-    id: "attachment-indicator",
-    content: "",
-    fg: "#8B949E",
-  });
-  inputBox.add(attachmentIndicator);
-
   const updateAttachmentIndicator = () => {
+    // Show attachment count in status bar instead of input box
+    const modelId =
+      config.activeProvider === "maple"
+        ? config.maple!.model
+        : config.opencode.model;
+    const modelInfo = getModelInfo(modelId);
+    const modelName = modelInfo?.name || modelId;
+
     if (ui.imageAttachments.length > 0) {
-      attachmentIndicator.content = `📎 ${ui.imageAttachments.length} image(s) attached`;
+      ui.setStatus(
+        `${modelName} | ${ui.currentTokens > 0 ? formatTokenCount(ui.currentTokens) + "/" + formatTokenCount(modelInfo?.contextWindow || 0) + " (" + calculateContextUsage(ui.currentTokens, modelInfo?.contextWindow || 1) + "%)" : "0/? (0%)"} | 📎 ${ui.imageAttachments.length} image(s)`,
+      );
     } else {
-      attachmentIndicator.content = "";
+      ui.updateTokenCount();
     }
   };
 
