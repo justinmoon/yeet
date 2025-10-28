@@ -3,6 +3,7 @@
  */
 
 import type { Edge, Node } from "@xyflow/react";
+import { MarkerType } from "@xyflow/react";
 import dagre from "dagre";
 
 interface StateNode {
@@ -54,6 +55,10 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
           target: targetState,
           label: formatEventLabel(event),
           type: "smoothstep",
+          markerEnd: {
+            type: MarkerType.ArrowClosed,
+            color: "#6b7280",
+          },
         });
       }
     }
@@ -82,6 +87,10 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
               target: targetState,
               label,
               type: "smoothstep",
+              markerEnd: {
+                type: MarkerType.ArrowClosed,
+                color: hasGuard ? "#9ca3af" : "#6b7280",
+              },
               style: hasGuard
                 ? { strokeDasharray: "5,5", opacity: 0.7 }
                 : undefined,
@@ -104,6 +113,10 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
             target: targetState,
             label: "Error",
             type: "smoothstep",
+            markerEnd: {
+              type: MarkerType.ArrowClosed,
+              color: "#ef4444",
+            },
             style: { stroke: "#ef4444", strokeWidth: 2 },
           });
         }
