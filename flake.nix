@@ -10,8 +10,15 @@
     flake-utils.lib.eachDefaultSystem (system:
       let
         pkgs = nixpkgs.legacyPackages.${system};
+        
+        yeet = pkgs.writeShellScriptBin "yeet" ''
+          exec ${pkgs.bun}/bin/bun run ${./src/index.ts} "$@"
+        '';
       in
       {
+        packages.default = yeet;
+        packages.yeet = yeet;
+        
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
             bun
