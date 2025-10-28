@@ -75,8 +75,8 @@ body {
   background: #064e3b;
 }
 
-/* Active state animation */
-.react-flow__node.active {
+/* Active state animation - use data attribute to prevent layout shifts */
+.react-flow__node[data-isactive="true"] {
   animation: pulse 1.5s ease-in-out infinite;
   border-width: 3px;
   box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
@@ -85,12 +85,10 @@ body {
 @keyframes pulse {
   0%,
   100% {
-    transform: scale(1);
-    opacity: 1;
+    box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
   }
   50% {
-    transform: scale(1.05);
-    opacity: 0.9;
+    box-shadow: 0 0 25px rgba(59, 130, 246, 0.8);
   }
 }
 

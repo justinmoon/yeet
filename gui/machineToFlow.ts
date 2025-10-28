@@ -37,8 +37,10 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
       position: { x: 0, y: 0 }, // Will be positioned by dagre
       data: {
         label: formatStateLabel(stateKey),
+        isActive: false,
       },
       className: stateKey, // For styling
+      draggable: false, // Prevent layout shifts
     });
 
     // Extract transitions
@@ -92,14 +94,22 @@ function formatEventLabel(event: string): string {
 function getLayoutedElements(
   nodes: Node[],
   edges: Edge[],
-  direction = "TB",
+  direction = "LR",
 ): { nodes: Node[]; edges: Edge[] } {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
-  dagreGraph.setGraph({ rankdir: direction });
 
-  const nodeWidth = 180;
-  const nodeHeight = 60;
+  // Better layout settings
+  dagreGraph.setGraph({
+    rankdir: direction,
+    nodesep: 80, // Horizontal spacing between nodes
+    ranksep: 150, // Vertical spacing between ranks
+    marginx: 50,
+    marginy: 50,
+  });
+
+  const nodeWidth = 220;
+  const nodeHeight = 70;
 
   for (const node of nodes) {
     dagreGraph.setNode(node.id, { width: nodeWidth, height: nodeHeight });

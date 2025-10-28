@@ -43,11 +43,20 @@ export function App() {
           setActiveState(data.state);
           setLogs((prev) => [...prev, `→ ${data.state}`]);
 
-          // Highlight active node
+          // Highlight active node - use style instead of className to avoid layout shifts
           setNodes((nodes) =>
             nodes.map((node) => ({
               ...node,
-              className: node.id === data.state ? `${node.id} active` : node.id,
+              data: {
+                ...node.data,
+                isActive: node.id === data.state,
+              },
+              style:
+                node.id === data.state
+                  ? {
+                      ...node.style,
+                    }
+                  : node.style,
             })),
           );
         } else if (data.type === "tool") {
@@ -62,7 +71,10 @@ export function App() {
           setNodes((nodes) =>
             nodes.map((node) => ({
               ...node,
-              className: node.id,
+              data: {
+                ...node.data,
+                isActive: false,
+              },
             })),
           );
         } else if (data.type === "error") {
@@ -95,18 +107,6 @@ export function App() {
         flexDirection: "column",
       }}
     >
-      <div
-        style={{
-          background: "#252526",
-          borderBottom: "1px solid #3e3e42",
-          padding: "1rem",
-        }}
-      >
-        <h1 style={{ fontSize: "1.25rem", fontWeight: 600, color: "#e0e0e0" }}>
-          XState Agent Loop
-        </h1>
-      </div>
-
       {/* Control Panel */}
       <div
         style={{
@@ -164,7 +164,15 @@ export function App() {
             edges={edges}
             onNodesChange={onNodesChange}
             onEdgesChange={onEdgesChange}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={true}
             fitView
+            fitViewOptions={{
+              padding: 0.2,
+              minZoom: 0.5,
+              maxZoom: 1.5,
+            }}
           >
             <Background color="#3e3e42" gap={16} />
             <Controls />
