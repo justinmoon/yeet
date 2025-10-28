@@ -43,7 +43,7 @@ export function App() {
           setActiveState(data.state);
           setLogs((prev) => [...prev, `→ ${data.state}`]);
 
-          // Highlight active node with inline animation styles
+          // Highlight active node - add className for CSS animation
           setNodes((nodes) =>
             nodes.map((node) => {
               const isActive = node.id === data.state;
@@ -53,14 +53,15 @@ export function App() {
                   ...node.data,
                   isActive,
                 },
+                className: isActive ? `${node.id} active-state` : node.id,
                 style: isActive
                   ? {
                       borderWidth: "3px",
                       borderColor: "#3b82f6",
-                      boxShadow: "0 0 20px rgba(59, 130, 246, 0.8)",
-                      animation: "pulse 1.5s ease-in-out infinite",
                     }
-                  : {},
+                  : {
+                      borderWidth: "2px",
+                    },
               };
             }),
           );

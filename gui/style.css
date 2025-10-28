@@ -75,7 +75,12 @@ body {
   background: #064e3b;
 }
 
-/* Pulse animation for active state (applied via inline style) */
+/* Active state pulse animation */
+.react-flow__node.active-state {
+  animation: pulse 1.5s ease-in-out infinite;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.8);
+}
+
 @keyframes pulse {
   0%,
   100% {
