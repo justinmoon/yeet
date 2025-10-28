@@ -60,6 +60,4 @@ test.describe("Phase 2: Live Execution", () => {
     // Verify button is back to Start
     await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
   });
-
 });
-

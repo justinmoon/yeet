@@ -52,9 +52,15 @@ test.describe("GUI Hello World", () => {
     await page.waitForSelector(".react-flow", { timeout: 10000 });
 
     // Check for key states
-    await expect(page.locator(".react-flow__node").filter({ hasText: "Idle" })).toBeVisible();
-    await expect(page.locator(".react-flow__node").filter({ hasText: "Thinking" })).toBeVisible();
-    await expect(page.locator(".react-flow__node").filter({ hasText: "Executing Tool" })).toBeVisible();
+    await expect(
+      page.locator(".react-flow__node").filter({ hasText: "Idle" }),
+    ).toBeVisible();
+    await expect(
+      page.locator(".react-flow__node").filter({ hasText: "Thinking" }),
+    ).toBeVisible();
+    await expect(
+      page.locator(".react-flow__node").filter({ hasText: "Executing Tool" }),
+    ).toBeVisible();
   });
 
   test("displays edges for state transitions", async ({ page }) => {

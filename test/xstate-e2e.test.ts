@@ -3,11 +3,11 @@
  * Tests the full pipeline: XState machine → agent → tools → completion
  */
 
-import { createActor } from "xstate";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { agentMachine } from "../src/agent-machine";
 import { existsSync, mkdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { createActor } from "xstate";
+import { agentMachine } from "../src/agent-machine";
 
 const TEST_DIR = "/tmp/xstate-e2e-test";
 

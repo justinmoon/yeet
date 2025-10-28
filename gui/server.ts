@@ -44,30 +44,67 @@ const server = Bun.serve({
             // Create actor - agentMachine already has initial context
             const actor = createActor(agentMachine);
 
-            // Subscribe to state changes
-            actor.subscribe((state) => {
-              console.log(`[API] State transition: ${String(state.value)}`);
-              send({
-                type: "state",
-                state: String(state.value),
-                context: {
-                  step: state.context.currentStep,
-                  maxSteps: state.context.maxSteps,
-                },
-              });
+            // Track completion
+            let completed = false;
 
-              // Send tool call info when in executingTool state
-              if (
-                state.matches("executingTool") &&
-                state.context.pendingToolCall
-              ) {
+            // Subscribe to state changes and handle completion
+            const subscription = actor.subscribe((state) => {
+              if (completed) return;
+
+              console.log(`[API] State transition: ${String(state.value)}`);
+
+              try {
                 send({
-                  type: "tool",
-                  tool: state.context.pendingToolCall.name,
-                  args: JSON.stringify(
-                    state.context.pendingToolCall.args,
-                  ).substring(0, 100),
+                  type: "state",
+                  state: String(state.value),
+                  context: {
+                    step: state.context.currentStep,
+                    maxSteps: state.context.maxSteps,
+                  },
                 });
+
+                // Send tool call info when in executingTool state
+                if (
+                  state.matches("executingTool") &&
+                  state.context.pendingToolCall
+                ) {
+                  send({
+                    type: "tool",
+                    tool: state.context.pendingToolCall.name,
+                    args: JSON.stringify(
+                      state.context.pendingToolCall.args,
+                    ).substring(0, 100),
+                  });
+                }
+
+                // Check for completion
+                if (state.matches("idle") && state.context.currentStep > 0) {
+                  completed = true;
+                  console.log("[API] Execution complete");
+                  send({ type: "done" });
+                  subscription.unsubscribe(); // Unsubscribe first
+                  actor.stop();
+                  controller.close();
+                } else if (state.matches("error")) {
+                  completed = true;
+                  console.log("[API] Execution failed");
+                  send({ type: "error", error: "Agent encountered an error" });
+                  subscription.unsubscribe(); // Unsubscribe first
+                  actor.stop();
+                  controller.close();
+                }
+              } catch (err) {
+                console.error("[API] Error sending state:", err);
+                if (!completed) {
+                  completed = true;
+                  try {
+                    subscription.unsubscribe();
+                  } catch (e) {}
+                  actor.stop();
+                  try {
+                    controller.close();
+                  } catch (e) {}
+                }
               }
             });
 
@@ -78,28 +115,6 @@ const server = Bun.serve({
             // Send initial user message
             console.log("[API] Sending USER_MESSAGE event");
             actor.send({ type: "USER_MESSAGE", content: task });
-
-            // Wait for completion or error
-            await new Promise<void>((resolve) => {
-              const checkDone = () => {
-                const snapshot = actor.getSnapshot();
-                if (
-                  snapshot.matches("idle") &&
-                  snapshot.context.currentStep > 0
-                ) {
-                  send({ type: "done" });
-                  resolve();
-                } else if (snapshot.matches("error")) {
-                  send({ type: "error", error: "Agent encountered an error" });
-                  resolve();
-                } else {
-                  setTimeout(checkDone, 100);
-                }
-              };
-              checkDone();
-            });
-
-            controller.close();
           } catch (error: any) {
             send({ type: "error", error: error.message || String(error) });
             controller.close();

@@ -30,15 +30,15 @@ export default defineConfig({
   webServer: [
     {
       command: "bun gui/server.ts",
-      url: "http://localhost:3457",
-      timeout: 120000,
-      reuseExistingServer: !process.env.CI,
+      url: "http://localhost:3457/api/execute?task=test",
+      timeout: 60000,
+      reuseExistingServer: true,
     },
     {
       command: "bun vite",
       url: "http://localhost:3456",
-      timeout: 120000,
-      reuseExistingServer: !process.env.CI,
+      timeout: 60000,
+      reuseExistingServer: true,
     },
   ],
 });
