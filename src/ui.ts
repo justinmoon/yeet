@@ -374,6 +374,10 @@ async function handleMessage(message: string, ui: UI, config: Config) {
           ui.appendOutput(`\n[write] ${event.args?.path}\n`);
         } else if (event.name === "edit") {
           ui.appendOutput(`\n[edit] ${event.args?.path}\n`);
+        } else if (event.name === "search") {
+          ui.appendOutput(
+            `\n[search] "${event.args?.pattern}"${event.args?.path ? ` in ${event.args.path}` : ""}\n`,
+          );
         }
       } else if (event.type === "tool-result") {
         // Display user-friendly tool results
@@ -394,6 +398,29 @@ async function handleMessage(message: string, ui: UI, config: Config) {
             ui.appendOutput(`❌ ${event.result.error}\n`);
           } else {
             ui.appendOutput(`✓ Updated ${lastToolArgs.path}\n`);
+          }
+        } else if (lastToolName === "search") {
+          if (event.result?.error) {
+            ui.appendOutput(`❌ ${event.result.error}\n`);
+          } else if (event.result?.message) {
+            ui.appendOutput(`${event.result.message}\n`);
+          } else if (event.result?.matches) {
+            const count = event.result.total || 0;
+            ui.appendOutput(
+              `✓ Found ${count} match${count !== 1 ? "es" : ""}\n`,
+            );
+            // Show first few matches
+            const displayMatches = event.result.matches.slice(0, 10);
+            for (const match of displayMatches) {
+              ui.appendOutput(
+                `  ${match.file}:${match.line}: ${match.content}\n`,
+              );
+            }
+            if (event.result.matches.length > 10) {
+              ui.appendOutput(
+                `  ... and ${event.result.matches.length - 10} more\n`,
+              );
+            }
           }
         } else if (lastToolName === "bash") {
           // For bash, show stdout/stderr as before

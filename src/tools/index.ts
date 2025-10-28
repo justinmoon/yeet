@@ -1,4 +1,5 @@
 export { bash } from "./bash";
-export { read } from "./read";
 export { edit } from "./edit";
+export { read } from "./read";
+export { search } from "./search";
 export { write } from "./write";

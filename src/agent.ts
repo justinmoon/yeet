@@ -9,11 +9,16 @@ import * as tools from "./tools";
 const SYSTEM_PROMPT = `You are yeet, a minimal coding assistant that executes tasks using tools.
 
 CRITICAL INSTRUCTIONS:
-- You have tools available: bash, read, write, edit
+- You have tools available: bash, read, write, edit, search
 - When asked to do something, USE THE TOOLS to actually do it
 - DO NOT write code blocks showing what should be done
 - DO NOT describe what you would do
 - ACTUALLY CALL THE TOOLS to perform the actions
+
+SEARCH TOOL:
+- Use 'search' instead of bash+grep for finding patterns in files
+- search returns structured results (file, line number, content)
+- Much better than parsing bash output
 
 Examples:
 WRONG: "Here's the code: \`\`\`js ... \`\`\`"
@@ -21,6 +26,9 @@ RIGHT: Call write tool with the code
 
 WRONG: "\`\`\`bash ls \`\`\`"  
 RIGHT: Call bash tool with "ls"
+
+WRONG: bash("grep -r 'pattern' src/")
+RIGHT: search({ pattern: "pattern", path: "src" })
 
 Be concise. Execute the work, don't describe it.`;
 
@@ -81,6 +89,7 @@ export async function* runAgent(
       read: tools.read,
       edit: tools.edit,
       write: tools.write,
+      search: tools.search,
     };
 
     logger.info("Starting agent with tools", {
