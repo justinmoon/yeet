@@ -173,6 +173,7 @@ export function App() {
               minZoom: 0.4,
               maxZoom: 1.2,
             }}
+            nodeTypes={{}}
           >
             <Background color="#3e3e42" gap={16} />
             <Controls />

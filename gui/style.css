@@ -75,20 +75,14 @@ body {
   background: #064e3b;
 }
 
-/* Active state animation - use data attribute to prevent layout shifts */
-.react-flow__node[data-isactive="true"] {
-  animation: pulse 1.5s ease-in-out infinite;
-  border-width: 3px;
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
-}
-
+/* Pulse animation for active state (applied via inline style) */
 @keyframes pulse {
   0%,
   100% {
-    box-shadow: 0 0 15px rgba(59, 130, 246, 0.5);
+    box-shadow: 0 0 20px rgba(59, 130, 246, 0.6);
   }
   50% {
-    box-shadow: 0 0 25px rgba(59, 130, 246, 0.8);
+    box-shadow: 0 0 30px rgba(59, 130, 246, 1);
   }
 }
 
