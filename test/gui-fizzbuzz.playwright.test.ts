@@ -25,7 +25,7 @@ test.describe("GUI FizzBuzz E2E", () => {
     }
   });
 
-  test.skip("implements and executes fizzbuzz via GUI (disabled in CI - too slow with retries)", async ({ page }) => {
+  test("complete workflow: create and execute fizzbuzz", async ({ page }) => {
     // Navigate to GUI
     await page.goto(GUI_URL);
 

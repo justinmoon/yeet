@@ -43,6 +43,10 @@ test-web:
 test-gui:
     bunx playwright test --config=playwright.gui.config.ts
 
+# Run GUI E2E tests with AI (slow, not in CI)
+test-gui-e2e:
+    bunx playwright test --config=playwright.gui-e2e.config.ts
+
 # Type check
 typecheck:
     bun run typecheck
