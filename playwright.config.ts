@@ -26,4 +26,15 @@ export default defineConfig({
     },
   ],
   timeout: 30000,
+
+  // Auto-start web-pty server
+  webServer: {
+    command: "bun run src/web-pty.ts",
+    url: "http://localhost:8766",
+    timeout: 30000,
+    reuseExistingServer: true,
+    env: {
+      PORT: "8766",
+    },
+  },
 });
