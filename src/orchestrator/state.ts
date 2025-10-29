@@ -74,14 +74,14 @@ export class WorkflowState {
     // Validate transition
     if (!this.canTransition(currentStage, nextStage)) {
       throw new Error(
-        `Invalid transition: ${currentStage} → ${nextStage}. Allowed transitions: ${this.getCurrentStage().transitions.map((t) => t.next).join(", ")}`,
+        `Invalid transition: ${currentStage} → ${nextStage}. Allowed transitions: ${this.getCurrentStage()
+          .transitions.map((t) => t.next)
+          .join(", ")}`,
       );
     }
 
     // Record history
-    this.state.stageHistory.push(
-      `${currentStage} → ${nextStage}: ${reason}`,
-    );
+    this.state.stageHistory.push(`${currentStage} → ${nextStage}: ${reason}`);
     this.state.stageResults[currentStage] = results;
     this.state.currentStage = nextStage;
     this.state.transitionCount++;

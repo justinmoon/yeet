@@ -21,9 +21,11 @@ console.log("");
 console.log("=".repeat(70));
 console.log("");
 
-// Show parallel validation structure  
+// Show parallel validation structure
 console.log("2. PARALLEL VALIDATION");
-console.log("   (4 checks run simultaneously: tests, integration, lint, typecheck)");
+console.log(
+  "   (4 checks run simultaneously: tests, integration, lint, typecheck)",
+);
 console.log("");
 console.log(workflowToASCII(PARALLEL_VALIDATION));
 console.log("");
@@ -50,4 +52,6 @@ console.log("    └─ 1.57x speedup!");
 console.log("");
 
 console.log("To run:");
-console.log("  bun run src/orchestrator/concurrent-cli.ts parallel-code-review \"task\"");
+console.log(
+  '  bun run src/orchestrator/concurrent-cli.ts parallel-code-review "task"',
+);

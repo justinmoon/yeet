@@ -1,10 +1,10 @@
 /**
  * E2E test for code review workflow
  */
-import { test, expect, describe } from "bun:test";
+import { describe, expect, test } from "bun:test";
+import { loadConfig } from "../../src/config";
 import { runWorkflow } from "../../src/orchestrator";
 import { CODE_REVIEW_WORKFLOW } from "../../src/orchestrator/workflows";
-import { loadConfig } from "../../src/config";
 
 describe("Code Review Workflow", () => {
   test(
@@ -37,7 +37,8 @@ export function validateEmail(email: string): boolean {
       // Should reach a final state (approve or reject)
       const finalTransition = result.history[result.history.length - 1];
       expect(
-        finalTransition.includes("approve") || finalTransition.includes("reject"),
+        finalTransition.includes("approve") ||
+          finalTransition.includes("reject"),
       ).toBe(true);
 
       console.log("\n📊 Test Results:");

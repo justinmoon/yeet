@@ -2,9 +2,9 @@
  * Demo script to run the orchestrator with code review workflow
  */
 
-import { runWorkflow } from "./index";
-import { CODE_REVIEW_WORKFLOW, BUG_INVESTIGATION_WORKFLOW } from "./workflows";
 import { loadConfig } from "../config";
+import { runWorkflow } from "./index";
+import { BUG_INVESTIGATION_WORKFLOW, CODE_REVIEW_WORKFLOW } from "./workflows";
 
 async function main() {
   const config = await loadConfig();

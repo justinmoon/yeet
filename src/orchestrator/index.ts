@@ -2,11 +2,11 @@
  * Main orchestrator loop for LLM-based workflow execution
  */
 
-import { WorkflowState, type Workflow } from "./state";
-import { buildOrchestratorPrompt, buildWorkerPrompt } from "./prompts";
-import { runAgent, type AgentEvent, type MessageContent } from "../agent";
+import { type AgentEvent, type MessageContent, runAgent } from "../agent";
 import type { Config } from "../config";
 import { logger } from "../logger";
+import { buildOrchestratorPrompt, buildWorkerPrompt } from "./prompts";
+import { type Workflow, WorkflowState } from "./state";
 
 export interface WorkflowResult {
   result: Record<string, any>;
@@ -83,9 +83,7 @@ export async function runWorkflow(
 
         // Check if this is a transition request
         if (result?.action === "transition") {
-          console.log(
-            `\n\n➡️  [Transition: ${result.from} → ${result.to}]`,
-          );
+          console.log(`\n\n➡️  [Transition: ${result.from} → ${result.to}]`);
           console.log(`   Reason: ${result.reason}`);
 
           history.push(`${result.from} → ${result.to}: ${result.reason}`);
@@ -155,9 +153,7 @@ export async function runWorkflow(
 
           // Check for transition
           if (result?.action === "transition") {
-            console.log(
-              `\n\n➡️  [Transition: ${result.from} → ${result.to}]`,
-            );
+            console.log(`\n\n➡️  [Transition: ${result.from} → ${result.to}]`);
             console.log(`   Reason: ${result.reason}`);
 
             history.push(`${result.from} → ${result.to}: ${result.reason}`);

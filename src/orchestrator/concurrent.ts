@@ -1,10 +1,10 @@
 /**
  * Concurrent workflow execution
- * 
+ *
  * Extends the orchestrator to support parallel stages
  */
 
-import type { Workflow, Stage } from "./state";
+import type { Stage, Workflow } from "./state";
 
 /**
  * Extended stage definition with parallel execution support
@@ -12,7 +12,7 @@ import type { Workflow, Stage } from "./state";
 export interface ParallelStage extends Stage {
   // Stages that can run in parallel with this one
   parallelWith?: string[];
-  
+
   // Wait for these stages to complete before proceeding
   waitFor?: string[];
 }
@@ -29,19 +29,19 @@ export interface ParallelWorkflow extends Workflow {
  */
 export interface ConcurrentState {
   workflow: ParallelWorkflow;
-  
+
   // Multiple stages can be active at once
   activeStages: Set<string>;
-  
+
   // Track which stages are complete
   completedStages: Set<string>;
-  
+
   // Results from each stage
   stageResults: Record<string, any>;
-  
+
   // Track stage start/end times
   stageTiming: Record<string, { start: number; end?: number }>;
-  
+
   // Full history of all transitions
   history: Array<{
     type: "start" | "complete" | "transition";
@@ -80,9 +80,7 @@ export class ConcurrentOrchestrator {
 
     // If stage has waitFor, check all dependencies are complete
     if (stage.waitFor) {
-      return stage.waitFor.every((dep) =>
-        this.state.completedStages.has(dep),
-      );
+      return stage.waitFor.every((dep) => this.state.completedStages.has(dep));
     }
 
     return true;
@@ -204,7 +202,8 @@ export class ConcurrentOrchestrator {
     lines.push(`Completed stages (${this.state.completedStages.size}):`);
     this.state.completedStages.forEach((stage) => {
       const timing = this.state.stageTiming[stage];
-      const duration = timing?.end && timing.start ? timing.end - timing.start : 0;
+      const duration =
+        timing?.end && timing.start ? timing.end - timing.start : 0;
       lines.push(`  ✓ ${stage} (${(duration / 1000).toFixed(1)}s)`);
     });
     lines.push("");
@@ -212,8 +211,7 @@ export class ConcurrentOrchestrator {
     // Pending stages
     const pending = Object.keys(this.state.workflow.stages).filter(
       (s) =>
-        !this.state.activeStages.has(s) &&
-        !this.state.completedStages.has(s),
+        !this.state.activeStages.has(s) && !this.state.completedStages.has(s),
     );
     if (pending.length > 0) {
       lines.push(`Pending stages (${pending.length}):`);
