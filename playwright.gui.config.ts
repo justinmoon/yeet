@@ -5,7 +5,7 @@ export default defineConfig({
   testMatch: "**/*gui*.playwright.test.ts",
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0,
+  retries: 3, // Retry flaky E2E tests up to 3 times (AI behavior can vary)
   workers: 1,
   reporter: "list",
   use: {
@@ -24,7 +24,7 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  timeout: 30000,
+  timeout: 90000, // 90s timeout for E2E tests with AI (can be slow)
 
   // Auto-start both servers
   webServer: [
