@@ -60,13 +60,17 @@ export async function executeCommand(
 async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("Available commands:\n");
   ui.appendOutput("  /models [model-id]  - List or switch models\n");
-  ui.appendOutput("  /sessions           - Interactive session picker (or list)\n");
+  ui.appendOutput(
+    "  /sessions           - Interactive session picker (or list)\n",
+  );
   ui.appendOutput("  /load <id|number>   - Load a session by ID or number\n");
   ui.appendOutput("  /save <name>        - Name current session\n");
   ui.appendOutput("  /clear              - Clear current session\n");
   ui.appendOutput("  /help               - Show this help\n");
   ui.appendOutput("\nSession Management:\n");
-  ui.appendOutput("  • /sessions opens an interactive modal (↑↓ to navigate, Enter to select)\n");
+  ui.appendOutput(
+    "  • /sessions opens an interactive modal (↑↓ to navigate, Enter to select)\n",
+  );
   ui.appendOutput("  • /load 1 loads the first session from /sessions list\n");
   ui.appendOutput("  • All sessions auto-save to ~/.config/yeet/sessions/\n");
   ui.appendOutput("\nMaple AI models with tool calling support:\n");
@@ -101,11 +105,13 @@ async function handleSessionsCommand(ui: UIAdapter): Promise<void> {
     const updated = new Date(session.updated);
     const timeAgo = getTimeAgo(updated);
     const name = session.name ? ` "${session.name}"` : "";
-    
+
     // Show number for quick access
     ui.appendOutput(`  ${i + 1}. ${session.id}${name}\n`);
-    ui.appendOutput(`     ${session.model} • ${session.totalMessages} messages • ${timeAgo}\n`);
-    
+    ui.appendOutput(
+      `     ${session.model} • ${session.totalMessages} messages • ${timeAgo}\n`,
+    );
+
     // Try to load preview
     const fullSession = loadSession(session.id);
     if (fullSession && fullSession.conversationHistory.length > 0) {
@@ -142,8 +148,8 @@ async function handleLoadCommand(args: string[], ui: UIAdapter): Promise<void> {
   const searchId = args[0];
 
   // Try numeric index first (1-based)
-  const numIndex = parseInt(searchId, 10);
-  if (!isNaN(numIndex) && numIndex > 0) {
+  const numIndex = Number.parseInt(searchId, 10);
+  if (!Number.isNaN(numIndex) && numIndex > 0) {
     const sessions = listSessions();
     if (numIndex <= sessions.length) {
       const session = loadSession(sessions[numIndex - 1].id);
@@ -152,7 +158,9 @@ async function handleLoadCommand(args: string[], ui: UIAdapter): Promise<void> {
         return;
       }
     } else {
-      ui.appendOutput(`❌ Invalid session number: ${numIndex}. Only ${sessions.length} sessions available.\n`);
+      ui.appendOutput(
+        `❌ Invalid session number: ${numIndex}. Only ${sessions.length} sessions available.\n`,
+      );
       return;
     }
   }

@@ -9,6 +9,7 @@ import {
   type AgentMachineInput,
   agentMachine,
 } from "./agent-machine";
+import { coordinateDebate } from "./debate-coordinator";
 
 export interface WorkflowContext {
   // Input
@@ -182,19 +183,10 @@ export const parallelReviewWorkflow = setup({
   actors: {
     codingAgent: agentMachine,
     reviewAgent: agentMachine,
-    debateCoordinator: fromPromise(
-      async (params: { input: any }): Promise<any> => {
-        const { input } = params;
-        // TODO: Implement debate coordinator
-        // For now, return a simple consensus
-        return {
-          consensus:
-            "REVISE_BEST: Implementation looks good but needs more tests",
-          transcript: [],
-          approved: false,
-        };
-      },
-    ),
+    debateCoordinator: fromPromise(async (params: { input: any }) => {
+      const { input } = params;
+      return await coordinateDebate(input);
+    }),
   },
 }).createMachine({
   id: "parallel-review-workflow",
@@ -418,7 +410,7 @@ export const parallelReviewWorkflow = setup({
     debate: {
       invoke: {
         src: "debateCoordinator",
-        input: (ctx) => {
+        input: (ctx: any) => {
           const { context } = ctx;
           return {
             implementations: context.implementations,
