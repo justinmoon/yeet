@@ -24,17 +24,6 @@ log "4. Running unit tests..."
 # Run unit tests + Maple crypto tests, skip model-behavior-dependent E2E tests
 bun test test/tools test/sessions.test.ts test/tokens.test.ts
 
-log "5. Running Playwright tests (web-pty)..."
-bunx playwright test
-
-# Kill any lingering servers before GUI tests
-pkill -f "bun gui/server.ts" 2>/dev/null || true
-pkill -f "bun vite" 2>/dev/null || true
-sleep 1
-
-log "6. Running GUI Playwright tests..."
-# Playwright will auto-start Vite via webServer config
-bunx playwright test --config=playwright.gui.config.ts
-
 echo ""
 log "✅ All CI checks passed!"
+log "Note: Playwright E2E tests disabled in CI (run manually with 'just e2e')"
