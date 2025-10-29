@@ -101,9 +101,15 @@ export async function* runAgent(
       edit: tools.edit,
       write: tools.write,
       search: tools.search,
+      // Control flow tools
       complete: tools.complete,
       clarify: tools.clarify,
       pause: tools.pause,
+      // Orchestration tools
+      delegate_to_worker: tools.delegateToWorker,
+      transition_stage: tools.transitionStage,
+      report_results: tools.reportResults,
+      complete_workflow: tools.completeWorkflow,
     };
 
     logger.info("Starting agent with tools", {
