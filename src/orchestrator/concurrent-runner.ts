@@ -1,14 +1,14 @@
 /**
  * Concurrent workflow runner
- * 
+ *
  * Actually executes parallel workflows
  */
 
+import { runAgent } from "../agent";
+import type { Config } from "../config";
 import type { ParallelWorkflow } from "./concurrent";
 import { ConcurrentOrchestrator } from "./concurrent";
 import { buildWorkerPrompt } from "./prompts";
-import { runAgent } from "../agent";
-import type { Config } from "../config";
 
 export interface ConcurrentWorkflowResult {
   completedStages: Set<string>;
@@ -16,9 +16,10 @@ export interface ConcurrentWorkflowResult {
   stageTiming: Record<string, { start: number; end?: number }>;
   totalTime: number;
   history: Array<{
-    type: "start" | "complete";
+    type: "start" | "complete" | "transition";
     stage: string;
     timestamp: number;
+    reason?: string;
   }>;
 }
 
@@ -66,12 +67,10 @@ export async function runParallelWorkflow(
     // Wait for at least one stage to complete
     if (runningStages.size > 0) {
       const completed = await Promise.race(
-        Array.from(runningStages.entries()).map(
-          async ([name, promise]) => {
-            const result = await promise;
-            return { name, result };
-          },
-        ),
+        Array.from(runningStages.entries()).map(async ([name, promise]) => {
+          const result = await promise;
+          return { name, result };
+        }),
       );
 
       console.log(`\n✓ Stage completed: ${completed.name}`);
@@ -184,5 +183,7 @@ async function executeStage(
     }
   }
 
-  return results || { findings: `Stage ${stageName} completed with no results` };
+  return (
+    results || { findings: `Stage ${stageName} completed with no results` }
+  );
 }

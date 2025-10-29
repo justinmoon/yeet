@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./test",
-  testMatch: ["**/*.playwright.test.ts", "!**/gui-hello.playwright.test.ts"],
+  testMatch: "**/web-pty.playwright.test.ts", // Only web-pty tests, GUI tests use separate config
   fullyParallel: false, // Run tests serially to avoid port conflicts
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -26,4 +26,15 @@ export default defineConfig({
     },
   ],
   timeout: 30000,
+
+  // Auto-start web-pty server
+  webServer: {
+    command: "bun run src/web-pty.ts",
+    url: "http://localhost:8766",
+    timeout: 30000,
+    reuseExistingServer: true,
+    env: {
+      PORT: "8766",
+    },
+  },
 });

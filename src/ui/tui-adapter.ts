@@ -7,7 +7,6 @@ import {
   TextareaRenderable,
   createCliRenderer,
 } from "@opentui/core";
-import { SessionSelectorModal } from "./session-modal";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
@@ -16,6 +15,7 @@ import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import type { UIAdapter } from "./interface";
+import { SessionSelectorModal } from "./session-modal";
 
 export class TUIAdapter implements UIAdapter {
   conversationHistory: Array<{

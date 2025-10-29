@@ -4,12 +4,11 @@
  * Usage: bun run src/orchestrator/cli.ts <workflow> <task>
  */
 
+import { loadConfig } from "../config";
 import { runWorkflow } from "./index";
 import { WORKFLOWS } from "./workflows";
-import { loadConfig } from "../config";
 
 export async function runOrchestratorCLI(args: string[]) {
-
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
     console.log(`
 🤖 Yeet Orchestrator - LLM-based workflow execution
@@ -53,9 +52,7 @@ Options:
   const workflow = WORKFLOWS[workflowName as keyof typeof WORKFLOWS];
   if (!workflow) {
     console.error(`❌ Error: Unknown workflow '${workflowName}'`);
-    console.error(
-      `Available: ${Object.keys(WORKFLOWS).join(", ")}`,
-    );
+    console.error(`Available: ${Object.keys(WORKFLOWS).join(", ")}`);
     process.exit(1);
   }
 

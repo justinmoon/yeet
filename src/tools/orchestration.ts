@@ -11,7 +11,9 @@ const delegateToWorkerSchema = z.object({
     .describe("Type of worker (e.g., 'analyzer', 'security', 'style')"),
   instructions: z
     .string()
-    .describe("Specific instructions for the worker based on current stage goal"),
+    .describe(
+      "Specific instructions for the worker based on current stage goal",
+    ),
 });
 
 export const delegateToWorker = tool({
@@ -64,9 +66,7 @@ export const transitionStage = tool({
  * Tool for workers to report results back to orchestrator
  */
 const reportResultsSchema = z.object({
-  findings: z
-    .string()
-    .describe("Detailed findings from the worker's task"),
+  findings: z.string().describe("Detailed findings from the worker's task"),
   recommendation: z
     .string()
     .optional()
@@ -74,7 +74,8 @@ const reportResultsSchema = z.object({
 });
 
 export const reportResults = tool({
-  description: "Worker reports results back to orchestrator after completing task",
+  description:
+    "Worker reports results back to orchestrator after completing task",
   inputSchema: jsonSchema(z.toJSONSchema(reportResultsSchema)),
   execute: async (args: any) => {
     return {

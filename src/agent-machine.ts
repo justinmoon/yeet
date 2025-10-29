@@ -41,6 +41,7 @@ export interface AgentContext {
   currentStep: number;
   maxSteps: number;
   workingDirectory: string;
+  workflowMode: boolean;
 }
 
 export type AgentMachineEvent =
@@ -54,10 +55,24 @@ export type AgentMachineEvent =
   | { type: "CONTINUE" }
   | { type: "ERROR"; error: string };
 
+export interface AgentMachineInput {
+  workingDirectory?: string;
+  initialMessage?: string;
+  model?: string;
+  maxSteps?: number;
+  /**
+   * When true, machine transitions to final "complete" state after finishing.
+   * This enables workflow orchestration with onDone events.
+   * When false (default), stays in "idle" for interactive use (TUI).
+   */
+  workflowMode?: boolean;
+}
+
 export const agentMachine = setup({
   types: {
     context: {} as AgentContext,
     events: {} as AgentMachineEvent,
+    input: {} as AgentMachineInput,
   },
   actors: {
     // Stream agent response - yields text deltas and tool calls
@@ -68,6 +83,11 @@ export const agentMachine = setup({
 
         const config = await loadConfig();
         const ctx = input as AgentContext;
+
+        // Override model if specified in workflow input
+        // This allows workflows to specify different models per agent
+        // The model is stored in context during initialization
+        // (We can't access input.model here, so it must be in context)
 
         // Stream events from agent to state machine
         for await (const event of createAgentActor({
@@ -175,18 +195,38 @@ export const agentMachine = setup({
 }).createMachine({
   id: "agent",
   initial: "idle",
-  context: {
+  context: ({ input }) => ({
     currentSnapshot: { treeHash: "", timestamp: 0 },
     snapshotHistory: [],
-    messages: [],
+    messages: input.initialMessage
+      ? [{ role: "user" as const, content: input.initialMessage }]
+      : [],
     currentResponse: "",
     toolHistory: [],
     currentStep: 0,
-    maxSteps: 50, // Increased from 10 - complex tasks need more steps
-    workingDirectory: typeof process !== "undefined" ? process.cwd() : "/",
-  },
+    maxSteps: input.maxSteps || 50,
+    workingDirectory:
+      input.workingDirectory ||
+      (typeof process !== "undefined" ? process.cwd() : "/"),
+    workflowMode: input.workflowMode || false,
+  }),
   states: {
     idle: {
+      // If we have an initial message, start working immediately
+      always: [
+        {
+          guard: ({ context }) =>
+            context.messages.length > 0 && context.currentStep === 0,
+          target: "running",
+          actions: "incrementStep",
+        },
+        {
+          // In workflow mode, transition to final state when work is complete
+          guard: ({ context }) =>
+            context.workflowMode && context.currentStep > 0,
+          target: "complete",
+        },
+      ],
       on: {
         USER_MESSAGE: {
           target: "running",
@@ -208,7 +248,7 @@ export const agentMachine = setup({
           actions: "recordToolCall",
         },
         AGENT_DONE: {
-          target: "idle",
+          target: "#agent.idle",
           actions: "finalizeResponse",
         },
         ERROR: "error",
@@ -303,6 +343,11 @@ export const agentMachine = setup({
     },
 
     error: {
+      // In workflow mode, errors are final
+      always: {
+        guard: ({ context }) => context.workflowMode,
+        target: "complete",
+      },
       on: {
         USER_MESSAGE: {
           target: "running",
@@ -310,5 +355,11 @@ export const agentMachine = setup({
         },
       },
     },
+
+    // Final state for workflow orchestration
+    complete: {
+      type: "final",
+    },
   },
+  output: ({ context }) => ({ context }),
 });

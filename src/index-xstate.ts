@@ -4,28 +4,16 @@
 
 import { createActor } from "xstate";
 import { agentMachine } from "./agent-machine";
-import { FilesystemSnapshot } from "./filesystem-snapshot";
 
 async function main() {
   const workingDir = process.cwd();
 
-  // Capture initial snapshot
-  const fsSnapshot = new FilesystemSnapshot(workingDir);
-  const initialSnapshot = await fsSnapshot.capture("Initial state");
-
-  console.log("Initial snapshot captured:", initialSnapshot.treeHash);
-
   // Create agent actor
   const actor = createActor(agentMachine, {
     input: {
-      currentSnapshot: initialSnapshot,
-      snapshotHistory: [initialSnapshot],
-      messages: [],
-      currentResponse: "",
-      toolHistory: [],
-      currentStep: 0,
-      maxSteps: 10,
       workingDirectory: workingDir,
+      maxSteps: 10,
+      // Not using initialMessage, will send USER_MESSAGE event instead
     },
   });
 

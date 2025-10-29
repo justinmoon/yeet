@@ -17,3 +17,5 @@ if (args.includes("--orchestrate") || args.includes("orchestrate")) {
   // Run normal TUI
   await import("./tui");
 }
+
+export {}; // Make this file a module

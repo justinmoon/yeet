@@ -27,7 +27,9 @@ Available Tools: ${stage.tools.join(", ")}
 ${stage.transitions.map((t, i) => `${i + 1}. ${t.next}: ${t.condition}`).join("\n")}
 
 === Your Instructions ===
-${isFinal ? `
+${
+  isFinal
+    ? `
 This is a FINAL stage. Your job is to:
 - Summarize the entire workflow
 - Provide clear final decision/output based on all stage results
@@ -36,7 +38,8 @@ This is a FINAL stage. Your job is to:
 <complete_workflow>
 <summary>Your final summary of the entire workflow and decision</summary>
 </complete_workflow>
-` : `
+`
+    : `
 1. **Execute the current stage's goal** by either:
    - Delegating to a worker agent (recommended for tasks requiring tools)
    - Performing analysis yourself (for simple decision-making)
@@ -62,7 +65,8 @@ This is a FINAL stage. Your job is to:
      <reason>Clear explanation of why this transition is chosen based on evidence</reason>
      <summary>Brief summary of what was accomplished in this stage</summary>
    </transition_stage>
-`}
+`
+}
 
 Remember:
 - Stay focused on the current stage's goal

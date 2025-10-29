@@ -2,7 +2,7 @@
  * Workflow visualization - generate Mermaid diagrams
  */
 
-import type { Workflow, Stage } from "./state";
+import type { Stage, Workflow } from "./state";
 
 /**
  * Generate a Mermaid state diagram from a workflow definition
@@ -25,9 +25,7 @@ export function workflowToMermaid(workflow: Workflow): string {
 
     // Add transitions
     stage.transitions.forEach((transition) => {
-      lines.push(
-        `    ${name} --> ${transition.next}: ${transition.condition}`,
-      );
+      lines.push(`    ${name} --> ${transition.next}: ${transition.condition}`);
     });
 
     // If final, show end
@@ -64,7 +62,9 @@ export function executionToMermaid(
     const nodeId = `Step${idx}`;
 
     lines.push(`    ${nodeId}["${to}"]`);
-    lines.push(`    ${prevNode} -->|"${reason.substring(0, 40)}..."| ${nodeId}`);
+    lines.push(
+      `    ${prevNode} -->|"${reason.substring(0, 40)}..."| ${nodeId}`,
+    );
     lines.push("");
 
     prevNode = nodeId;
@@ -101,7 +101,9 @@ export function workflowToASCII(workflow: Workflow): string {
     lines.push(`│ ${name.toUpperCase().padEnd(56)} │`);
     lines.push(`├${"─".repeat(58)}┤`);
     lines.push(`│ Goal: ${stage.goal.substring(0, 50).padEnd(51)}│`);
-    lines.push(`│ Tools: ${stage.tools.join(", ").substring(0, 48).padEnd(49)}│`);
+    lines.push(
+      `│ Tools: ${stage.tools.join(", ").substring(0, 48).padEnd(49)}│`,
+    );
     lines.push(`└${"─".repeat(58)}┘`);
 
     if (stage.transitions.length > 0) {
@@ -136,9 +138,7 @@ export function visualizeCurrentState(
   const lines: string[] = [];
 
   lines.push("═".repeat(70));
-  lines.push(
-    `  WORKFLOW: ${workflow.name.toUpperCase()}`.padEnd(70, " "),
-  );
+  lines.push(`  WORKFLOW: ${workflow.name.toUpperCase()}`.padEnd(70, " "));
   lines.push("═".repeat(70));
   lines.push("");
 

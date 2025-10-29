@@ -50,7 +50,8 @@ export class SessionSelectorModal {
     // Title
     const title = new TextRenderable(renderer, {
       id: "modal-title",
-      content: "Select a Session (↑↓ to navigate, Enter to select, Esc to cancel)",
+      content:
+        "Select a Session (↑↓ to navigate, Enter to select, Esc to cancel)",
       fg: "blue",
       height: 1,
     });
@@ -84,21 +85,22 @@ export class SessionSelectorModal {
       const session = this.sessions[i];
       const isSelected = i === this.selectedIndex;
       const prefix = isSelected ? "→ " : "  ";
-      
+
       const updated = new Date(session.updated);
       const timeAgo = this.getTimeAgo(updated);
       const name = session.name ? ` "${session.name}"` : "";
-      
+
       content += `${prefix}${i + 1}. ${session.id}${name}\n`;
       content += `   ${session.model} • ${session.totalMessages} messages • ${timeAgo}\n`;
-      
+
       if (session.preview) {
-        const preview = session.preview.length > 80 
-          ? session.preview.substring(0, 77) + "..." 
-          : session.preview;
+        const preview =
+          session.preview.length > 80
+            ? session.preview.substring(0, 77) + "..."
+            : session.preview;
         content += `   Preview: ${preview}\n`;
       }
-      
+
       content += "\n";
     }
 

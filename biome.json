@@ -24,6 +24,9 @@
         "useTemplate": "off",
         "noUselessElse": "off"
       },
+      "complexity": {
+        "noForEach": "off"
+      },
       "performance": {
         "noDelete": "off"
       },

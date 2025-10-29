@@ -1,11 +1,19 @@
 import { defineConfig, devices } from "@playwright/test";
 
+/**
+ * Playwright config for GUI E2E tests with AI (slow, not run in CI)
+ *
+ * These tests run complete workflows with real AI inference,
+ * which can be slow and flaky. Run manually for comprehensive testing.
+ *
+ * Usage: bunx playwright test --config=playwright.gui-e2e.config.ts
+ */
 export default defineConfig({
   testDir: "./test",
-  testMatch: "**/gui.playwright.test.ts", // Only fast GUI tests, not E2E
+  testMatch: "**/gui-fizzbuzz.playwright.test.ts", // Only E2E tests
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
-  retries: process.env.CI ? 2 : 0, // Retries for CI only
+  retries: 3, // Retry flaky E2E tests up to 3 times (AI behavior can vary)
   workers: 1,
   reporter: "list",
   use: {
@@ -24,7 +32,7 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
   ],
-  timeout: 30000, // 30s timeout for fast GUI tests
+  timeout: 120000, // 2 minute timeout for E2E tests with AI
 
   // Auto-start both servers
   webServer: [

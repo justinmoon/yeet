@@ -97,14 +97,8 @@ test(
       console.log("\n🎬 Creating XState actor...");
       const actor = createActor(agentMachine, {
         input: {
-          currentSnapshot: initialSnapshot,
-          snapshotHistory: [initialSnapshot],
-          messages: [],
-          currentResponse: "",
-          toolHistory: [],
-          currentStep: 0,
-          maxSteps: 15,
           workingDirectory: testDir,
+          maxSteps: 15,
         },
       });
 
@@ -383,14 +377,8 @@ test("XState Agent Loop - State Machine Invariants", async () => {
 
     const actor = createActor(agentMachine, {
       input: {
-        currentSnapshot: initialSnapshot,
-        snapshotHistory: [initialSnapshot],
-        messages: [],
-        currentResponse: "",
-        toolHistory: [],
-        currentStep: 0,
-        maxSteps: 5,
         workingDirectory: testDir,
+        maxSteps: 5,
       },
     });
 

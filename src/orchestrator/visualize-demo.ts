@@ -3,8 +3,13 @@
  * Demo of workflow visualization
  */
 
-import { CODE_REVIEW_WORKFLOW, BUG_INVESTIGATION_WORKFLOW } from "./workflows";
-import { workflowToMermaid, workflowToASCII, workflowToDOT, executionToMermaid } from "./visualize";
+import {
+  executionToMermaid,
+  workflowToASCII,
+  workflowToDOT,
+  workflowToMermaid,
+} from "./visualize";
+import { BUG_INVESTIGATION_WORKFLOW, CODE_REVIEW_WORKFLOW } from "./workflows";
 
 console.log("=".repeat(70));
 console.log("WORKFLOW VISUALIZATION DEMO");

@@ -46,6 +46,7 @@
             typescript
             just
             biome
+            ripgrep
             
             # Testing - Playwright browsers
             playwright-driver.browsers
@@ -63,6 +64,7 @@
             export PATH="${pkgs.lib.makeBinPath [
               pkgs.bun
               pkgs.biome
+              pkgs.ripgrep
             ]}:$PATH"
             
             # Tell Playwright to use Nix-provided browsers

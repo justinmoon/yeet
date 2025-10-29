@@ -1,56 +1,8 @@
-import { type ChildProcess, spawn } from "node:child_process";
 import { expect, test } from "@playwright/test";
 
-let serverProcess: ChildProcess;
 const PORT = 8766; // Use different port to avoid conflicts
 
-test.beforeAll(async () => {
-  // Start the web-pty server using Bun
-  serverProcess = spawn("bun", ["run", "src/web-pty.ts"], {
-    env: { ...process.env, PORT: String(PORT) },
-    stdio: "pipe",
-  });
-
-  // Wait for server to start
-  await new Promise<void>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      reject(new Error("Server failed to start within 10s"));
-    }, 10000);
-
-    serverProcess.stdout?.on("data", (data) => {
-      const output = data.toString();
-      console.log("Server:", output);
-      if (output.includes("Web UI available")) {
-        clearTimeout(timeout);
-        resolve();
-      }
-    });
-
-    serverProcess.stderr?.on("data", (data) => {
-      console.error("Server error:", data.toString());
-    });
-
-    serverProcess.on("error", (err) => {
-      clearTimeout(timeout);
-      reject(err);
-    });
-  });
-
-  // Give it a bit more time to be ready
-  await new Promise((resolve) => setTimeout(resolve, 1000));
-});
-
-test.afterAll(async () => {
-  // Clean up server
-  if (serverProcess) {
-    serverProcess.kill("SIGTERM");
-    // Wait for graceful shutdown
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-    if (!serverProcess.killed) {
-      serverProcess.kill("SIGKILL");
-    }
-  }
-});
+// Server is managed by playwright webServer config
 
 test("web-pty server should serve HTML page", async ({ page }) => {
   await page.goto(`http://localhost:${PORT}`);

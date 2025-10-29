@@ -2,11 +2,11 @@
  * Main orchestrator loop for LLM-based workflow execution
  */
 
-import { WorkflowState, type Workflow } from "./state";
-import { buildOrchestratorPrompt, buildWorkerPrompt } from "./prompts";
-import { runAgent, type AgentEvent, type MessageContent } from "../agent";
+import { type AgentEvent, type MessageContent, runAgent } from "../agent";
 import type { Config } from "../config";
 import { logger } from "../logger";
+import { buildOrchestratorPrompt, buildWorkerPrompt } from "./prompts";
+import { type Workflow, WorkflowState } from "./state";
 
 export interface WorkflowResult {
   result: Record<string, any>;
@@ -62,7 +62,7 @@ export async function runWorkflow(
 
     // Run orchestrator agent
     for await (const event of runAgent(messages, config)) {
-      if (event.type === "text") {
+      if (event.type === "text" && event.content) {
         process.stdout.write(event.content);
       }
 
@@ -83,9 +83,7 @@ export async function runWorkflow(
 
         // Check if this is a transition request
         if (result?.action === "transition") {
-          console.log(
-            `\n\n➡️  [Transition: ${result.from} → ${result.to}]`,
-          );
+          console.log(`\n\n➡️  [Transition: ${result.from} → ${result.to}]`);
           console.log(`   Reason: ${result.reason}`);
 
           history.push(`${result.from} → ${result.to}: ${result.reason}`);
@@ -146,7 +144,7 @@ export async function runWorkflow(
       // Continue orchestrator loop to get transition decision
       // Run orchestrator again to process worker results and decide transition
       for await (const event of runAgent(messages, config)) {
-        if (event.type === "text") {
+        if (event.type === "text" && event.content) {
           process.stdout.write(event.content);
         }
 
@@ -155,9 +153,7 @@ export async function runWorkflow(
 
           // Check for transition
           if (result?.action === "transition") {
-            console.log(
-              `\n\n➡️  [Transition: ${result.from} → ${result.to}]`,
-            );
+            console.log(`\n\n➡️  [Transition: ${result.from} → ${result.to}]`);
             console.log(`   Reason: ${result.reason}`);
 
             history.push(`${result.from} → ${result.to}: ${result.reason}`);
@@ -231,7 +227,7 @@ async function runWorker(
   };
 
   for await (const event of runAgent(messages, workerConfig)) {
-    if (event.type === "text") {
+    if (event.type === "text" && event.content) {
       process.stdout.write(event.content);
     }
 
