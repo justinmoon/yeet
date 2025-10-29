@@ -43,7 +43,12 @@ async function runTask(
   timeoutMs = 30000,
 ): Promise<{ success: boolean; duration: number; error?: string }> {
   const startTime = Date.now();
-  const actor = createActor(agentMachine);
+  const actor = createActor(agentMachine, {
+    input: {
+      workingDirectory: TEST_DIR,
+      maxSteps: 50,
+    },
+  });
 
   return new Promise((resolve) => {
     const timeout = setTimeout(() => {
