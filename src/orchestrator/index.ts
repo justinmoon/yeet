@@ -62,7 +62,7 @@ export async function runWorkflow(
 
     // Run orchestrator agent
     for await (const event of runAgent(messages, config)) {
-      if (event.type === "text") {
+      if (event.type === "text" && event.content) {
         process.stdout.write(event.content);
       }
 
@@ -146,7 +146,7 @@ export async function runWorkflow(
       // Continue orchestrator loop to get transition decision
       // Run orchestrator again to process worker results and decide transition
       for await (const event of runAgent(messages, config)) {
-        if (event.type === "text") {
+        if (event.type === "text" && event.content) {
           process.stdout.write(event.content);
         }
 
@@ -231,7 +231,7 @@ async function runWorker(
   };
 
   for await (const event of runAgent(messages, workerConfig)) {
-    if (event.type === "text") {
+    if (event.type === "text" && event.content) {
       process.stdout.write(event.content);
     }
 

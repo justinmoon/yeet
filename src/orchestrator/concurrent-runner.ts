@@ -16,9 +16,10 @@ export interface ConcurrentWorkflowResult {
   stageTiming: Record<string, { start: number; end?: number }>;
   totalTime: number;
   history: Array<{
-    type: "start" | "complete";
+    type: "start" | "complete" | "transition";
     stage: string;
     timestamp: number;
+    reason?: string;
   }>;
 }
 
