@@ -29,7 +29,9 @@ afterEach(() => {
 
 describe("XState Agent E2E", () => {
   test("complete workflow: write file and read it back", async () => {
-    const actor = createActor(agentMachine);
+    const actor = createActor(agentMachine, {
+      input: {},
+    });
 
     const states: string[] = [];
 
@@ -82,7 +84,9 @@ describe("XState Agent E2E", () => {
   }, 35000); // 35s timeout
 
   test("simple bash command execution", async () => {
-    const actor = createActor(agentMachine);
+    const actor = createActor(agentMachine, {
+      input: {},
+    });
 
     const states: string[] = [];
 

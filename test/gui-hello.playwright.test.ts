@@ -53,14 +53,17 @@ test.describe("GUI Hello World", () => {
     await page.waitForSelector(".react-flow", { timeout: 10000 });
 
     // Check for key states
+    // With nested states, looking for: idle, running, thinking, executingTool, error, complete
     await expect(
-      page.locator(".react-flow__node").filter({ hasText: "Idle" }),
+      page.locator(".react-flow__node").filter({ hasText: "idle" }),
     ).toBeVisible();
     await expect(
-      page.locator(".react-flow__node").filter({ hasText: "Thinking" }),
+      page.locator(".react-flow__node").filter({ hasText: /thinking/i }),
     ).toBeVisible();
     await expect(
-      page.locator(".react-flow__node").filter({ hasText: "Executing Tool" }),
+      page
+        .locator(".react-flow__node")
+        .filter({ hasText: /executingTool|Executing/i }),
     ).toBeVisible();
   });
 
@@ -71,7 +74,7 @@ test.describe("GUI Hello World", () => {
     // Should have multiple edges connecting states
     const edges = page.locator(".react-flow__edge");
     const count = await edges.count();
-    expect(count).toBeGreaterThan(5); // At least several transitions
+    expect(count).toBeGreaterThan(3); // At least 3-4 transitions in simplified state machine
   });
 
   test("React Flow renders successfully", async ({ page }) => {

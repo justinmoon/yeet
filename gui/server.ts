@@ -41,8 +41,13 @@ const server = Bun.serve({
 
             send({ type: "started", task });
 
-            // Create actor - agentMachine already has initial context
-            const actor = createActor(agentMachine);
+            // Create actor with proper input
+            const actor = createActor(agentMachine, {
+              input: {
+                workingDirectory: process.cwd(),
+                maxSteps: 50,
+              },
+            });
 
             // Track completion
             let completed = false;

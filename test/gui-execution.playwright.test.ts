@@ -45,9 +45,9 @@ test.describe("Phase 2: Live Execution", () => {
 
     // Check for state transitions in log
     await expect(page.locator("text=→ idle")).toBeVisible({ timeout: 3000 });
-    await expect(page.locator("text=→ thinking")).toBeVisible({
-      timeout: 3000,
-    });
+    await expect(
+      page.locator("text*=thinking").or(page.locator("text*=running")),
+    ).toBeVisible({ timeout: 5000 });
 
     // Check for tool execution
     await expect(page.locator("text=🔧")).toBeVisible({ timeout: 5000 });

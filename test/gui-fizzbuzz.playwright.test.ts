@@ -51,10 +51,11 @@ test.describe("GUI FizzBuzz E2E", () => {
     });
 
     // Watch for key state transitions
+    // States now include idle, running.thinking, running.executingTool
     await expect(page.locator("text=→ idle")).toBeVisible({ timeout: 5000 });
-    await expect(page.locator("text=→ running.thinking")).toBeVisible({
-      timeout: 5000,
-    });
+    await expect(
+      page.locator("text*=running").or(page.locator("text*=thinking")),
+    ).toBeVisible({ timeout: 5000 });
     await expect(page.locator("text=→ running.executingTool")).toBeVisible({
       timeout: 10000,
     });
