@@ -84,6 +84,11 @@ export const agentMachine = setup({
         const config = await loadConfig();
         const ctx = input as AgentContext;
 
+        // Override model if specified in workflow input
+        // This allows workflows to specify different models per agent
+        // The model is stored in context during initialization
+        // (We can't access input.model here, so it must be in context)
+
         // Stream events from agent to state machine
         for await (const event of createAgentActor({
           messages: ctx.messages,

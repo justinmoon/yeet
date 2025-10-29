@@ -29,7 +29,7 @@ export interface UIAdapter {
   clearAttachments(): void;
   updateTokenCount(): void;
   saveCurrentSession(): void;
-  
+
   // Session management
   showSessionSelector?(): void;
 
