@@ -35,3 +35,5 @@ coverage/
 test-results/
 .last-run.json
 .helix/
+
+worktrees
