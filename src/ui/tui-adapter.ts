@@ -7,6 +7,7 @@ import {
   TextareaRenderable,
   createCliRenderer,
 } from "@opentui/core";
+import { SessionSelectorModal } from "./session-modal";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
@@ -25,6 +26,8 @@ export class TUIAdapter implements UIAdapter {
   currentTokens = 0;
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
+  private sessionModal?: SessionSelectorModal;
+  private modalActive = false;
 
   private renderer!: CliRenderer;
   private input!: TextareaRenderable;
@@ -191,8 +194,130 @@ export class TUIAdapter implements UIAdapter {
     this.input.focus();
   }
 
+  showSessionSelector(): void {
+    const { listSessions, loadSession } = require("../sessions");
+    const sessions = listSessions();
+
+    if (sessions.length === 0) {
+      this.appendOutput("No saved sessions found.\n");
+      return;
+    }
+
+    // Load previews for sessions
+    const sessionsWithPreviews = sessions.slice(0, 50).map((s: any) => {
+      const fullSession = loadSession(s.id);
+      let preview = "";
+      if (fullSession && fullSession.conversationHistory.length > 0) {
+        const firstUserMsg = fullSession.conversationHistory.find(
+          (m: any) => m.role === "user",
+        );
+        if (firstUserMsg) {
+          preview =
+            typeof firstUserMsg.content === "string"
+              ? firstUserMsg.content
+              : "[message with images]";
+        }
+      }
+      return { ...s, preview };
+    });
+
+    this.sessionModal = new SessionSelectorModal(
+      this.renderer,
+      sessionsWithPreviews,
+    );
+
+    this.sessionModal.setOnSelect(async (sessionId: string) => {
+      this.modalActive = false;
+      this.sessionModal?.hide();
+      this.sessionModal = undefined;
+      this.input.focus();
+      const { loadSession } = require("../sessions");
+      const session = loadSession(sessionId);
+
+      if (!session) {
+        this.appendOutput(`❌ Failed to load session: ${sessionId}\n`);
+        return;
+      }
+
+      // Load session into UI
+      this.currentSessionId = session.id;
+      this.conversationHistory = session.conversationHistory;
+      this.currentTokens = session.currentTokens;
+
+      // Display conversation history
+      this.clearOutput();
+      this.appendOutput(`✓ Loaded session ${session.id}\n`);
+      if (session.name) {
+        this.appendOutput(`  Name: ${session.name}\n`);
+      }
+      this.appendOutput(
+        `  ${session.model} • ${session.totalMessages} messages\n\n`,
+      );
+
+      // Replay conversation
+      for (const message of session.conversationHistory) {
+        if (message.role === "user") {
+          const hasImages =
+            Array.isArray(message.content) &&
+            message.content.some((p: any) => p.type === "image");
+          if (hasImages) {
+            const imageCount = (message.content as any[]).filter(
+              (p) => p.type === "image",
+            ).length;
+            const text = (message.content as any[])
+              .filter((p) => p.type === "text")
+              .map((p) => p.text)
+              .join("");
+            this.appendOutput(`You: ${text} [${imageCount} image(s)]\n\n`);
+          } else {
+            this.appendOutput(`You: ${message.content}\n\n`);
+          }
+        } else {
+          this.appendOutput(`Assistant: ${message.content}\n\n`);
+        }
+      }
+
+      this.updateTokenCount();
+    });
+
+    this.sessionModal.setOnCancel(() => {
+      this.modalActive = false;
+      this.sessionModal?.hide();
+      this.sessionModal = undefined;
+      this.input.focus();
+    });
+
+    this.modalActive = true;
+    this.sessionModal.show();
+  }
+
   private setupInputHandlers(): void {
     this.renderer.keyInput.on("keypress", async (key: KeyEvent) => {
+      // Handle modal navigation
+      if (this.modalActive && this.sessionModal) {
+        if (key.name === "escape") {
+          key.preventDefault();
+          this.sessionModal.cancel();
+          return;
+        }
+        if (key.name === "return") {
+          key.preventDefault();
+          this.sessionModal.selectCurrent();
+          return;
+        }
+        if (key.name === "up") {
+          key.preventDefault();
+          this.sessionModal.moveUp();
+          return;
+        }
+        if (key.name === "down") {
+          key.preventDefault();
+          this.sessionModal.moveDown();
+          return;
+        }
+        // Block other input while modal is active
+        return;
+      }
       if (key.name === "v" && key.ctrl) {
         key.preventDefault();
         const image = await readImageFromClipboard();

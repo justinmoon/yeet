@@ -60,11 +60,15 @@ export async function executeCommand(
 async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("Available commands:\n");
   ui.appendOutput("  /models [model-id]  - List or switch models\n");
-  ui.appendOutput("  /sessions           - List saved sessions\n");
-  ui.appendOutput("  /load <id>          - Load a session by ID\n");
+  ui.appendOutput("  /sessions           - Interactive session picker (or list)\n");
+  ui.appendOutput("  /load <id|number>   - Load a session by ID or number\n");
   ui.appendOutput("  /save <name>        - Name current session\n");
   ui.appendOutput("  /clear              - Clear current session\n");
   ui.appendOutput("  /help               - Show this help\n");
+  ui.appendOutput("\nSession Management:\n");
+  ui.appendOutput("  • /sessions opens an interactive modal (↑↓ to navigate, Enter to select)\n");
+  ui.appendOutput("  • /load 1 loads the first session from /sessions list\n");
+  ui.appendOutput("  • All sessions auto-save to ~/.config/yeet/sessions/\n");
   ui.appendOutput("\nMaple AI models with tool calling support:\n");
   ui.appendOutput("  ✓ deepseek-r1-0528, deepseek-v31-terminus\n");
   ui.appendOutput("  ✓ qwen3-coder-480b, qwen3-coder-30b-a3b, qwen2-5-72b\n");
@@ -75,7 +79,14 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
 }
 
 async function handleSessionsCommand(ui: UIAdapter): Promise<void> {
-  const { listSessions } = require("../sessions");
+  // If UI supports interactive modal, use that
+  if (ui.showSessionSelector) {
+    ui.showSessionSelector();
+    return;
+  }
+
+  // Fallback: text-based list with numbers
+  const { listSessions, loadSession } = require("../sessions");
   const sessions = listSessions();
 
   if (sessions.length === 0) {
@@ -85,32 +96,68 @@ async function handleSessionsCommand(ui: UIAdapter): Promise<void> {
 
   ui.appendOutput(`Found ${sessions.length} session(s):\n\n`);
 
-  for (const session of sessions.slice(0, 20)) {
+  for (let i = 0; i < Math.min(sessions.length, 20); i++) {
+    const session = sessions[i];
     const updated = new Date(session.updated);
     const timeAgo = getTimeAgo(updated);
     const name = session.name ? ` "${session.name}"` : "";
-    ui.appendOutput(
-      `  ${session.id}${name}\n    ${session.model} • ${session.totalMessages} messages • ${timeAgo}\n\n`,
-    );
+    
+    // Show number for quick access
+    ui.appendOutput(`  ${i + 1}. ${session.id}${name}\n`);
+    ui.appendOutput(`     ${session.model} • ${session.totalMessages} messages • ${timeAgo}\n`);
+    
+    // Try to load preview
+    const fullSession = loadSession(session.id);
+    if (fullSession && fullSession.conversationHistory.length > 0) {
+      const firstUserMsg = fullSession.conversationHistory.find(
+        (m: any) => m.role === "user",
+      );
+      if (firstUserMsg) {
+        const preview =
+          typeof firstUserMsg.content === "string"
+            ? firstUserMsg.content
+            : "[message with images]";
+        const shortPreview =
+          preview.length > 80 ? preview.substring(0, 77) + "..." : preview;
+        ui.appendOutput(`     Preview: ${shortPreview}\n`);
+      }
+    }
+    ui.appendOutput("\n");
   }
 
   if (sessions.length > 20) {
     ui.appendOutput(`  ... and ${sessions.length - 20} more\n\n`);
   }
 
-  ui.appendOutput("Usage: /load <id> to resume a session\n");
+  ui.appendOutput("Usage: /load <id|number> to resume a session\n");
 }
 
 async function handleLoadCommand(args: string[], ui: UIAdapter): Promise<void> {
   if (args.length === 0) {
-    ui.appendOutput("❌ Usage: /load <session-id>\n");
+    ui.appendOutput("❌ Usage: /load <session-id|number>\n");
     return;
   }
 
   const { loadSession, listSessions } = require("../sessions");
   const searchId = args[0];
 
-  // Try exact match first
+  // Try numeric index first (1-based)
+  const numIndex = parseInt(searchId, 10);
+  if (!isNaN(numIndex) && numIndex > 0) {
+    const sessions = listSessions();
+    if (numIndex <= sessions.length) {
+      const session = loadSession(sessions[numIndex - 1].id);
+      if (session) {
+        await loadSessionIntoUI(session, ui);
+        return;
+      }
+    } else {
+      ui.appendOutput(`❌ Invalid session number: ${numIndex}. Only ${sessions.length} sessions available.\n`);
+      return;
+    }
+  }
+
+  // Try exact match
   let session = loadSession(searchId);
 
   // If not found, try partial match
@@ -139,6 +186,10 @@ async function handleLoadCommand(args: string[], ui: UIAdapter): Promise<void> {
     return;
   }
 
+  await loadSessionIntoUI(session, ui);
+}
+
+function loadSessionIntoUI(session: any, ui: UIAdapter): void {
   // Load session into UI
   ui.currentSessionId = session.id;
   ui.conversationHistory = session.conversationHistory;

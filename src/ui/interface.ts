@@ -29,6 +29,9 @@ export interface UIAdapter {
   clearAttachments(): void;
   updateTokenCount(): void;
   saveCurrentSession(): void;
+  
+  // Session management
+  showSessionSelector?(): void;
 
   // Input handling
   onUserInput(callback: (message: string) => Promise<void>): void;
