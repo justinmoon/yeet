@@ -11,9 +11,23 @@
       let
         pkgs = nixpkgs.legacyPackages.${system};
         
-        yeet = pkgs.writeShellScriptBin "yeet" ''
-          exec ${pkgs.bun}/bin/bun run ${./src/index.ts} "$@"
-        '';
+        yeet = pkgs.stdenv.mkDerivation {
+          pname = "yeet";
+          version = "0.1.0";
+          src = ./.;
+          
+          installPhase = ''
+            mkdir -p $out/share/yeet
+            cp -r src node_modules package.json $out/share/yeet/
+            
+            mkdir -p $out/bin
+            cat > $out/bin/yeet <<EOF
+            #!${pkgs.bash}/bin/bash
+            exec ${pkgs.bun}/bin/bun run $out/share/yeet/src/index.ts "\$@"
+            EOF
+            chmod +x $out/bin/yeet
+          '';
+        };
       in
       {
         packages.default = yeet;
