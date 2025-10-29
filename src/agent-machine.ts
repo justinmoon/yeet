@@ -198,14 +198,6 @@ export const agentMachine = setup({
     // Main execution state - agent runs here until complete
     running: {
       initial: "thinking",
-      // Invoke agent at this level so it stays alive across thinking/executingTool transitions
-      invoke: {
-        src: "streamAgent",
-        input: ({ context }) => ({
-          messages: context.messages,
-          snapshot: context.currentSnapshot,
-        }),
-      },
       on: {
         // Handle agent events at running level
         TEXT_DELTA: {
@@ -223,7 +215,15 @@ export const agentMachine = setup({
       },
       states: {
         thinking: {
-          // No invoke here - parent handles it
+          // Re-invoke agent each time we enter thinking state
+          // This allows it to continue after tool execution with maxSteps:1
+          invoke: {
+            src: "streamAgent",
+            input: ({ context }) => ({
+              messages: context.messages,
+              snapshot: context.currentSnapshot,
+            }),
+          },
         },
 
         executingTool: {

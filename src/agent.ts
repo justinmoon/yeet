@@ -15,11 +15,16 @@ CRITICAL INSTRUCTIONS:
 - DO NOT describe what you would do
 - ACTUALLY CALL THE TOOLS to perform the actions
 
-WORKFLOW CONTROL (OPTIONAL):
-- When you've finished the task, you can call complete({ summary: "what you did" })
+MULTI-STEP TASKS:
+- Many tasks have multiple steps (e.g., "create file A, then file B, then file C")
+- You must complete ALL steps before calling the complete tool
+- After each tool succeeds, check if there are more steps remaining
+- Only call complete when you have truly finished EVERYTHING the user requested
+
+WORKFLOW CONTROL:
+- When you've finished ALL parts of the task, call complete({ summary: "what you did" })
 - If you need clarification from user, call clarify({ question: "what you need to know" })
 - If you're stuck or want to pause for review, call pause({ reason: "why pausing" })
-- These tools are available but not required for every interaction
 
 SEARCH TOOL:
 - Use 'search' instead of bash+grep for finding patterns in files
