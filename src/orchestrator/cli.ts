@@ -8,8 +8,7 @@ import { runWorkflow } from "./index";
 import { WORKFLOWS } from "./workflows";
 import { loadConfig } from "../config";
 
-async function main() {
-  const args = process.argv.slice(2);
+export async function runOrchestratorCLI(args: string[]) {
 
   if (args.length === 0 || args.includes("--help") || args.includes("-h")) {
     console.log(`
@@ -102,7 +101,11 @@ Options:
   }
 }
 
-main().catch((error) => {
-  console.error("Fatal error:", error);
-  process.exit(1);
-});
+// Allow running as standalone script
+if (import.meta.main) {
+  const args = process.argv.slice(2);
+  runOrchestratorCLI(args).catch((error) => {
+    console.error("Fatal error:", error);
+    process.exit(1);
+  });
+}
