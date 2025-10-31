@@ -65,6 +65,7 @@ export async function* runAgent(
   messages: Array<{ role: "user" | "assistant"; content: MessageContent }>,
   config: Config,
   onToolCall?: (tool: string) => void,
+  maxSteps?: number,
 ): AsyncGenerator<AgentEvent> {
   try {
     // Choose provider based on config
@@ -117,19 +118,18 @@ export async function* runAgent(
       messagesCount: messages.length,
     });
 
-    // CRITICAL: maxSteps: 1
-    // XState owns the tool execution loop. The SDK executes ONE step:
-    // - LLM generates text and/or makes ONE tool call
-    // - We yield the tool call event
-    // - XState executes the tool in a separate state
-    // - XState re-invokes this agent with updated messages including tool result
-    // This gives us tool execution as XState states for visibility and control
+    // maxSteps controls how many tool rounds the agent can do:
+    // - For XState integration: pass maxSteps=1 so XState controls the loop
+    // - For direct TUI usage: use config.maxSteps (default 20) for multi-step tasks
+    // If not specified, uses config value (allowing agent to complete multi-step tasks)
+    const effectiveMaxSteps = maxSteps ?? config.maxSteps ?? 20;
+
     const result = await streamText({
       model: provider(modelName),
       system: SYSTEM_PROMPT,
       messages,
       tools: toolSet,
-      maxSteps: 1, // ⚠️ Only ONE step - XState controls the loop
+      maxSteps: effectiveMaxSteps,
       temperature: config.temperature || 0.3,
     });
 

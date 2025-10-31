@@ -33,7 +33,8 @@ export async function* createAgentActor(
   }));
 
   // Stream agent events and convert to XState events
-  for await (const event of runAgent(agentMessages, config)) {
+  // XState needs maxSteps=1 so it can control the tool execution loop
+  for await (const event of runAgent(agentMessages, config, undefined, 1)) {
     switch (event.type) {
       case "text":
         if (event.content) {
