@@ -31,6 +31,7 @@ export class TUIAdapter implements UIAdapter {
 
   private renderer!: CliRenderer;
   private input!: TextareaRenderable;
+  private inputBox!: BoxRenderable;
   private output!: TextRenderable;
   private status!: TextRenderable;
   private scrollBox!: ScrollBoxRenderable;
@@ -111,6 +112,7 @@ export class TUIAdapter implements UIAdapter {
 
   clearInput(): void {
     this.input.editBuffer.setText("", { history: false });
+    this.inputBox.height = 3; // Reset to minimum height
   }
 
   clearAttachments(): void {
@@ -171,15 +173,17 @@ export class TUIAdapter implements UIAdapter {
     });
     this.scrollBox.add(this.output);
 
-    const inputBox = new BoxRenderable(this.renderer, {
+    this.inputBox = new BoxRenderable(this.renderer, {
       id: "input-box",
       borderStyle: "single",
       borderColor: "blue",
-      height: 3,
+      minHeight: 3,
+      flexGrow: 0,
+      flexShrink: 0,
       border: true,
       zIndex: 100,
     });
-    container.add(inputBox);
+    container.add(this.inputBox);
 
     this.input = new TextareaRenderable(this.renderer, {
       id: "input",
@@ -188,10 +192,39 @@ export class TUIAdapter implements UIAdapter {
       wrapMode: "word",
       showCursor: true,
       cursorColor: "blue",
-      height: 1,
+      flexGrow: 1,
+      flexShrink: 0,
     });
-    inputBox.add(this.input);
+    this.inputBox.add(this.input);
     this.input.focus();
+  }
+
+  private adjustInputHeight(): void {
+    const text = this.input.editBuffer.getText();
+    const terminalHeight = this.renderer.height;
+    const maxInputHeight = Math.floor(terminalHeight / 2);
+
+    // Count lines in the text, accounting for word wrapping
+    // Subtract 4 for borders and padding
+    const inputWidth = this.renderer.width - 4;
+    let lineCount = 1;
+
+    if (text) {
+      const lines = text.split("\n");
+      lineCount = lines.reduce((total, line) => {
+        if (line.length === 0) return total + 1;
+        // Account for word wrapping
+        return total + Math.ceil(line.length / Math.max(1, inputWidth));
+      }, 0);
+    }
+
+    // Add padding for borders (2 lines for top/bottom border)
+    const desiredHeight = Math.min(lineCount + 2, maxInputHeight);
+    const newHeight = Math.max(3, desiredHeight); // Minimum 3 lines
+
+    if (this.inputBox.height !== newHeight) {
+      this.inputBox.height = newHeight;
+    }
   }
 
   showSessionSelector(): void {
@@ -293,6 +326,9 @@ export class TUIAdapter implements UIAdapter {
 
   private setupInputHandlers(): void {
     this.renderer.keyInput.on("keypress", async (key: KeyEvent) => {
+      // Adjust input height on every keypress
+      this.adjustInputHeight();
+
       // Handle modal navigation
       if (this.modalActive && this.sessionModal) {
         if (key.name === "escape") {
