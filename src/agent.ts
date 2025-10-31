@@ -1,6 +1,6 @@
 // @ts-nocheck - AI SDK v5 types are complex, but runtime works correctly
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { streamText } from "ai";
+import { stepCountIs, streamText } from "ai";
 import type { Config } from "./config";
 import { logger } from "./logger";
 import { createMapleFetch } from "./maple";
@@ -118,18 +118,18 @@ export async function* runAgent(
       messagesCount: messages.length,
     });
 
-    // maxSteps controls how many tool rounds the agent can do:
-    // - For XState integration: pass maxSteps=1 so XState controls the loop
-    // - For direct TUI usage: use config.maxSteps (default 20) for multi-step tasks
-    // If not specified, uses config value (allowing agent to complete multi-step tasks)
-    const effectiveMaxSteps = maxSteps ?? config.maxSteps ?? 20;
+    // stopWhen controls multi-step tool calls (AI SDK v5+):
+    // - For XState integration: pass maxSteps=1 to disable multi-step (XState controls the loop)
+    // - For direct TUI usage: use stopWhen with config.maxSteps to enable multi-step tasks
+    const effectiveSteps = maxSteps ?? config.maxSteps ?? 20;
 
     const result = await streamText({
       model: provider(modelName),
       system: SYSTEM_PROMPT,
       messages,
       tools: toolSet,
-      maxSteps: effectiveMaxSteps,
+      // Only use stopWhen if maxSteps > 1 (multi-step mode)
+      ...(effectiveSteps > 1 ? { stopWhen: stepCountIs(effectiveSteps) } : {}),
       temperature: config.temperature || 0.3,
     });
 
