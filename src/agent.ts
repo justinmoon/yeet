@@ -1,11 +1,11 @@
+import { createAnthropic } from "@ai-sdk/anthropic";
 // @ts-nocheck - AI SDK v5 types are complex, but runtime works correctly
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
-import { createAnthropic } from "@ai-sdk/anthropic";
 import { stepCountIs, streamText } from "ai";
+import { createAnthropicFetch } from "./auth";
 import type { Config } from "./config";
 import { logger } from "./logger";
 import { createMapleFetch } from "./maple";
-import { createAnthropicFetch } from "./auth";
 import * as tools from "./tools";
 
 // NOTE: Claude Code spoofing copied from opencode
@@ -96,7 +96,7 @@ export async function* runAgent(
         // Use OAuth with custom fetch
         const customFetch = createAnthropicFetch(config);
         provider = createAnthropic({
-          fetch: customFetch,
+          fetch: customFetch as any,
           headers: {
             "anthropic-beta":
               "claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
@@ -125,7 +125,7 @@ export async function* runAgent(
       provider = createOpenAICompatible({
         name: "maple",
         baseURL: `${config.maple!.apiUrl}/v1`,
-        fetch: mapleFetch,
+        fetch: mapleFetch as any,
       });
       modelName = config.maple!.model;
     } else {
@@ -168,7 +168,7 @@ export async function* runAgent(
     const result = await streamText({
       model: provider(modelName),
       system: getSystemPrompt(config.activeProvider),
-      messages,
+      messages: messages as any,
       tools: toolSet,
       // Only use stopWhen if maxSteps > 1 (multi-step mode)
       ...(effectiveSteps > 1 ? { stopWhen: stepCountIs(effectiveSteps) } : {}),

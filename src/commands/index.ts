@@ -1,8 +1,8 @@
+import { exchangeOAuthCode, startAnthropicOAuth } from "../auth";
 import type { Config } from "../config";
 import { saveConfig } from "../config";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
 import type { UIAdapter } from "../ui/interface";
-import { startAnthropicOAuth, exchangeOAuthCode } from "../auth";
 
 export interface ParsedCommand {
   isCommand: boolean;

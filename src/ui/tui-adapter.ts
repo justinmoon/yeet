@@ -15,8 +15,8 @@ import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import type { UIAdapter } from "./interface";
-import { SessionSelectorModal } from "./session-modal";
 import { ModelSelectorModal } from "./model-modal";
+import { SessionSelectorModal } from "./session-modal";
 
 export class TUIAdapter implements UIAdapter {
   conversationHistory: Array<{

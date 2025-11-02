@@ -1,7 +1,7 @@
 import type { CliRenderer } from "@opentui/core";
-import { ListModal, type ListModalItem } from "./list-modal";
-import type { ModelInfo } from "../models/registry";
 import type { Config } from "../config";
+import type { ModelInfo } from "../models/registry";
+import { ListModal, type ListModalItem } from "./list-modal";
 
 interface ModelModalItem extends ListModalItem {
   modelId: string;
@@ -92,8 +92,7 @@ export class ModelSelectorModal {
         (this.modal as any).selectedIndex
       ];
       if (
-        selectedItem &&
-        selectedItem.modelId &&
+        selectedItem?.modelId &&
         !selectedItem.id.startsWith("header-") &&
         !selectedItem.id.startsWith("spacer-")
       ) {

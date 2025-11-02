@@ -1,1 +1,3 @@
 - have a cli tool to transfer a session from one machine to another. we'd want to ask the agent if it needs any other repos or anything else in the environment that won't be available on the other machien -- flake.nix helps here. ideally i could work on my laptop and if i need to stop i could just run like one command and transfer everything over to hetzner ...
+- "commands" should work with vibe
+- commands are kinda annoying to use. it would be better to structure this as like a clipboard. do a hotkey to look at all the things we can paste into the input (ie commands) and when one is selected we actually paste it in there. this way we are re-acquainted with what's in there. doesn't need to be magic.
