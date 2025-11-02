@@ -94,8 +94,10 @@ export async function* runAgent(
 
       if (anthropicConfig.type === "oauth") {
         // Use OAuth with custom fetch
+        // Note: SDK requires apiKey even with custom fetch, but it won't be used
         const customFetch = createAnthropicFetch(config);
         provider = createAnthropic({
+          apiKey: "oauth-token", // Dummy key - actual auth via Bearer token in custom fetch
           fetch: customFetch as any,
           headers: {
             "anthropic-beta":
