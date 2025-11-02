@@ -62,41 +62,49 @@ export function createSession(model: string, provider: string): Session {
 export function saveSession(session: Session): void {
   ensureSessionsDir();
 
-  const filename = `${session.id}.json`;
+  const filename = `${session.id}.jsonl`;
   const filepath = join(SESSIONS_DIR, filename);
-  const tempFilepath = `${filepath}.tmp`;
 
   try {
     // Update timestamp
     session.updated = new Date().toISOString();
     session.totalMessages = session.conversationHistory.length;
 
-    // Serialize session (handle URL objects in images)
-    const serialized = JSON.stringify(
-      session,
-      (key, value) => {
-        // Convert URL objects to strings
-        if (value instanceof URL) {
-          return value.href;
-        }
-        return value;
-      },
-      2,
-    );
+    // Write session header (metadata)
+    const header = {
+      type: "session_metadata",
+      id: session.id,
+      name: session.name,
+      created: session.created,
+      updated: session.updated,
+      model: session.model,
+      provider: session.provider,
+      totalMessages: session.totalMessages,
+      currentTokens: session.currentTokens,
+    };
 
-    // Write to temp file first, then rename (atomic on most systems)
-    writeFileSync(tempFilepath, serialized, "utf-8");
-    writeFileSync(filepath, serialized, "utf-8");
+    const lines = [JSON.stringify(header)];
 
-    // Clean up temp file
-    if (existsSync(tempFilepath)) {
-      // Bun doesn't have unlinkSync in the same way
-      try {
-        writeFileSync(tempFilepath, "");
-      } catch {
-        // Ignore cleanup errors
-      }
+    // Write each message as a separate line
+    for (const message of session.conversationHistory) {
+      const serializedMessage = JSON.stringify(
+        {
+          type: message.role,
+          content: message.content,
+        },
+        (key, value) => {
+          // Convert URL objects to strings
+          if (value instanceof URL) {
+            return value.href;
+          }
+          return value;
+        },
+      );
+      lines.push(serializedMessage);
     }
+
+    // Write all lines at once (atomic write)
+    writeFileSync(filepath, lines.join("\n") + "\n", "utf-8");
 
     logger.info("Session saved", {
       id: session.id,
@@ -115,17 +123,59 @@ export function saveSession(session: Session): void {
 export function loadSession(sessionId: string): Session | null {
   ensureSessionsDir();
 
-  const filename = `${sessionId}.json`;
-  const filepath = join(SESSIONS_DIR, filename);
+  // Try .jsonl first (new format), then .json (legacy format)
+  let filepath = join(SESSIONS_DIR, `${sessionId}.jsonl`);
+  const isJsonl = existsSync(filepath);
 
-  if (!existsSync(filepath)) {
-    logger.warn("Session not found", { id: sessionId });
-    return null;
+  if (!isJsonl) {
+    filepath = join(SESSIONS_DIR, `${sessionId}.json`);
+    if (!existsSync(filepath)) {
+      logger.warn("Session not found", { id: sessionId });
+      return null;
+    }
   }
 
   try {
     const data = readFileSync(filepath, "utf-8");
-    const session = JSON.parse(data);
+
+    let session: Session;
+
+    if (isJsonl) {
+      // Parse JSONL format (line-delimited JSON)
+      const lines = data.trim().split("\n");
+      if (lines.length === 0) {
+        throw new Error("Empty session file");
+      }
+
+      // First line is metadata
+      const metadata = JSON.parse(lines[0]);
+      session = {
+        id: metadata.id,
+        name: metadata.name,
+        created: metadata.created,
+        updated: metadata.updated,
+        model: metadata.model,
+        provider: metadata.provider,
+        totalMessages: metadata.totalMessages || 0,
+        currentTokens: metadata.currentTokens || 0,
+        conversationHistory: [],
+      };
+
+      // Remaining lines are messages
+      for (let i = 1; i < lines.length; i++) {
+        const line = lines[i].trim();
+        if (!line) continue;
+
+        const msg = JSON.parse(line);
+        session.conversationHistory.push({
+          role: msg.type as "user" | "assistant",
+          content: msg.content,
+        });
+      }
+    } else {
+      // Parse legacy JSON format
+      session = JSON.parse(data);
+    }
 
     // Deserialize: convert image URL strings back to URL objects
     if (session.conversationHistory) {
@@ -143,6 +193,7 @@ export function loadSession(sessionId: string): Session | null {
     logger.info("Session loaded", {
       id: session.id,
       messages: session.totalMessages,
+      format: isJsonl ? "jsonl" : "json",
     });
 
     return session as Session;
@@ -166,22 +217,40 @@ export function listSessions(): Array<{
   ensureSessionsDir();
 
   try {
-    const files = readdirSync(SESSIONS_DIR).filter((f) => f.endsWith(".json"));
+    const files = readdirSync(SESSIONS_DIR).filter(
+      (f) => f.endsWith(".jsonl") || f.endsWith(".json"),
+    );
 
     const sessions = files
       .map((filename) => {
         try {
           const filepath = join(SESSIONS_DIR, filename);
           const data = readFileSync(filepath, "utf-8");
-          const session = JSON.parse(data);
-          return {
-            id: session.id,
-            name: session.name,
-            created: session.created,
-            updated: session.updated,
-            model: session.model,
-            totalMessages: session.totalMessages || 0,
-          };
+
+          if (filename.endsWith(".jsonl")) {
+            // Parse first line only (metadata)
+            const firstLine = data.split("\n")[0];
+            const metadata = JSON.parse(firstLine);
+            return {
+              id: metadata.id,
+              name: metadata.name,
+              created: metadata.created,
+              updated: metadata.updated,
+              model: metadata.model,
+              totalMessages: metadata.totalMessages || 0,
+            };
+          } else {
+            // Legacy JSON format
+            const session = JSON.parse(data);
+            return {
+              id: session.id,
+              name: session.name,
+              created: session.created,
+              updated: session.updated,
+              model: session.model,
+              totalMessages: session.totalMessages || 0,
+            };
+          }
         } catch {
           return null;
         }
@@ -203,10 +272,18 @@ export function listSessions(): Array<{
 export function deleteSession(sessionId: string): boolean {
   ensureSessionsDir();
 
-  const filename = `${sessionId}.json`;
-  const filepath = join(SESSIONS_DIR, filename);
+  // Try both formats
+  const jsonlPath = join(SESSIONS_DIR, `${sessionId}.jsonl`);
+  const jsonPath = join(SESSIONS_DIR, `${sessionId}.json`);
 
-  if (!existsSync(filepath)) {
+  let filepath: string | null = null;
+  if (existsSync(jsonlPath)) {
+    filepath = jsonlPath;
+  } else if (existsSync(jsonPath)) {
+    filepath = jsonPath;
+  }
+
+  if (!filepath) {
     return false;
   }
 
