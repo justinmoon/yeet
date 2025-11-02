@@ -16,6 +16,7 @@ import { getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import type { UIAdapter } from "./interface";
 import { SessionSelectorModal } from "./session-modal";
+import { ModelSelectorModal } from "./model-modal";
 
 export class TUIAdapter implements UIAdapter {
   conversationHistory: Array<{
@@ -26,7 +27,9 @@ export class TUIAdapter implements UIAdapter {
   currentTokens = 0;
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
+  pendingOAuthSetup?: { verifier: string };
   private sessionModal?: SessionSelectorModal;
+  private modelModal?: ModelSelectorModal;
   private modalActive = false;
 
   private renderer!: CliRenderer;
@@ -227,6 +230,78 @@ export class TUIAdapter implements UIAdapter {
     }
   }
 
+  showModelSelector(): void {
+    const { MODELS, getModelInfo } = require("../models/registry");
+    const { saveConfig } = require("../config");
+
+    // Filter models based on auth status
+    const availableModels = MODELS.filter((model: any) => {
+      if (model.provider === "anthropic") {
+        return !!this.config.anthropic?.apiKey || !!this.config.anthropic?.refresh;
+      }
+      if (model.provider === "opencode") {
+        return !!this.config.opencode.apiKey;
+      }
+      if (model.provider === "maple") {
+        return !!this.config.maple?.apiKey;
+      }
+      return false;
+    });
+
+    if (availableModels.length === 0) {
+      this.appendOutput("No models available. Please configure authentication first.\n");
+      this.appendOutput("Run /auth login for Anthropic OAuth\n");
+      return;
+    }
+
+    this.modelModal = new ModelSelectorModal(
+      this.renderer,
+      availableModels,
+      this.config,
+    );
+
+    this.modelModal.setOnSelect(async (modelId: string) => {
+      this.modalActive = false;
+      this.modelModal?.hide();
+      this.modelModal = undefined;
+      this.input.focus();
+
+      const modelInfo = getModelInfo(modelId);
+      if (!modelInfo) return;
+
+      // Update config
+      this.config.activeProvider = modelInfo.provider;
+      if (modelInfo.provider === "anthropic") {
+        if (!this.config.anthropic) {
+          this.config.anthropic = { type: "api", apiKey: "" };
+        }
+        this.config.anthropic.model = modelId;
+      } else if (modelInfo.provider === "opencode") {
+        this.config.opencode.model = modelId;
+      } else if (modelInfo.provider === "maple") {
+        if (this.config.maple) {
+          this.config.maple.model = modelId;
+        }
+      }
+
+      await saveConfig(this.config);
+      this.appendOutput(
+        `✓ Switched to ${modelInfo.name} (${modelInfo.provider})\n`,
+      );
+      this.setStatus(`Ready • ${modelInfo.name} • Press Enter to send`);
+    });
+
+    this.modelModal.setOnCancel(() => {
+      this.modalActive = false;
+      this.modelModal?.hide();
+      this.modelModal = undefined;
+      this.input.focus();
+    });
+
+    this.modalActive = true;
+    this.modelModal.show();
+  }
+
   showSessionSelector(): void {
     const { listSessions, loadSession } = require("../sessions");
     const sessions = listSessions();
@@ -330,29 +405,32 @@ export class TUIAdapter implements UIAdapter {
       this.adjustInputHeight();
 
       // Handle modal navigation
-      if (this.modalActive && this.sessionModal) {
-        if (key.name === "escape") {
-          key.preventDefault();
-          this.sessionModal.cancel();
+      if (this.modalActive) {
+        const modal = this.sessionModal || this.modelModal;
+        if (modal) {
+          if (key.name === "escape") {
+            key.preventDefault();
+            modal.cancel();
+            return;
+          }
+          if (key.name === "return") {
+            key.preventDefault();
+            modal.selectCurrent();
+            return;
+          }
+          if (key.name === "up") {
+            key.preventDefault();
+            modal.moveUp();
+            return;
+          }
+          if (key.name === "down") {
+            key.preventDefault();
+            modal.moveDown();
+            return;
+          }
+          // Block other input while modal is active
           return;
         }
-        if (key.name === "return") {
-          key.preventDefault();
-          this.sessionModal.selectCurrent();
-          return;
-        }
-        if (key.name === "up") {
-          key.preventDefault();
-          this.sessionModal.moveUp();
-          return;
-        }
-        if (key.name === "down") {
-          key.preventDefault();
-          this.sessionModal.moveDown();
-          return;
-        }
-        // Block other input while modal is active
-        return;
       }
       if (key.name === "v" && key.ctrl) {
         key.preventDefault();
@@ -372,7 +450,14 @@ export class TUIAdapter implements UIAdapter {
         key.preventDefault();
         const message = this.input.editBuffer.getText();
         if (message.trim()) {
-          if (this.pendingMapleSetup) {
+          if (this.pendingOAuthSetup) {
+            const code = message;
+            const verifier = this.pendingOAuthSetup.verifier;
+            this.pendingOAuthSetup = undefined;
+            this.clearInput();
+            const { handleOAuthCodeInput } = await import("../commands");
+            await handleOAuthCodeInput(code, verifier, this, this.config);
+          } else if (this.pendingMapleSetup) {
             const apiKey = message;
             const modelId = this.pendingMapleSetup.modelId;
             this.pendingMapleSetup = undefined;
