@@ -16,14 +16,14 @@
           pname = "yeet-nix";
           version = "0.1.0";
           src = ./.;
-          
+
           nativeBuildInputs = [ pkgs.bun ];
-          
+
           buildPhase = ''
             export HOME=$TMPDIR
             bun install --frozen-lockfile
           '';
-          
+
           installPhase = ''
             mkdir -p $out/share/yeet
             cp -r src node_modules package.json bun.lock $out/share/yeet/
@@ -36,7 +36,7 @@
             chmod +x $out/bin/yeet
           '';
         };
-        
+
       in
       {
         packages.default = yeet-nix;

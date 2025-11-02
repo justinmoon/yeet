@@ -28,6 +28,8 @@ export class TUIAdapter implements UIAdapter {
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
   pendingOAuthSetup?: { verifier: string };
+  isGenerating = false;
+  abortController: AbortController | null = null;
   private sessionModal?: SessionSelectorModal;
   private modelModal?: ModelSelectorModal;
   private modalActive = false;
@@ -438,6 +440,16 @@ export class TUIAdapter implements UIAdapter {
           return;
         }
       }
+
+      // Handle escape to cancel generation
+      if (key.name === "escape" && this.isGenerating && this.abortController) {
+        key.preventDefault();
+        this.abortController.abort();
+        this.appendOutput("\n\n⚠️  Generation cancelled by user\n");
+        this.setStatus("Cancelled");
+        return;
+      }
+
       if (key.name === "v" && key.ctrl) {
         key.preventDefault();
         const image = await readImageFromClipboard();

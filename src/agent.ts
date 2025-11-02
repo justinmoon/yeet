@@ -86,6 +86,7 @@ export async function* runAgent(
   config: Config,
   onToolCall?: (tool: string) => void,
   maxSteps?: number,
+  abortSignal?: AbortSignal,
 ): AsyncGenerator<AgentEvent> {
   try {
     // Choose provider based on config
@@ -177,6 +178,7 @@ export async function* runAgent(
       // Only use stopWhen if maxSteps > 1 (multi-step mode)
       ...(effectiveSteps > 1 ? { stopWhen: stepCountIs(effectiveSteps) } : {}),
       temperature: config.temperature || 0.3,
+      abortSignal,
     });
 
     for await (const chunk of result.fullStream) {

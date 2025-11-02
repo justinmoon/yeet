@@ -57,6 +57,11 @@ export async function handleMessage(
   ui.clearInput();
   ui.setStatus("Agent thinking...");
 
+  // Create abort controller for cancellation
+  const abortController = new AbortController();
+  ui.abortController = abortController;
+  ui.isGenerating = true;
+
   try {
     ui.appendOutput("Assistant: ");
 
@@ -101,10 +106,16 @@ export async function handleMessage(
     let lastToolName = "";
     let lastToolArgs: any = {};
 
-    for await (const event of runAgent(messages, config, (tool) => {
-      logger.debug("Tool called", { tool });
-      ui.setStatus(`Running ${tool}...`);
-    })) {
+    for await (const event of runAgent(
+      messages,
+      config,
+      (tool) => {
+        logger.debug("Tool called", { tool });
+        ui.setStatus(`Running ${tool}...`);
+      },
+      undefined,
+      abortController.signal,
+    )) {
       logger.debug("Agent event", { type: event.type });
 
       if (event.type === "text") {
@@ -224,12 +235,22 @@ export async function handleMessage(
       sessionId: ui.currentSessionId,
     });
   } catch (error: any) {
-    logger.error("Error handling message", {
-      error: error.message,
-      stack: error.stack,
-    });
-    ui.appendOutput(`\n❌ Error: ${error.message}\n`);
-    ui.updateTokenCount();
+    // Handle abort error specially
+    if (error.name === "AbortError" || abortController.signal.aborted) {
+      logger.info("Generation cancelled by user");
+      ui.updateTokenCount();
+    } else {
+      logger.error("Error handling message", {
+        error: error.message,
+        stack: error.stack,
+      });
+      ui.appendOutput(`\n❌ Error: ${error.message}\n`);
+      ui.updateTokenCount();
+    }
+  } finally {
+    // Clean up generation state
+    ui.isGenerating = false;
+    ui.abortController = null;
   }
 }
 

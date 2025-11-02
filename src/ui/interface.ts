@@ -23,6 +23,8 @@ export interface UIAdapter {
   pendingOAuthSetup?: {
     verifier: string;
   };
+  isGenerating: boolean;
+  abortController: AbortController | null;
 
   // Core UI operations
   appendOutput(text: string): void;
