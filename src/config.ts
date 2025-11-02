@@ -2,6 +2,13 @@ import os from "os";
 import path from "path";
 import { chmod, mkdir } from "fs/promises";
 
+// Centralized config directory - follows XDG Base Directory spec
+export const YEET_CONFIG_DIR = path.join(os.homedir(), ".config", "yeet");
+
+async function ensureConfigDir(): Promise<void> {
+  await mkdir(YEET_CONFIG_DIR, { recursive: true });
+}
+
 export interface Config {
   activeProvider: "opencode" | "maple" | "anthropic";
   opencode: {
@@ -150,7 +157,8 @@ async function createDefaultConfig(configPath: string): Promise<Config> {
 }
 
 export async function loadConfig(): Promise<Config> {
-  const configPath = path.join(os.homedir(), ".config", "yeet", "config.json");
+  await ensureConfigDir();
+  const configPath = path.join(YEET_CONFIG_DIR, "config.json");
   const file = Bun.file(configPath);
 
   if (!(await file.exists())) {
@@ -175,7 +183,8 @@ export async function loadConfig(): Promise<Config> {
 }
 
 export async function saveConfig(config: Config): Promise<void> {
-  const configPath = path.join(os.homedir(), ".config", "yeet", "config.json");
+  await ensureConfigDir();
+  const configPath = path.join(YEET_CONFIG_DIR, "config.json");
   await Bun.write(configPath, JSON.stringify(config, null, 2));
   await chmod(configPath, 0o600);
 }

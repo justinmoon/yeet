@@ -5,9 +5,9 @@ import {
   readdirSync,
   writeFileSync,
 } from "node:fs";
-import { homedir } from "node:os";
 import { join } from "node:path";
 import type { MessageContent } from "./agent";
+import { YEET_CONFIG_DIR } from "./config";
 import { logger } from "./logger";
 
 export interface Session {
@@ -25,7 +25,7 @@ export interface Session {
   currentTokens: number;
 }
 
-const SESSIONS_DIR = join(homedir(), ".config", "yeet", "sessions");
+const SESSIONS_DIR = join(YEET_CONFIG_DIR, "sessions");
 
 function ensureSessionsDir() {
   if (!existsSync(SESSIONS_DIR)) {
