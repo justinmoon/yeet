@@ -84,7 +84,6 @@ function normalizeMessageContent(content: any): Array<Record<string, any>> {
       {
         type: "text",
         text: content,
-        cache_control: { type: "ephemeral" },
       },
     ];
   }
@@ -95,23 +94,8 @@ function normalizeMessageContent(content: any): Array<Record<string, any>> {
         return {
           type: "text",
           text: block,
-          cache_control: { type: "ephemeral" },
         };
       }
-
-      if (block && typeof block === "object") {
-        if (
-          block.type === "text" &&
-          (!block.cache_control || typeof block.cache_control !== "object")
-        ) {
-          block = {
-            ...block,
-            cache_control: { type: "ephemeral" },
-          };
-        }
-        return block;
-      }
-
       return block;
     });
   }
@@ -123,7 +107,6 @@ function buildClaudeCodeSystem(system: unknown): Array<Record<string, any>> {
   const prefix = {
     type: "text",
     text: CLAUDE_CODE_SYSTEM_PREFIX,
-    cache_control: { type: "ephemeral" },
   };
 
   // If system is already an array, prepend our prefix to it
@@ -138,7 +121,6 @@ function buildClaudeCodeSystem(system: unknown): Array<Record<string, any>> {
       {
         type: "text",
         text: system,
-        cache_control: { type: "ephemeral" },
       },
     ];
   }
