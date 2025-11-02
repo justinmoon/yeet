@@ -128,20 +128,44 @@ export function createAnthropicFetch(config: Config) {
       await saveConfig(config);
     }
 
-    // Add OAuth bearer token
-    const headers = {
-      ...init?.headers,
-      authorization: `Bearer ${anthropic.access}`,
-      "anthropic-beta":
-        "oauth-2025-04-20,claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
-    };
-
-    // Remove x-api-key if present
-    if ("x-api-key" in headers) {
-      delete (headers as any)["x-api-key"];
+    // Remove x-api-key from init headers FIRST
+    const initHeaders = init?.headers ? { ...init.headers } : {};
+    if ("x-api-key" in initHeaders) {
+      delete (initHeaders as any)["x-api-key"];
+    }
+    if ("Accept" in initHeaders) {
+      delete (initHeaders as any)["Accept"];
     }
 
-    return fetch(input, {
+    // Add OAuth bearer token and required headers (match Claude Code exactly)
+    // Our headers MUST override SDK headers, so we put init headers first
+    const headers = {
+      ...initHeaders,
+      accept: "application/json",
+      authorization: `Bearer ${anthropic.access}`,
+      "anthropic-beta":
+        "oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+      "anthropic-dangerous-direct-browser-access": "true",
+      "user-agent": "claude-cli/2.0.22 (external, cli)",
+      "x-app": "cli",
+      "x-stainless-arch": "arm64",
+      "x-stainless-helper-method": "stream",
+      "x-stainless-lang": "js",
+      "x-stainless-os": "MacOS",
+      "x-stainless-package-version": "0.60.0",
+      "x-stainless-retry-count": "0",
+      "x-stainless-runtime": "node",
+      "x-stainless-runtime-version": "v24.3.0",
+      "x-stainless-timeout": "600",
+    };
+
+    // Add ?beta=true to URL (match Claude Code)
+    let url = input.toString();
+    if (url.includes("anthropic.com") && !url.includes("beta=")) {
+      url = url + (url.includes("?") ? "&" : "?") + "beta=true";
+    }
+
+    return fetch(url, {
       ...init,
       headers,
     });

@@ -235,9 +235,11 @@ export async function handleMessage(
 
 export function updateTokenCount(ui: UIAdapter, config: Config): void {
   const modelId =
-    config.activeProvider === "maple"
-      ? config.maple!.model
-      : config.opencode.model;
+    config.activeProvider === "anthropic"
+      ? config.anthropic?.model || ""
+      : config.activeProvider === "maple"
+        ? config.maple!.model
+        : config.opencode.model;
   const modelInfo = getModelInfo(modelId);
 
   if (!modelInfo) {

@@ -54,7 +54,8 @@
             just
             biome
             ripgrep
-            
+            mitmproxy
+
             # Testing - Playwright browsers
             playwright-driver.browsers
           ];

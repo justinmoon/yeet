@@ -139,12 +139,14 @@ export class TUIAdapter implements UIAdapter {
     this.renderer.root.add(container);
 
     const currentModelId =
-      this.config.activeProvider === "opencode"
-        ? this.config.opencode.model
-        : this.config.maple?.model || "";
+      this.config.activeProvider === "anthropic"
+        ? this.config.anthropic?.model || ""
+        : this.config.activeProvider === "maple"
+          ? this.config.maple?.model || ""
+          : this.config.opencode.model;
     const modelInfo = getModelInfo(currentModelId);
     const modelDisplay = modelInfo
-      ? `${modelInfo.name} (${this.config.activeProvider})`
+      ? `${modelInfo.name} (${modelInfo.provider})`
       : currentModelId;
 
     this.status = new TextRenderable(this.renderer, {
@@ -488,9 +490,11 @@ export class TUIAdapter implements UIAdapter {
 
   private updateAttachmentIndicator(): void {
     const modelId =
-      this.config.activeProvider === "maple"
-        ? this.config.maple!.model
-        : this.config.opencode.model;
+      this.config.activeProvider === "anthropic"
+        ? this.config.anthropic?.model || ""
+        : this.config.activeProvider === "maple"
+          ? this.config.maple!.model
+          : this.config.opencode.model;
     const modelInfo = getModelInfo(modelId);
     const modelName = modelInfo?.name || modelId;
 
