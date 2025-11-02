@@ -38,25 +38,24 @@ async function ensureAnthropicIdentity(config: Config): Promise<void> {
     identityPromise = (async () => {
       try {
         const response = await globalFetch(OAUTH_PROFILE_URL, {
-            headers: {
-              accept: "application/json",
-              authorization: `Bearer ${anthropic.access}`,
-              "anthropic-beta": CLAUDE_CODE_BETA,
-              "anthropic-dangerous-direct-browser-access": "true",
-              "user-agent": CLAUDE_CODE_USER_AGENT,
-              "x-app": "cli",
-              "x-stainless-arch": "arm64",
-              "x-stainless-helper-method": "stream",
-              "x-stainless-lang": "js",
-              "x-stainless-os": "MacOS",
-              "x-stainless-package-version": "0.60.0",
-              "x-stainless-retry-count": "0",
-              "x-stainless-runtime": "node",
-              "x-stainless-runtime-version": "v24.3.0",
-              "x-stainless-timeout": "600",
-            },
+          headers: {
+            accept: "application/json",
+            authorization: `Bearer ${anthropic.access}`,
+            "anthropic-beta": CLAUDE_CODE_BETA,
+            "anthropic-dangerous-direct-browser-access": "true",
+            "user-agent": CLAUDE_CODE_USER_AGENT,
+            "x-app": "cli",
+            "x-stainless-arch": "arm64",
+            "x-stainless-helper-method": "stream",
+            "x-stainless-lang": "js",
+            "x-stainless-os": "MacOS",
+            "x-stainless-package-version": "0.60.0",
+            "x-stainless-retry-count": "0",
+            "x-stainless-runtime": "node",
+            "x-stainless-runtime-version": "v24.3.0",
+            "x-stainless-timeout": "600",
           },
-        );
+        });
 
         if (response.ok) {
           const profile = await response.json();
@@ -330,9 +329,9 @@ export function createAnthropicFetch(config: Config) {
       console.log("URL:", url);
       console.log("Method:", init?.method || "GET");
       console.log("\nHeaders:");
-      for (const [key, value] of requestHeaders.entries()) {
+      requestHeaders.forEach((value, key) => {
         console.log(`  ${key}: ${value}`);
-      }
+      });
       if (body && typeof body === "string") {
         console.log("\nBody:");
         console.log(body);
