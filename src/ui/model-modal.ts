@@ -79,8 +79,7 @@ export class ModelSelectorModal {
     }
 
     this.modal = new ListModal(renderer, items, {
-      title:
-        "Select a Model (↑↓ to navigate, Enter to select, Esc to cancel)",
+      title: "Select a Model (↑↓ to navigate, Enter to select, Esc to cancel)",
       emptyMessage: "No models available. Please configure authentication.",
       itemHeight: 4,
     });

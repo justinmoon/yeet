@@ -237,7 +237,9 @@ export class TUIAdapter implements UIAdapter {
     // Filter models based on auth status
     const availableModels = MODELS.filter((model: any) => {
       if (model.provider === "anthropic") {
-        return !!this.config.anthropic?.apiKey || !!this.config.anthropic?.refresh;
+        return (
+          !!this.config.anthropic?.apiKey || !!this.config.anthropic?.refresh
+        );
       }
       if (model.provider === "opencode") {
         return !!this.config.opencode.apiKey;
@@ -249,7 +251,9 @@ export class TUIAdapter implements UIAdapter {
     });
 
     if (availableModels.length === 0) {
-      this.appendOutput("No models available. Please configure authentication first.\n");
+      this.appendOutput(
+        "No models available. Please configure authentication first.\n",
+      );
       this.appendOutput("Run /auth login for Anthropic OAuth\n");
       return;
     }

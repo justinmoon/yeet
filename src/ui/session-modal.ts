@@ -46,7 +46,8 @@ export class SessionSelectorModal {
     });
 
     this.modal = new ListModal(renderer, items, {
-      title: "Select a Session (↑↓ to navigate, Enter to select, Esc to cancel)",
+      title:
+        "Select a Session (↑↓ to navigate, Enter to select, Esc to cancel)",
       emptyMessage: "No saved sessions found.",
       itemHeight: 4,
     });

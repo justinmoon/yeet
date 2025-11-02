@@ -53,7 +53,10 @@ function getSystemPrompt(provider: string): string {
   if (provider === "anthropic") {
     return CLAUDE_CODE_SPOOF + "\n" + SYSTEM_PROMPT_BASE;
   }
-  return "You are yeet, a minimal coding assistant that executes tasks using tools." + SYSTEM_PROMPT_BASE;
+  return (
+    "You are yeet, a minimal coding assistant that executes tasks using tools." +
+    SYSTEM_PROMPT_BASE
+  );
 }
 
 export interface ImageAttachment {
@@ -110,8 +113,7 @@ export async function* runAgent(
         });
       }
 
-      modelName =
-        anthropicConfig.model || "claude-sonnet-4-5-20250929";
+      modelName = anthropicConfig.model || "claude-sonnet-4-5-20250929";
     } else if (config.activeProvider === "maple") {
       logger.info("Using Maple AI with encrypted inference");
       const mapleFetch = await createMapleFetch({

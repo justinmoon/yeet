@@ -2,10 +2,7 @@ import type { Config } from "../config";
 import { saveConfig } from "../config";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
 import type { UIAdapter } from "../ui/interface";
-import {
-  startAnthropicOAuth,
-  exchangeOAuthCode,
-} from "../auth";
+import { startAnthropicOAuth, exchangeOAuthCode } from "../auth";
 
 export interface ParsedCommand {
   isCommand: boolean;
@@ -311,9 +308,11 @@ async function handleModelsCommand(
       return;
     }
 
-    if (modelInfo.provider === "anthropic" &&
-        !config.anthropic?.apiKey &&
-        !config.anthropic?.refresh) {
+    if (
+      modelInfo.provider === "anthropic" &&
+      !config.anthropic?.apiKey &&
+      !config.anthropic?.refresh
+    ) {
       ui.appendOutput(`❌ Anthropic not configured\n`);
       ui.appendOutput(`Run /auth login to set up Anthropic OAuth\n`);
       return;
@@ -481,9 +480,7 @@ async function handleAuthCommand(
   }
 
   if (subcommand === "login") {
-    ui.appendOutput(
-      "🔐 Starting Anthropic OAuth (Claude Pro/Max)...\n\n",
-    );
+    ui.appendOutput("🔐 Starting Anthropic OAuth (Claude Pro/Max)...\n\n");
 
     try {
       const { url, verifier } = await startAnthropicOAuth();
@@ -493,11 +490,12 @@ async function handleAuthCommand(
 
       try {
         const platform = process.platform;
-        const openCmd = platform === "darwin"
-          ? "open"
-          : platform === "win32"
-            ? "start"
-            : "xdg-open";
+        const openCmd =
+          platform === "darwin"
+            ? "open"
+            : platform === "win32"
+              ? "start"
+              : "xdg-open";
 
         await Bun.spawn([openCmd, url], {
           stdout: "ignore",
@@ -560,12 +558,8 @@ export async function handleOAuthCodeInput(
 
     ui.appendOutput("✓ Successfully authenticated with Anthropic!\n");
     ui.appendOutput("✓ Using Claude Pro/Max subscription\n");
-    ui.appendOutput(
-      `✓ Active model: ${config.anthropic.model}\n\n`,
-    );
-    ui.setStatus(
-      `Ready • ${config.anthropic.model} • Press Enter to send`,
-    );
+    ui.appendOutput(`✓ Active model: ${config.anthropic.model}\n\n`);
+    ui.setStatus(`Ready • ${config.anthropic.model} • Press Enter to send`);
   } catch (error: any) {
     ui.appendOutput(`❌ Error: ${error.message}\n`);
   }

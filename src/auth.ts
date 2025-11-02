@@ -72,26 +72,21 @@ export async function exchangeOAuthCode(
   };
 }
 
-export async function refreshAnthropicToken(
-  refreshToken: string,
-): Promise<{
+export async function refreshAnthropicToken(refreshToken: string): Promise<{
   access: string;
   expires: number;
 } | null> {
-  const response = await fetch(
-    "https://console.anthropic.com/v1/oauth/token",
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        grant_type: "refresh_token",
-        refresh_token: refreshToken,
-        client_id: CLIENT_ID,
-      }),
+  const response = await fetch("https://console.anthropic.com/v1/oauth/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
     },
-  );
+    body: JSON.stringify({
+      grant_type: "refresh_token",
+      refresh_token: refreshToken,
+      client_id: CLIENT_ID,
+    }),
+  });
 
   if (!response.ok) {
     return null;
