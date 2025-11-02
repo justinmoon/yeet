@@ -27,24 +27,20 @@
           installPhase = ''
             mkdir -p $out/share/yeet
             cp -r src node_modules package.json bun.lock $out/share/yeet/
-            
+
             mkdir -p $out/bin
-            cat > $out/bin/yeet-nix <<EOF
+            cat > $out/bin/yeet <<EOF
             #!${pkgs.bash}/bin/bash
             exec ${pkgs.bun}/bin/bun run $out/share/yeet/src/index.ts "\$@"
             EOF
-            chmod +x $out/bin/yeet-nix
+            chmod +x $out/bin/yeet
           '';
         };
         
-        # Dev version - runs directly from ~/code/yeet
-        yeet = pkgs.writeShellScriptBin "yeet" ''
-          exec ${pkgs.bun}/bin/bun run "$HOME/code/yeet/src/index.ts" "$@"
-        '';
       in
       {
-        packages.default = yeet;
-        packages.yeet = yeet;
+        packages.default = yeet-nix;
+        packages.yeet = yeet-nix;
         packages.yeet-nix = yeet-nix;
         
         devShells.default = pkgs.mkShell {
