@@ -21,6 +21,9 @@ export class WebAdapter implements UIAdapter {
   currentTokens = 0;
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
+  pendingOAuthSetup?: { verifier: string };
+  isGenerating = false;
+  abortController: AbortController | null = null;
 
   private config: Config;
   private server?: any;

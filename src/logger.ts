@@ -1,6 +1,6 @@
-import os from "os";
 import path from "path";
 import { appendFile, mkdir } from "fs/promises";
+import { YEET_CONFIG_DIR } from "./config";
 
 export enum LogLevel {
   DEBUG = 0,
@@ -105,7 +105,7 @@ class Logger {
 }
 
 // Global logger instance
-const logPath = path.join(os.homedir(), ".yeet", "debug.log");
+const logPath = path.join(YEET_CONFIG_DIR, "debug.log");
 const logLevel =
   process.env.YEET_LOG_LEVEL === "debug" ? LogLevel.DEBUG : LogLevel.INFO;
 

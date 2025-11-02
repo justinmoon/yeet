@@ -20,6 +20,11 @@ export interface UIAdapter {
   pendingMapleSetup?: {
     modelId: string;
   };
+  pendingOAuthSetup?: {
+    verifier: string;
+  };
+  isGenerating: boolean;
+  abortController: AbortController | null;
 
   // Core UI operations
   appendOutput(text: string): void;
@@ -30,8 +35,9 @@ export interface UIAdapter {
   updateTokenCount(): void;
   saveCurrentSession(): void;
 
-  // Session management
+  // Modal selectors
   showSessionSelector?(): void;
+  showModelSelector?(): void;
 
   // Input handling
   onUserInput(callback: (message: string) => Promise<void>): void;

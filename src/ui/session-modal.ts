@@ -1,10 +1,5 @@
-import {
-  BoxRenderable,
-  type CliRenderer,
-  ScrollBoxRenderable,
-  TextRenderable,
-} from "@opentui/core";
-import type { Session } from "../sessions";
+import type { CliRenderer } from "@opentui/core";
+import { ListModal, type ListModalItem } from "./list-modal";
 
 export interface SessionListItem {
   id: string;
@@ -16,113 +11,46 @@ export interface SessionListItem {
   preview?: string;
 }
 
+interface SessionModalItem extends ListModalItem {
+  sessionId: string;
+}
+
 export class SessionSelectorModal {
-  private container: BoxRenderable;
-  private scrollBox: ScrollBoxRenderable;
-  private contentText: TextRenderable;
-  private sessions: SessionListItem[];
-  private selectedIndex = 0;
-  private onSelect?: (sessionId: string) => void;
-  private onCancel?: () => void;
+  private modal: ListModal<SessionModalItem>;
 
-  constructor(
-    private renderer: CliRenderer,
-    sessions: SessionListItem[],
-  ) {
-    this.sessions = sessions;
-
-    // Create modal container (centered)
-    this.container = new BoxRenderable(renderer, {
-      id: "session-modal",
-      border: true,
-      borderStyle: "double",
-      borderColor: "blue",
-      padding: 1,
-      zIndex: 1000,
-      // Center the modal
-      position: "absolute",
-      top: 2,
-      left: 4,
-      right: 4,
-      bottom: 2,
-    });
-
-    // Title
-    const title = new TextRenderable(renderer, {
-      id: "modal-title",
-      content:
-        "Select a Session (↑↓ to navigate, Enter to select, Esc to cancel)",
-      fg: "blue",
-      height: 1,
-    });
-    this.container.add(title);
-
-    // Scrollable session list
-    this.scrollBox = new ScrollBoxRenderable(renderer, {
-      id: "modal-scroll",
-      flexGrow: 1,
-      flexShrink: 1,
-      scrollY: true,
-      scrollX: false,
-      overflow: "hidden",
-      stickyScroll: false,
-    });
-    this.container.add(this.scrollBox);
-
-    this.contentText = new TextRenderable(renderer, {
-      id: "modal-content",
-      content: "",
-    });
-    this.scrollBox.add(this.contentText);
-
-    this.render();
-  }
-
-  private render(): void {
-    let content = "";
-
-    for (let i = 0; i < this.sessions.length; i++) {
-      const session = this.sessions[i];
-      const isSelected = i === this.selectedIndex;
-      const prefix = isSelected ? "→ " : "  ";
-
+  constructor(renderer: CliRenderer, sessions: SessionListItem[]) {
+    // Convert sessions to modal items
+    const items: SessionModalItem[] = sessions.map((session, i) => {
       const updated = new Date(session.updated);
       const timeAgo = this.getTimeAgo(updated);
       const name = session.name ? ` "${session.name}"` : "";
 
-      content += `${prefix}${i + 1}. ${session.id}${name}\n`;
-      content += `   ${session.model} • ${session.totalMessages} messages • ${timeAgo}\n`;
+      const lines = [
+        `${i + 1}. ${session.id}${name}`,
+        `${session.model} • ${session.totalMessages} messages • ${timeAgo}`,
+      ];
 
       if (session.preview) {
         const preview =
           session.preview.length > 80
             ? session.preview.substring(0, 77) + "..."
             : session.preview;
-        content += `   Preview: ${preview}\n`;
+        lines.push(`Preview: ${preview}`);
       }
 
-      content += "\n";
-    }
+      return {
+        id: session.id,
+        sessionId: session.id,
+        lines,
+      };
+    });
 
-    if (this.sessions.length === 0) {
-      content = "No saved sessions found.";
-    }
-
-    this.contentText.content = content;
-
-    // Scroll to selected item
-    const lineHeight = 4; // Approximate lines per session
-    const targetScroll = this.selectedIndex * lineHeight;
-    // @ts-ignore
-    const viewportHeight = this.scrollBox.viewport?.height || 10;
-    const currentScroll = this.scrollBox.scrollTop;
-
-    // Auto-scroll to keep selected item visible
-    if (targetScroll < currentScroll) {
-      this.scrollBox.scrollTop = targetScroll;
-    } else if (targetScroll > currentScroll + viewportHeight - lineHeight) {
-      this.scrollBox.scrollTop = targetScroll - viewportHeight + lineHeight;
-    }
+    this.modal = new ListModal(renderer, items, {
+      title:
+        "Select a Session (↑↓ to navigate, Enter to select, Esc to cancel)",
+      emptyMessage: "No saved sessions found.",
+      itemHeight: 4,
+    });
   }
 
   private getTimeAgo(date: Date): string {
@@ -135,54 +63,34 @@ export class SessionSelectorModal {
   }
 
   show(): void {
-    this.container.visible = true;
-    // @ts-ignore
-    this.renderer.root.add(this.container);
+    this.modal.show();
   }
 
   hide(): void {
-    this.container.visible = false;
-    this.container.zIndex = -9999;
-    // @ts-ignore - remove from root by ID
-    this.renderer.root.remove(this.container.id);
+    this.modal.hide();
   }
 
   moveUp(): void {
-    if (this.selectedIndex > 0) {
-      this.selectedIndex--;
-      this.render();
-      // @ts-ignore
-      this.renderer.requestAnimationFrame?.(() => {});
-    }
+    this.modal.moveUp();
   }
 
   moveDown(): void {
-    if (this.selectedIndex < this.sessions.length - 1) {
-      this.selectedIndex++;
-      this.render();
-      // @ts-ignore
-      this.renderer.requestAnimationFrame?.(() => {});
-    }
+    this.modal.moveDown();
   }
 
   selectCurrent(): void {
-    if (this.sessions.length > 0 && this.onSelect) {
-      const selected = this.sessions[this.selectedIndex];
-      this.onSelect(selected.id);
-    }
+    this.modal.selectCurrent();
   }
 
   cancel(): void {
-    if (this.onCancel) {
-      this.onCancel();
-    }
+    this.modal.cancel();
   }
 
   setOnSelect(callback: (sessionId: string) => void): void {
-    this.onSelect = callback;
+    this.modal.setOnSelect((item) => callback(item.sessionId));
   }
 
   setOnCancel(callback: () => void): void {
-    this.onCancel = callback;
+    this.modal.setOnCancel(callback);
   }
 }

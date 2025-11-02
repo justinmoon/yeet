@@ -1,12 +1,63 @@
 export interface ModelInfo {
   id: string;
-  provider: "opencode" | "maple";
+  provider: "opencode" | "maple" | "anthropic";
   name: string;
   pricing: string;
   contextWindow: number; // Maximum tokens in context window
 }
 
 export const MODELS: ModelInfo[] = [
+  // Anthropic models
+  {
+    id: "claude-sonnet-4-5-20250929",
+    provider: "anthropic",
+    name: "Claude Sonnet 4.5",
+    pricing: "$3/$15",
+    contextWindow: 200000,
+  },
+  {
+    id: "claude-opus-4-20250514",
+    provider: "anthropic",
+    name: "Claude Opus 4",
+    pricing: "$15/$75",
+    contextWindow: 200000,
+  },
+  {
+    id: "claude-3-5-sonnet-20241022",
+    provider: "anthropic",
+    name: "Claude 3.5 Sonnet",
+    pricing: "$3/$15",
+    contextWindow: 200000,
+  },
+  {
+    id: "claude-3-5-haiku-20241022",
+    provider: "anthropic",
+    name: "Claude 3.5 Haiku",
+    pricing: "$1/$5",
+    contextWindow: 200000,
+  },
+  {
+    id: "claude-3-opus-20240229",
+    provider: "anthropic",
+    name: "Claude 3 Opus",
+    pricing: "$15/$75",
+    contextWindow: 200000,
+  },
+  {
+    id: "claude-3-sonnet-20240229",
+    provider: "anthropic",
+    name: "Claude 3 Sonnet",
+    pricing: "$3/$15",
+    contextWindow: 200000,
+  },
+  {
+    id: "claude-3-haiku-20240307",
+    provider: "anthropic",
+    name: "Claude 3 Haiku",
+    pricing: "$0.25/$1.25",
+    contextWindow: 200000,
+  },
+  // OpenCode models
   {
     id: "grok-code",
     provider: "opencode",
@@ -84,7 +135,7 @@ export function getModelInfo(id: string): ModelInfo | undefined {
 }
 
 export function getModelsByProvider(
-  provider: "opencode" | "maple",
+  provider: "opencode" | "maple" | "anthropic",
 ): ModelInfo[] {
   return MODELS.filter((m) => m.provider === provider);
 }

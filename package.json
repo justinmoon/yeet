@@ -7,7 +7,9 @@
     "yeet": "./src/index.ts"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^2.0.40",
     "@ai-sdk/openai-compatible": "^1.0.0",
+    "@openauthjs/openauth": "^0.4.3",
     "@opentui/core": "^0.1.30",
     "@peculiar/x509": "^1.14.0",
     "@stablelib/base64": "^2.0.1",

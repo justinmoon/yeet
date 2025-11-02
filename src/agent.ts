@@ -1,13 +1,23 @@
+import { createAnthropic } from "@ai-sdk/anthropic";
 // @ts-nocheck - AI SDK v5 types are complex, but runtime works correctly
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { stepCountIs, streamText } from "ai";
+import {
+  CLAUDE_CODE_API_BETA,
+  CLAUDE_CODE_BETA,
+  createAnthropicFetch,
+} from "./auth";
 import type { Config } from "./config";
 import { logger } from "./logger";
 import { createMapleFetch } from "./maple";
 import * as tools from "./tools";
 
-const SYSTEM_PROMPT = `You are yeet, a minimal coding assistant that executes tasks using tools.
+// NOTE: Claude Code spoofing copied from opencode
+// When using Anthropic, we pretend to be "Claude Code" to get better results
+// since the model has been trained to act as Claude Code
+const CLAUDE_CODE_SPOOF = `You are Claude Code, Anthropic's official CLI for Claude.`;
 
+const SYSTEM_PROMPT_BASE = `
 CRITICAL INSTRUCTIONS:
 - You have tools available: bash, read, write, edit, search, complete, clarify, pause
 - When asked to do something, USE THE TOOLS to actually do it
@@ -35,13 +45,23 @@ Examples:
 WRONG: "Here's the code: \`\`\`js ... \`\`\`"
 RIGHT: Call write tool with the code
 
-WRONG: "\`\`\`bash ls \`\`\`"  
+WRONG: "\`\`\`bash ls \`\`\`"
 RIGHT: Call bash tool with "ls"
 
 WRONG: bash("grep -r 'pattern' src/")
 RIGHT: search({ pattern: "pattern", path: "src" })
 
 Be concise. Execute the work, don't describe it.`;
+
+function getSystemPrompt(provider: string): string {
+  if (provider === "anthropic") {
+    return CLAUDE_CODE_SPOOF + "\n" + SYSTEM_PROMPT_BASE;
+  }
+  return (
+    "You are yeet, a minimal coding assistant that executes tasks using tools." +
+    SYSTEM_PROMPT_BASE
+  );
+}
 
 export interface ImageAttachment {
   data: string; // base64
@@ -66,13 +86,40 @@ export async function* runAgent(
   config: Config,
   onToolCall?: (tool: string) => void,
   maxSteps?: number,
+  abortSignal?: AbortSignal,
 ): AsyncGenerator<AgentEvent> {
   try {
     // Choose provider based on config
     let provider;
     let modelName: string;
 
-    if (config.activeProvider === "maple") {
+    if (config.activeProvider === "anthropic") {
+      logger.info("Using Anthropic (OAuth or API key)");
+      const anthropicConfig = config.anthropic!;
+
+      if (anthropicConfig.type === "oauth") {
+        // Use OAuth with custom fetch
+        // Note: SDK requires apiKey even with custom fetch, but it won't be used
+        const customFetch = createAnthropicFetch(config);
+        provider = createAnthropic({
+          apiKey: "oauth-token", // Dummy key - actual auth via Bearer token in custom fetch
+          fetch: customFetch as any,
+          headers: {
+            "anthropic-beta": CLAUDE_CODE_BETA,
+          },
+        });
+      } else {
+        // Use API key
+        provider = createAnthropic({
+          apiKey: anthropicConfig.apiKey,
+          headers: {
+            "anthropic-beta": CLAUDE_CODE_API_BETA,
+          },
+        });
+      }
+
+      modelName = anthropicConfig.model || "claude-sonnet-4-5-20250929";
+    } else if (config.activeProvider === "maple") {
       logger.info("Using Maple AI with encrypted inference");
       const mapleFetch = await createMapleFetch({
         apiUrl: config.maple!.apiUrl,
@@ -83,7 +130,7 @@ export async function* runAgent(
       provider = createOpenAICompatible({
         name: "maple",
         baseURL: `${config.maple!.apiUrl}/v1`,
-        fetch: mapleFetch,
+        fetch: mapleFetch as any,
       });
       modelName = config.maple!.model;
     } else {
@@ -125,12 +172,13 @@ export async function* runAgent(
 
     const result = await streamText({
       model: provider(modelName),
-      system: SYSTEM_PROMPT,
-      messages,
+      system: getSystemPrompt(config.activeProvider),
+      messages: messages as any,
       tools: toolSet,
       // Only use stopWhen if maxSteps > 1 (multi-step mode)
       ...(effectiveSteps > 1 ? { stopWhen: stepCountIs(effectiveSteps) } : {}),
       temperature: config.temperature || 0.3,
+      abortSignal,
     });
 
     for await (const chunk of result.fullStream) {

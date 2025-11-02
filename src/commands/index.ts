@@ -1,3 +1,4 @@
+import { exchangeOAuthCode, startAnthropicOAuth } from "../auth";
 import type { Config } from "../config";
 import { saveConfig } from "../config";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
@@ -33,6 +34,9 @@ export async function executeCommand(
   config: Config,
 ): Promise<void> {
   switch (command) {
+    case "auth":
+      await handleAuthCommand(args, ui, config);
+      break;
     case "models":
       await handleModelsCommand(args, ui, config);
       break;
@@ -59,6 +63,8 @@ export async function executeCommand(
 
 async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("Available commands:\n");
+  ui.appendOutput("  /auth login         - Login with Anthropic OAuth\n");
+  ui.appendOutput("  /auth status        - Show current authentication\n");
   ui.appendOutput("  /models [model-id]  - List or switch models\n");
   ui.appendOutput(
     "  /sessions           - Interactive session picker (or list)\n",
@@ -293,7 +299,7 @@ async function handleModelsCommand(
       return;
     }
 
-    // Check if Maple is configured if switching to Maple model
+    // Check if provider is configured
     if (modelInfo.provider === "maple" && !config.maple?.apiKey) {
       ui.pendingMapleSetup = { modelId };
       ui.appendOutput(`🔐 Setting up Maple AI for ${modelInfo.name}\n`);
@@ -302,9 +308,29 @@ async function handleModelsCommand(
       return;
     }
 
+    if (
+      modelInfo.provider === "anthropic" &&
+      !config.anthropic?.apiKey &&
+      !config.anthropic?.refresh
+    ) {
+      ui.appendOutput(`❌ Anthropic not configured\n`);
+      ui.appendOutput(`Run /auth login to set up Anthropic OAuth\n`);
+      return;
+    }
+
+    if (modelInfo.provider === "opencode" && !config.opencode.apiKey) {
+      ui.appendOutput(`❌ OpenCode not configured\n`);
+      return;
+    }
+
     // Switch model
     config.activeProvider = modelInfo.provider;
-    if (modelInfo.provider === "opencode") {
+    if (modelInfo.provider === "anthropic") {
+      if (!config.anthropic) {
+        config.anthropic = { type: "api", apiKey: "" };
+      }
+      config.anthropic.model = modelId;
+    } else if (modelInfo.provider === "opencode") {
       config.opencode.model = modelId;
     } else if (modelInfo.provider === "maple") {
       config.maple!.model = modelId;
@@ -318,41 +344,72 @@ async function handleModelsCommand(
     return;
   }
 
-  // Show model list
+  // Show modal if UI supports it
+  if (ui.showModelSelector) {
+    ui.showModelSelector();
+    return;
+  }
+
+  // Fallback: text-based list
   ui.appendOutput("Available Models:\n\n");
 
+  const anthropicModels = getModelsByProvider("anthropic");
   const openCodeModels = getModelsByProvider("opencode");
   const mapleModels = getModelsByProvider("maple");
 
   const currentModel =
-    config.activeProvider === "opencode"
-      ? config.opencode.model
-      : config.maple?.model;
+    config.activeProvider === "anthropic"
+      ? config.anthropic?.model
+      : config.activeProvider === "opencode"
+        ? config.opencode.model
+        : config.maple?.model;
 
-  ui.appendOutput("OpenCode:\n");
-  for (const model of openCodeModels) {
-    const current =
-      model.id === currentModel && config.activeProvider === "opencode"
-        ? " (current)"
-        : "";
-    ui.appendOutput(
-      `  ${model.id.padEnd(20)} ${model.name.padEnd(20)} ${model.pricing}${current}\n`,
-    );
+  // Show Anthropic models if configured
+  if (config.anthropic?.apiKey || config.anthropic?.refresh) {
+    ui.appendOutput("Anthropic:\n");
+    for (const model of anthropicModels) {
+      const current =
+        model.id === currentModel && config.activeProvider === "anthropic"
+          ? " (current)"
+          : "";
+      ui.appendOutput(
+        `  ${model.id.padEnd(40)} ${model.name.padEnd(25)} ${model.pricing}${current}\n`,
+      );
+    }
+    ui.appendOutput("\n");
   }
 
-  ui.appendOutput("\nMaple AI:\n");
-  for (const model of mapleModels) {
-    const current =
-      model.id === currentModel && config.activeProvider === "maple"
-        ? " (current)"
-        : "";
-    const configured = config.maple?.apiKey ? "" : " (not configured)";
-    ui.appendOutput(
-      `  ${model.id.padEnd(20)} ${model.name.padEnd(20)} ${model.pricing}${current}${configured}\n`,
-    );
+  // Show OpenCode models if configured
+  if (config.opencode.apiKey) {
+    ui.appendOutput("OpenCode:\n");
+    for (const model of openCodeModels) {
+      const current =
+        model.id === currentModel && config.activeProvider === "opencode"
+          ? " (current)"
+          : "";
+      ui.appendOutput(
+        `  ${model.id.padEnd(40)} ${model.name.padEnd(25)} ${model.pricing}${current}\n`,
+      );
+    }
+    ui.appendOutput("\n");
   }
 
-  ui.appendOutput("\nUsage: /models <model-id> to switch\n");
+  // Show Maple models if configured
+  if (config.maple?.apiKey) {
+    ui.appendOutput("Maple AI:\n");
+    for (const model of mapleModels) {
+      const current =
+        model.id === currentModel && config.activeProvider === "maple"
+          ? " (current)"
+          : "";
+      ui.appendOutput(
+        `  ${model.id.padEnd(40)} ${model.name.padEnd(25)} ${model.pricing}${current}\n`,
+      );
+    }
+    ui.appendOutput("\n");
+  }
+
+  ui.appendOutput("Usage: /models <model-id> to switch\n");
 }
 
 export async function handleMapleSetup(
@@ -386,4 +443,124 @@ export async function handleMapleSetup(
   await saveConfig(config);
   ui.appendOutput(`\n✓ Maple AI configured with ${modelInfo.name}\n`);
   ui.setStatus(`Ready • ${modelInfo.name} • Press Enter to send`);
+}
+
+async function handleAuthCommand(
+  args: string[],
+  ui: UIAdapter,
+  config: Config,
+): Promise<void> {
+  const subcommand = args[0];
+
+  if (!subcommand || subcommand === "status") {
+    // Show current auth status
+    ui.appendOutput("Authentication Status:\n\n");
+
+    if (config.anthropic?.type === "oauth") {
+      const expiresIn = config.anthropic.expires
+        ? Math.floor((config.anthropic.expires - Date.now()) / 1000 / 60)
+        : 0;
+      ui.appendOutput("✓ Anthropic: OAuth (Claude Pro/Max)\n");
+      ui.appendOutput(
+        `  Token expires in: ${expiresIn > 0 ? `${expiresIn} minutes` : "expired (will auto-refresh)"}\n`,
+      );
+    } else if (config.anthropic?.type === "api") {
+      ui.appendOutput("✓ Anthropic: API Key\n");
+    } else if (config.opencode.apiKey) {
+      ui.appendOutput("✓ OpenCode Zen API\n");
+      ui.appendOutput(`  Model: ${config.opencode.model}\n`);
+    } else if (config.maple?.apiKey) {
+      ui.appendOutput("✓ Maple AI\n");
+      ui.appendOutput(`  Model: ${config.maple.model}\n`);
+    } else {
+      ui.appendOutput("❌ No authentication configured\n\n");
+      ui.appendOutput("Run /auth login to set up Anthropic OAuth\n");
+    }
+    return;
+  }
+
+  if (subcommand === "login") {
+    ui.appendOutput("🔐 Starting Anthropic OAuth (Claude Pro/Max)...\n\n");
+
+    try {
+      const { url, verifier } = await startAnthropicOAuth();
+
+      // Automatically open browser
+      ui.appendOutput("Opening browser for authentication...\n\n");
+
+      try {
+        const platform = process.platform;
+        const openCmd =
+          platform === "darwin"
+            ? "open"
+            : platform === "win32"
+              ? "start"
+              : "xdg-open";
+
+        await Bun.spawn([openCmd, url], {
+          stdout: "ignore",
+          stderr: "ignore",
+        }).exited;
+      } catch (e) {
+        // If auto-open fails, show the URL
+        ui.appendOutput("⚠️  Could not open browser automatically.\n");
+        ui.appendOutput("Please open this URL manually:\n");
+        ui.appendOutput(`   ${url}\n\n`);
+      }
+
+      ui.appendOutput("After authorizing:\n");
+      ui.appendOutput("1. Copy the authorization code\n");
+      ui.appendOutput("2. Paste it here: ");
+
+      // Set up state for receiving the code
+      ui.pendingOAuthSetup = { verifier };
+      ui.setStatus("Waiting for OAuth code...");
+    } catch (error: any) {
+      ui.appendOutput(`\n❌ Failed to start OAuth: ${error.message}\n`);
+    }
+    return;
+  }
+
+  ui.appendOutput(`❌ Unknown auth subcommand: ${subcommand}\n`);
+  ui.appendOutput("Usage:\n");
+  ui.appendOutput("  /auth login  - Login with Anthropic OAuth\n");
+  ui.appendOutput("  /auth status - Show current authentication\n");
+}
+
+export async function handleOAuthCodeInput(
+  code: string,
+  verifier: string,
+  ui: UIAdapter,
+  config: Config,
+): Promise<void> {
+  ui.appendOutput("\n\n🔄 Exchanging code for tokens...\n");
+
+  try {
+    const result = await exchangeOAuthCode(code.trim(), verifier);
+
+    if (result.type === "failed") {
+      ui.appendOutput("❌ Failed to exchange OAuth code\n");
+      ui.appendOutput("Please try /auth login again\n");
+      return;
+    }
+
+    // Save OAuth credentials
+    config.anthropic = {
+      type: "oauth",
+      refresh: result.refresh!,
+      access: result.access!,
+      expires: result.expires!,
+      model: "claude-sonnet-4-5-20250929",
+    };
+    config.activeProvider = "anthropic";
+
+    await saveConfig(config);
+
+    ui.appendOutput("✓ Successfully authenticated with Anthropic!\n");
+    ui.appendOutput("✓ Using Claude Pro/Max subscription\n");
+    ui.appendOutput(`✓ Active model: ${config.anthropic.model}\n\n`);
+    ui.setStatus(`Ready • ${config.anthropic.model} • Press Enter to send`);
+  } catch (error: any) {
+    ui.appendOutput(`❌ Error: ${error.message}\n`);
+  }
 }

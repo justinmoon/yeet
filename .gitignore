@@ -37,3 +37,6 @@ test-results/
 .helix/
 
 worktrees
+
+# Video files
+video.*
