@@ -1,5 +1,5 @@
-import { generatePKCE } from "@openauthjs/openauth/pkce";
 import { randomUUID } from "crypto";
+import { generatePKCE } from "@openauthjs/openauth/pkce";
 import type { Config } from "./config";
 import { saveConfig } from "./config";
 
