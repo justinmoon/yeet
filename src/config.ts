@@ -150,7 +150,7 @@ async function createDefaultConfig(configPath: string): Promise<Config> {
 }
 
 export async function loadConfig(): Promise<Config> {
-  const configPath = path.join(os.homedir(), ".yeet", "config.json");
+  const configPath = path.join(os.homedir(), ".config", "yeet", "config.json");
   const file = Bun.file(configPath);
 
   if (!(await file.exists())) {
@@ -175,7 +175,7 @@ export async function loadConfig(): Promise<Config> {
 }
 
 export async function saveConfig(config: Config): Promise<void> {
-  const configPath = path.join(os.homedir(), ".yeet", "config.json");
+  const configPath = path.join(os.homedir(), ".config", "yeet", "config.json");
   await Bun.write(configPath, JSON.stringify(config, null, 2));
   await chmod(configPath, 0o600);
 }

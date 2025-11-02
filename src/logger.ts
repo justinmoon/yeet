@@ -105,7 +105,7 @@ class Logger {
 }
 
 // Global logger instance
-const logPath = path.join(os.homedir(), ".yeet", "debug.log");
+const logPath = path.join(os.homedir(), ".config", "yeet", "debug.log");
 const logLevel =
   process.env.YEET_LOG_LEVEL === "debug" ? LogLevel.DEBUG : LogLevel.INFO;
 

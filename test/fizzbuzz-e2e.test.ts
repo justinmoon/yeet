@@ -203,7 +203,7 @@ test(
     if (!config.maple?.apiKey) {
       console.log("\n⏭️  Skipping Maple test - no Maple configuration found");
       console.log(
-        "   Add Maple config to ~/.yeet/config.json to run this test",
+        "   Add Maple config to ~/.config/yeet/config.json to run this test",
       );
       return;
     }
