@@ -25,6 +25,9 @@ export interface Config {
     refresh?: string;
     access?: string;
     expires?: number;
+    accountUuid?: string;
+    organizationUuid?: string;
+    userUuid?: string;
     // For API key
     apiKey?: string;
     model?: string;

@@ -2,7 +2,11 @@ import { createAnthropic } from "@ai-sdk/anthropic";
 // @ts-nocheck - AI SDK v5 types are complex, but runtime works correctly
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { stepCountIs, streamText } from "ai";
-import { createAnthropicFetch } from "./auth";
+import {
+  CLAUDE_CODE_API_BETA,
+  CLAUDE_CODE_BETA,
+  createAnthropicFetch,
+} from "./auth";
 import type { Config } from "./config";
 import { logger } from "./logger";
 import { createMapleFetch } from "./maple";
@@ -100,8 +104,7 @@ export async function* runAgent(
           apiKey: "oauth-token", // Dummy key - actual auth via Bearer token in custom fetch
           fetch: customFetch as any,
           headers: {
-            "anthropic-beta":
-              "claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+            "anthropic-beta": CLAUDE_CODE_BETA,
           },
         });
       } else {
@@ -109,8 +112,7 @@ export async function* runAgent(
         provider = createAnthropic({
           apiKey: anthropicConfig.apiKey,
           headers: {
-            "anthropic-beta":
-              "claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
+            "anthropic-beta": CLAUDE_CODE_API_BETA,
           },
         });
       }

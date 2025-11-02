@@ -1,9 +1,179 @@
 import { generatePKCE } from "@openauthjs/openauth/pkce";
+import { randomUUID } from "crypto";
 import type { Config } from "./config";
 import { saveConfig } from "./config";
 
 const CLIENT_ID = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
 
+export const CLAUDE_CODE_API_BETA =
+  "claude-code-20250219,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14";
+export const CLAUDE_CODE_BETA = `claude-code-20250219,oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14`;
+
+const CLAUDE_CODE_USER_AGENT = "claude-cli/2.0.22 (external, sdk-cli)";
+const CLAUDE_CODE_SYSTEM_PREFIX =
+  "You are Claude Code, Anthropic's official CLI for Claude.";
+
+const globalFetch = globalThis.fetch.bind(globalThis);
+
+let identityPromise: Promise<void> | null = null;
+
+async function ensureAnthropicIdentity(config: Config): Promise<void> {
+  const anthropic = config.anthropic!;
+
+  if (anthropic.accountUuid && anthropic.userUuid) {
+    return;
+  }
+
+  if (!anthropic.access) {
+    return;
+  }
+
+  if (!identityPromise) {
+    identityPromise = (async () => {
+      try {
+        const response = await globalFetch(
+          "https://api.anthropic.com/api/oauth/profile",
+          {
+            headers: {
+              accept: "application/json",
+              authorization: `Bearer ${anthropic.access}`,
+              "anthropic-beta": CLAUDE_CODE_BETA,
+              "anthropic-dangerous-direct-browser-access": "true",
+              "user-agent": CLAUDE_CODE_USER_AGENT,
+              "x-app": "cli",
+              "x-stainless-arch": "arm64",
+              "x-stainless-helper-method": "stream",
+              "x-stainless-lang": "js",
+              "x-stainless-os": "MacOS",
+              "x-stainless-package-version": "0.60.0",
+              "x-stainless-retry-count": "0",
+              "x-stainless-runtime": "node",
+              "x-stainless-runtime-version": "v24.3.0",
+              "x-stainless-timeout": "600",
+            },
+          },
+        );
+
+        if (response.ok) {
+          const profile = await response.json();
+          anthropic.accountUuid =
+            profile.account?.uuid || anthropic.accountUuid;
+          anthropic.organizationUuid =
+            profile.organization?.uuid || anthropic.organizationUuid;
+        }
+      } catch {
+        // Ignore failures and fall back to generating identifiers below
+      }
+
+      if (!anthropic.userUuid) {
+        anthropic.userUuid = randomUUID().toLowerCase();
+      }
+
+      await saveConfig(config);
+    })().finally(() => {
+      identityPromise = null;
+    });
+  }
+
+  await identityPromise;
+}
+
+function normalizeMessageContent(content: any): Array<Record<string, any>> {
+  if (typeof content === "string") {
+    return [
+      {
+        type: "text",
+        text: content,
+        cache_control: { type: "ephemeral" },
+      },
+    ];
+  }
+
+  if (Array.isArray(content)) {
+    return content.map((block) => {
+      if (typeof block === "string") {
+        return {
+          type: "text",
+          text: block,
+          cache_control: { type: "ephemeral" },
+        };
+      }
+
+      if (block && typeof block === "object") {
+        if (
+          block.type === "text" &&
+          (!block.cache_control || typeof block.cache_control !== "object")
+        ) {
+          block = {
+            ...block,
+            cache_control: { type: "ephemeral" },
+          };
+        }
+        return block;
+      }
+
+      return block;
+    });
+  }
+
+  return [];
+}
+
+function buildClaudeCodeSystem(system: unknown): Array<Record<string, any>> {
+  const prefix = {
+    type: "text",
+    text: CLAUDE_CODE_SYSTEM_PREFIX,
+    cache_control: { type: "ephemeral" },
+  };
+
+  // If system is already an array, prepend our prefix to it
+  if (Array.isArray(system)) {
+    return [prefix, ...system];
+  }
+
+  // If system is a non-empty string, add it after the prefix
+  if (typeof system === "string" && system.trim().length > 0) {
+    return [
+      prefix,
+      {
+        type: "text",
+        text: system,
+        cache_control: { type: "ephemeral" },
+      },
+    ];
+  }
+
+  // If system is empty or undefined, just use the prefix
+  return [prefix];
+}
+
+function injectClaudeCodeMetadata(body: any, config: Config) {
+  if (!body || typeof body !== "object") {
+    return;
+  }
+
+  if (Array.isArray(body.messages)) {
+    for (const message of body.messages) {
+      if (!message || typeof message !== "object") {
+        continue;
+      }
+      message.content = normalizeMessageContent(message.content);
+    }
+  }
+
+  const anthropic = config.anthropic!;
+  const accountId =
+    anthropic.accountUuid ||
+    anthropic.organizationUuid ||
+    "00000000-0000-0000-0000-000000000000";
+
+  body.system = buildClaudeCodeSystem(body.system);
+  body.tools = Array.isArray(body.tools) ? body.tools : [];
+  body.metadata = {
+    ...(body.metadata ?? {}),
+    user_id: `user_${anthropic.userUuid}_account_${accountId}_session_${randomUUID().toLowerCase()}`,
+  };
+}
 export interface OAuthResult {
   url: string;
   verifier: string;
@@ -128,46 +298,70 @@ export function createAnthropicFetch(config: Config) {
       await saveConfig(config);
     }
 
-    // Remove x-api-key from init headers FIRST
-    const initHeaders = init?.headers ? { ...init.headers } : {};
-    if ("x-api-key" in initHeaders) {
-      delete (initHeaders as any)["x-api-key"];
-    }
-    if ("Accept" in initHeaders) {
-      delete (initHeaders as any)["Accept"];
+    const requestHeaders = new Headers(init?.headers ?? {});
+    requestHeaders.delete("x-api-key");
+    requestHeaders.delete("Accept");
+
+    requestHeaders.set("accept", "application/json");
+    requestHeaders.set("authorization", `Bearer ${anthropic.access}`);
+    requestHeaders.set("anthropic-beta", CLAUDE_CODE_BETA);
+    requestHeaders.set("anthropic-dangerous-direct-browser-access", "true");
+    requestHeaders.set("anthropic-version", "2023-06-01");
+    requestHeaders.set("user-agent", CLAUDE_CODE_USER_AGENT);
+    requestHeaders.set("x-app", "cli");
+    requestHeaders.set("x-stainless-arch", "arm64");
+    requestHeaders.set("x-stainless-helper-method", "stream");
+    requestHeaders.set("x-stainless-lang", "js");
+    requestHeaders.set("x-stainless-os", "MacOS");
+    requestHeaders.set("x-stainless-package-version", "0.60.0");
+    requestHeaders.set("x-stainless-retry-count", "0");
+    requestHeaders.set("x-stainless-runtime", "node");
+    requestHeaders.set("x-stainless-runtime-version", "v24.3.0");
+    requestHeaders.set("x-stainless-timeout", "600");
+
+    let body: BodyInit | null | undefined = init?.body ?? null;
+    const urlOriginal = input.toString();
+    const shouldTransform =
+      typeof body === "string" &&
+      urlOriginal.startsWith("https://api.anthropic.com/v1/messages");
+
+    if (shouldTransform) {
+      await ensureAnthropicIdentity(config);
+      try {
+        const parsed = JSON.parse(body as string);
+        injectClaudeCodeMetadata(parsed, config);
+        body = JSON.stringify(parsed);
+      } catch (error) {
+        if (process.env.DEBUG_OAUTH) {
+          console.error("Failed to transform Claude request:", error);
+        }
+      }
     }
 
-    // Add OAuth bearer token and required headers (match Claude Code exactly)
-    // Our headers MUST override SDK headers, so we put init headers first
-    const headers = {
-      ...initHeaders,
-      accept: "application/json",
-      authorization: `Bearer ${anthropic.access}`,
-      "anthropic-beta":
-        "oauth-2025-04-20,interleaved-thinking-2025-05-14,fine-grained-tool-streaming-2025-05-14",
-      "anthropic-dangerous-direct-browser-access": "true",
-      "user-agent": "claude-cli/2.0.22 (external, cli)",
-      "x-app": "cli",
-      "x-stainless-arch": "arm64",
-      "x-stainless-helper-method": "stream",
-      "x-stainless-lang": "js",
-      "x-stainless-os": "MacOS",
-      "x-stainless-package-version": "0.60.0",
-      "x-stainless-retry-count": "0",
-      "x-stainless-runtime": "node",
-      "x-stainless-runtime-version": "v24.3.0",
-      "x-stainless-timeout": "600",
-    };
-
-    // Add ?beta=true to URL (match Claude Code)
-    let url = input.toString();
+    let url = urlOriginal;
     if (url.includes("anthropic.com") && !url.includes("beta=")) {
       url = url + (url.includes("?") ? "&" : "?") + "beta=true";
     }
 
+    if (process.env.DEBUG_OAUTH) {
+      console.log("\n=== COMPLETE REQUEST ===");
+      console.log("URL:", url);
+      console.log("Method:", init?.method || "GET");
+      console.log("\nHeaders:");
+      for (const [key, value] of requestHeaders.entries()) {
+        console.log(`  ${key}: ${value}`);
+      }
+      if (body && typeof body === "string") {
+        console.log("\nBody:");
+        console.log(body);
+      }
+      console.log("========================\n");
+    }
+
     return fetch(url, {
       ...init,
-      headers,
+      headers: requestHeaders,
+      body: body ?? undefined,
     });
   };
 }
