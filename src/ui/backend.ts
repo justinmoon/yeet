@@ -1,3 +1,4 @@
+import { cyan, dim, green, magenta, red, t, yellow } from "@opentui/core";
 import type { MessageContent } from "../agent";
 import { runAgent } from "../agent";
 import type { Config } from "../config";
@@ -25,8 +26,10 @@ export async function handleMessage(
     imageAttachments: ui.imageAttachments.length,
   });
 
-  // Add separator if there's already content
-  ui.appendOutput("\n" + "─".repeat(60) + "\n\n");
+  // Add subtle separator between turns
+  if (ui.conversationHistory.length > 0) {
+    ui.appendOutput(t`${dim("─")}\n`);
+  }
 
   // Build message content (text + images if any)
   const hasImages = ui.imageAttachments.length > 0;
@@ -48,14 +51,14 @@ export async function handleMessage(
   // Display user message with attachment count
   if (hasImages) {
     ui.appendOutput(
-      `You: ${message} [${ui.imageAttachments.length} image(s)]\n\n`,
+      t`${cyan("[you]")} ${message} ${dim(`[${ui.imageAttachments.length} image(s)]`)}\n`,
     );
   } else {
-    ui.appendOutput(`You: ${message}\n\n`);
+    ui.appendOutput(t`${cyan("[you]")} ${message}\n`);
   }
 
   ui.clearInput();
-  ui.setStatus("Agent thinking...");
+  updateTokenCount(ui, config, "Thinking");
 
   // Create abort controller for cancellation
   const abortController = new AbortController();
@@ -63,7 +66,7 @@ export async function handleMessage(
   ui.isGenerating = true;
 
   try {
-    ui.appendOutput("Assistant: ");
+    // Don't print [yeet] prefix - we'll only show it if there's actual text output
 
     // Get model info for context window limits
     const modelId =
@@ -92,7 +95,7 @@ export async function handleMessage(
       if (messages.length < originalLength) {
         const removed = originalLength - messages.length;
         ui.appendOutput(
-          `\n⚠️  Truncated ${removed} old message(s) to fit context window\n\n`,
+          t`\n${yellow(`⚠️  Truncated ${removed} old message(s) to fit context window`)}\n\n`,
         );
         logger.info("Truncated conversation history", {
           removed,
@@ -105,13 +108,14 @@ export async function handleMessage(
     let textChunks = 0;
     let lastToolName = "";
     let lastToolArgs: any = {};
+    let hasOutputText = false; // Track if we've output any text
 
     for await (const event of runAgent(
       messages,
       config,
       (tool) => {
         logger.debug("Tool called", { tool });
-        ui.setStatus(`Running ${tool}...`);
+        updateTokenCount(ui, config, `Running ${tool}`);
       },
       undefined,
       abortController.signal,
@@ -126,86 +130,105 @@ export async function handleMessage(
         });
         const text = event.content || "";
         assistantResponse += text;
+
+        // Print [yeet] prefix only before the first text output
+        if (!hasOutputText) {
+          ui.appendOutput(t`${green("[yeet]")} `);
+          hasOutputText = true;
+          updateTokenCount(ui, config, "Responding");
+        }
+
         ui.appendOutput(text);
       } else if (event.type === "tool") {
         lastToolName = event.name || "";
         lastToolArgs = event.args || {};
 
         if (event.name === "bash") {
-          ui.appendOutput(`\n[bash] ${event.args?.command}\n`);
+          ui.appendOutput(t`\n${magenta("[bash]")} ${event.args?.command}\n`);
         } else if (event.name === "read") {
-          ui.appendOutput(`\n[read] ${event.args?.path}\n`);
+          ui.appendOutput(t`\n${magenta("[read]")} ${event.args?.path}\n`);
         } else if (event.name === "write") {
-          ui.appendOutput(`\n[write] ${event.args?.path}\n`);
+          ui.appendOutput(t`\n${magenta("[write]")} ${event.args?.path}\n`);
         } else if (event.name === "edit") {
-          ui.appendOutput(`\n[edit] ${event.args?.path}\n`);
+          ui.appendOutput(t`\n${magenta("[edit]")} ${event.args?.path}\n`);
         } else if (event.name === "search") {
           ui.appendOutput(
-            `\n[search] "${event.args?.pattern}"${event.args?.path ? ` in ${event.args.path}` : ""}\n`,
+            t`\n${magenta("[search]")} "${event.args?.pattern}"${event.args?.path ? ` in ${event.args.path}` : ""}\n`,
           );
         } else if (event.name === "complete") {
-          ui.appendOutput(`\n✓ Task complete: ${event.args?.summary || ""}\n`);
+          ui.appendOutput(
+            t`\n${green("✓ Task complete:")} ${event.args?.summary || ""}\n`,
+          );
         } else if (event.name === "clarify") {
-          ui.appendOutput(`\n❓ ${event.args?.question || ""}\n`);
+          ui.appendOutput(t`\n${yellow(`❓ ${event.args?.question || ""}`)}\n`);
         } else if (event.name === "pause") {
-          ui.appendOutput(`\n⏸️  Paused: ${event.args?.reason || ""}\n`);
+          ui.appendOutput(
+            t`\n${yellow(`⏸️  Paused: ${event.args?.reason || ""}`)}\n`,
+          );
         }
       } else if (event.type === "tool-result") {
         if (lastToolName === "read") {
           if (event.result?.error) {
-            ui.appendOutput(`❌ ${event.result.error}\n`);
+            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
           } else {
-            ui.appendOutput(`✓ Read ${lastToolArgs.path}\n`);
+            ui.appendOutput(t`  ${green(`✓ Read ${lastToolArgs.path}`)}\n`);
           }
         } else if (lastToolName === "write") {
           if (event.result?.error) {
-            ui.appendOutput(`❌ ${event.result.error}\n`);
+            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
           } else {
-            ui.appendOutput(`✓ Created ${lastToolArgs.path}\n`);
+            ui.appendOutput(t`  ${green(`✓ Created ${lastToolArgs.path}`)}\n`);
           }
         } else if (lastToolName === "edit") {
           if (event.result?.error) {
-            ui.appendOutput(`❌ ${event.result.error}\n`);
+            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
           } else {
-            ui.appendOutput(`✓ Updated ${lastToolArgs.path}\n`);
+            ui.appendOutput(t`  ${green(`✓ Updated ${lastToolArgs.path}`)}\n`);
           }
         } else if (lastToolName === "search") {
           if (event.result?.error) {
-            ui.appendOutput(`❌ ${event.result.error}\n`);
+            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
           } else if (event.result?.message) {
-            ui.appendOutput(`${event.result.message}\n`);
+            ui.appendOutput(`  ${event.result.message}\n`);
           } else if (event.result?.matches) {
             const count = event.result.total || 0;
             ui.appendOutput(
-              `✓ Found ${count} match${count !== 1 ? "es" : ""}\n`,
+              t`  ${green(`✓ Found ${count} match${count !== 1 ? "es" : ""}`)}\n`,
             );
             const displayMatches = event.result.matches.slice(0, 10);
             for (const match of displayMatches) {
               ui.appendOutput(
-                `  ${match.file}:${match.line}: ${match.content}\n`,
+                t`    ${dim(`${match.file}:${match.line}:`)} ${match.content}\n`,
               );
             }
             if (event.result.matches.length > 10) {
               ui.appendOutput(
-                `  ... and ${event.result.matches.length - 10} more\n`,
+                t`    ${dim(`... and ${event.result.matches.length - 10} more`)}\n`,
               );
             }
           }
         } else if (lastToolName === "bash") {
           if (event.result?.error) {
-            ui.appendOutput(`❌ ${event.result.error}\n`);
+            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
           } else if (event.result?.stdout) {
-            ui.appendOutput(event.result.stdout);
+            // Indent bash output
+            const indentedOutput = event.result.stdout
+              .split("\n")
+              .map((line: string) => `  ${line}`)
+              .join("\n");
+            ui.appendOutput(indentedOutput);
             if (event.result.stderr) {
-              ui.appendOutput(`stderr: ${event.result.stderr}\n`);
+              ui.appendOutput(t`  ${dim(`stderr: ${event.result.stderr}`)}\n`);
             }
             if (event.result.exitCode !== 0) {
-              ui.appendOutput(`(exit code: ${event.result.exitCode})\n`);
+              ui.appendOutput(
+                t`  ${red(`(exit code: ${event.result.exitCode})`)}\n`,
+              );
             }
           }
         }
       } else if (event.type === "error") {
-        ui.appendOutput(`\n❌ Error: ${event.error}\n`);
+        ui.appendOutput(t`\n${red(`❌ Error: ${event.error}`)}\n`);
       }
     }
     ui.appendOutput("\n");
@@ -222,11 +245,11 @@ export async function handleMessage(
     // Clear image attachments after successful send
     ui.clearAttachments();
 
-    // Update token count display
-    ui.updateTokenCount();
-
     // Auto-save session after each message
     ui.saveCurrentSession();
+
+    // Update status back to Paused when done
+    updateTokenCount(ui, config, "Paused");
 
     logger.info("Message handled successfully", {
       textChunks,
@@ -238,14 +261,14 @@ export async function handleMessage(
     // Handle abort error specially
     if (error.name === "AbortError" || abortController.signal.aborted) {
       logger.info("Generation cancelled by user");
-      ui.updateTokenCount();
+      updateTokenCount(ui, config, "Cancelled");
     } else {
       logger.error("Error handling message", {
         error: error.message,
         stack: error.stack,
       });
-      ui.appendOutput(`\n❌ Error: ${error.message}\n`);
-      ui.updateTokenCount();
+      ui.appendOutput(t`\n${red(`❌ Error: ${error.message}`)}\n`);
+      updateTokenCount(ui, config, "Error");
     }
   } finally {
     // Clean up generation state
@@ -254,7 +277,11 @@ export async function handleMessage(
   }
 }
 
-export function updateTokenCount(ui: UIAdapter, config: Config): void {
+export function updateTokenCount(
+  ui: UIAdapter,
+  config: Config,
+  statusPrefix = "Paused",
+): void {
   const modelId =
     config.activeProvider === "anthropic"
       ? config.anthropic?.model || ""
@@ -276,14 +303,12 @@ export function updateTokenCount(ui: UIAdapter, config: Config): void {
   const usage = calculateContextUsage(tokens, maxTokens);
   const maxDisplay = formatTokenCount(maxTokens);
 
+  const statusSuffix = `${modelInfo.name} | ${tokenDisplay}/${maxDisplay} (${usage}%)`;
+
   if (usage >= 80) {
-    ui.setStatus(
-      `⚠️  ${modelInfo.name} | ${tokenDisplay}/${maxDisplay} (${usage}%)`,
-    );
+    ui.setStatus(`${statusPrefix} | ⚠️  ${statusSuffix}`);
   } else {
-    ui.setStatus(
-      `${modelInfo.name} | ${tokenDisplay}/${maxDisplay} (${usage}%)`,
-    );
+    ui.setStatus(`${statusPrefix} | ${statusSuffix}`);
   }
 }
 

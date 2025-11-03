@@ -2,10 +2,17 @@ import {
   BoxRenderable,
   type CliRenderer,
   type KeyEvent,
+  RGBA,
   ScrollBoxRenderable,
+  type StyledText,
   TextRenderable,
   TextareaRenderable,
   createCliRenderer,
+  cyan,
+  dim,
+  green,
+  stringToStyledText,
+  t,
 } from "@opentui/core";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
@@ -40,7 +47,7 @@ export class TUIAdapter implements UIAdapter {
   private output!: TextRenderable;
   private status!: TextRenderable;
   private scrollBox!: ScrollBoxRenderable;
-  private contentBuffer = "";
+  private contentChunks: Array<string | StyledText> = [];
   private config: Config;
   private userInputCallback?: (message: string) => Promise<void>;
   private commandCallback?: (command: string, args: string[]) => Promise<void>;
@@ -87,9 +94,21 @@ export class TUIAdapter implements UIAdapter {
     this.commandCallback = callback;
   }
 
-  appendOutput(text: string): void {
-    this.contentBuffer += text;
-    this.output.content = this.contentBuffer;
+  appendOutput(text: string | StyledText): void {
+    // Add to chunks array
+    this.contentChunks.push(text);
+
+    // Combine all chunks into a single StyledText
+    const combined = this.contentChunks.map((chunk) =>
+      typeof chunk === "string" ? stringToStyledText(chunk) : chunk,
+    );
+
+    // Merge all StyledText chunks by concatenating their chunks arrays
+    const allChunks = combined.flatMap((st) => st.chunks);
+    const StyledTextClass = stringToStyledText("").constructor as any;
+    const mergedContent = new StyledTextClass(allChunks);
+
+    this.output.content = mergedContent;
 
     // Force layout recalculation and scroll to bottom
     // @ts-ignore
@@ -107,8 +126,8 @@ export class TUIAdapter implements UIAdapter {
   }
 
   clearOutput(): void {
-    this.contentBuffer = "";
-    this.output.content = this.contentBuffer;
+    this.contentChunks = [];
+    this.output.content = "";
   }
 
   setStatus(text: string): void {
@@ -117,7 +136,7 @@ export class TUIAdapter implements UIAdapter {
 
   clearInput(): void {
     this.input.editBuffer.setText("", { history: false });
-    this.inputBox.height = 3; // Reset to minimum height
+    this.inputBox.height = 1; // Reset to minimum height
   }
 
   clearAttachments(): void {
@@ -126,7 +145,7 @@ export class TUIAdapter implements UIAdapter {
   }
 
   updateTokenCount(): void {
-    updateTokenCount(this, this.config);
+    updateTokenCount(this, this.config, "Paused");
   }
 
   saveCurrentSession(): void {
@@ -151,21 +170,23 @@ export class TUIAdapter implements UIAdapter {
       ? `${modelInfo.name} (${modelInfo.provider})`
       : currentModelId;
 
+    // Status bar at top with light background (full width)
     this.status = new TextRenderable(this.renderer, {
       id: "status",
       content: `${modelDisplay} | 0/${modelInfo?.contextWindow || "?"} (0%)`,
-      fg: "gray",
+      fg: RGBA.fromInts(0, 0, 0, 255),
+      bg: RGBA.fromInts(220, 220, 220, 255),
       height: 1,
+      flexGrow: 1,
+      flexShrink: 0,
     });
     container.add(this.status);
 
+    // Messages area (no border)
     this.scrollBox = new ScrollBoxRenderable(this.renderer, {
       id: "output-scroll",
-      borderStyle: "single",
-      borderColor: "gray",
       flexGrow: 1,
       flexShrink: 1,
-      border: true,
       stickyScroll: true,
       stickyStart: "bottom",
       scrollY: true,
@@ -180,22 +201,18 @@ export class TUIAdapter implements UIAdapter {
     });
     this.scrollBox.add(this.output);
 
+    // Input area
     this.inputBox = new BoxRenderable(this.renderer, {
       id: "input-box",
-      borderStyle: "single",
-      borderColor: "blue",
-      minHeight: 3,
+      height: 1,
       flexGrow: 0,
       flexShrink: 0,
-      border: true,
-      zIndex: 100,
     });
     container.add(this.inputBox);
 
     this.input = new TextareaRenderable(this.renderer, {
       id: "input",
       placeholder: "Type your message...",
-      placeholderColor: "gray",
       wrapMode: "word",
       showCursor: true,
       cursorColor: "blue",
@@ -212,8 +229,8 @@ export class TUIAdapter implements UIAdapter {
     const maxInputHeight = Math.floor(terminalHeight / 2);
 
     // Count lines in the text, accounting for word wrapping
-    // Subtract 4 for borders and padding
-    const inputWidth = this.renderer.width - 4;
+    // Subtract 2 for padding (no borders now)
+    const inputWidth = this.renderer.width - 2;
     let lineCount = 1;
 
     if (text) {
@@ -225,9 +242,9 @@ export class TUIAdapter implements UIAdapter {
       }, 0);
     }
 
-    // Add padding for borders (2 lines for top/bottom border)
-    const desiredHeight = Math.min(lineCount + 2, maxInputHeight);
-    const newHeight = Math.max(3, desiredHeight); // Minimum 3 lines
+    // No borders, just the text content
+    const desiredHeight = Math.min(lineCount, maxInputHeight);
+    const newHeight = Math.max(1, desiredHeight); // Minimum 1 line
 
     if (this.inputBox.height !== newHeight) {
       this.inputBox.height = newHeight;
@@ -371,7 +388,14 @@ export class TUIAdapter implements UIAdapter {
       );
 
       // Replay conversation
-      for (const message of session.conversationHistory) {
+      for (let i = 0; i < session.conversationHistory.length; i++) {
+        const message = session.conversationHistory[i];
+
+        // Add subtle separator between turns (except before first message)
+        if (i > 0) {
+          this.appendOutput(t`${dim("─")}\n`);
+        }
+
         if (message.role === "user") {
           const hasImages =
             Array.isArray(message.content) &&
@@ -384,12 +408,14 @@ export class TUIAdapter implements UIAdapter {
               .filter((p) => p.type === "text")
               .map((p) => p.text)
               .join("");
-            this.appendOutput(`You: ${text} [${imageCount} image(s)]\n\n`);
+            this.appendOutput(
+              t`${cyan("[you]")} ${text} ${dim(`[${imageCount} image(s)]`)}\n`,
+            );
           } else {
-            this.appendOutput(`You: ${message.content}\n\n`);
+            this.appendOutput(t`${cyan("[you]")} ${message.content}\n`);
           }
         } else {
-          this.appendOutput(`Assistant: ${message.content}\n\n`);
+          this.appendOutput(t`${green("[yeet]")} ${message.content}\n`);
         }
       }
 

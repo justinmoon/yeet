@@ -11,8 +11,10 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
     "isolatedModules": true,
-    "noEmit": true
+    "noEmit": true,
+    "jsx": "preserve",
+    "jsxImportSource": "@opentui/solid"
   },
-  "include": ["src/**/*", "test/**/*"],
+  "include": ["src/**/*", "test/**/*", "*.d.ts", "solid-preload.ts"],
   "exclude": ["node_modules", "dist"]
 }

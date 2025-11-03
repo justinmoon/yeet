@@ -1,3 +1,4 @@
+import type { StyledText } from "@opentui/core";
 import type { MessageContent } from "../agent";
 import type { Config } from "../config";
 
@@ -27,7 +28,7 @@ export interface UIAdapter {
   abortController: AbortController | null;
 
   // Core UI operations
-  appendOutput(text: string): void;
+  appendOutput(text: string | StyledText): void;
   clearOutput(): void;
   setStatus(text: string): void;
   clearInput(): void;

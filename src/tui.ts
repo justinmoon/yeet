@@ -1,7 +1,8 @@
 #!/usr/bin/env bun
+import "../solid-preload";
 import { loadConfig } from "./config";
 import { logger } from "./logger";
-import { createTUIAdapter } from "./ui/tui-adapter";
+import { createTUISolidAdapter } from "./ui/tui-solid-adapter";
 
 async function main() {
   try {
@@ -10,7 +11,7 @@ async function main() {
     const config = await loadConfig();
     logger.info("Config loaded", { activeProvider: config.activeProvider });
 
-    const ui = await createTUIAdapter(config);
+    const ui = await createTUISolidAdapter(config);
 
     // Keep process alive
     process.on("SIGINT", async () => {
