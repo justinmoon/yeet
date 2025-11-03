@@ -389,7 +389,14 @@ export class TUIAdapter implements UIAdapter {
       );
 
       // Replay conversation
-      for (const message of session.conversationHistory) {
+      for (let i = 0; i < session.conversationHistory.length; i++) {
+        const message = session.conversationHistory[i];
+
+        // Add subtle separator between turns (except before first message)
+        if (i > 0) {
+          this.appendOutput(t`${dim("─")}\n`);
+        }
+
         if (message.role === "user") {
           const hasImages =
             Array.isArray(message.content) &&
@@ -402,12 +409,12 @@ export class TUIAdapter implements UIAdapter {
               .filter((p) => p.type === "text")
               .map((p) => p.text)
               .join("");
-            this.appendOutput(t`${cyan("[you]")} ${text} ${dim(`[${imageCount} image(s)]`)}\n\n`);
+            this.appendOutput(t`${cyan("[you]")} ${text} ${dim(`[${imageCount} image(s)]`)}\n`);
           } else {
-            this.appendOutput(t`${cyan("[you]")} ${message.content}\n\n`);
+            this.appendOutput(t`${cyan("[you]")} ${message.content}\n`);
           }
         } else {
-          this.appendOutput(t`${green("[yeet]")} ${message.content}\n\n`);
+          this.appendOutput(t`${green("[yeet]")} ${message.content}\n`);
         }
       }
 
