@@ -56,7 +56,7 @@ export async function handleMessage(
   }
 
   ui.clearInput();
-  ui.setStatus("Agent thinking...");
+  updateTokenCount(ui, config, "Thinking");
 
   // Create abort controller for cancellation
   const abortController = new AbortController();
@@ -64,7 +64,7 @@ export async function handleMessage(
   ui.isGenerating = true;
 
   try {
-    ui.appendOutput(t`${green("[yeet]")} `);
+    // Don't print [yeet] prefix - we'll only show it if there's actual text output
 
     // Get model info for context window limits
     const modelId =
@@ -106,13 +106,14 @@ export async function handleMessage(
     let textChunks = 0;
     let lastToolName = "";
     let lastToolArgs: any = {};
+    let hasOutputText = false; // Track if we've output any text
 
     for await (const event of runAgent(
       messages,
       config,
       (tool) => {
         logger.debug("Tool called", { tool });
-        ui.setStatus(`Running ${tool}...`);
+        updateTokenCount(ui, config, `Running ${tool}`);
       },
       undefined,
       abortController.signal,
@@ -127,6 +128,14 @@ export async function handleMessage(
         });
         const text = event.content || "";
         assistantResponse += text;
+
+        // Print [yeet] prefix only before the first text output
+        if (!hasOutputText) {
+          ui.appendOutput(t`${green("[yeet]")} `);
+          hasOutputText = true;
+          updateTokenCount(ui, config, "Responding");
+        }
+
         ui.appendOutput(text);
       } else if (event.type === "tool") {
         lastToolName = event.name || "";
@@ -223,11 +232,11 @@ export async function handleMessage(
     // Clear image attachments after successful send
     ui.clearAttachments();
 
-    // Update token count display
-    ui.updateTokenCount();
-
     // Auto-save session after each message
     ui.saveCurrentSession();
+
+    // Update status back to Paused when done
+    updateTokenCount(ui, config, "Paused");
 
     logger.info("Message handled successfully", {
       textChunks,
@@ -239,14 +248,14 @@ export async function handleMessage(
     // Handle abort error specially
     if (error.name === "AbortError" || abortController.signal.aborted) {
       logger.info("Generation cancelled by user");
-      ui.updateTokenCount();
+      updateTokenCount(ui, config, "Cancelled");
     } else {
       logger.error("Error handling message", {
         error: error.message,
         stack: error.stack,
       });
       ui.appendOutput(t`\n${red(`❌ Error: ${error.message}`)}\n`);
-      ui.updateTokenCount();
+      updateTokenCount(ui, config, "Error");
     }
   } finally {
     // Clean up generation state
@@ -255,7 +264,7 @@ export async function handleMessage(
   }
 }
 
-export function updateTokenCount(ui: UIAdapter, config: Config): void {
+export function updateTokenCount(ui: UIAdapter, config: Config, statusPrefix = "Paused"): void {
   const modelId =
     config.activeProvider === "anthropic"
       ? config.anthropic?.model || ""
@@ -277,14 +286,12 @@ export function updateTokenCount(ui: UIAdapter, config: Config): void {
   const usage = calculateContextUsage(tokens, maxTokens);
   const maxDisplay = formatTokenCount(maxTokens);
 
+  const statusSuffix = `${modelInfo.name} | ${tokenDisplay}/${maxDisplay} (${usage}%)`;
+
   if (usage >= 80) {
-    ui.setStatus(
-      `⚠️  ${modelInfo.name} | ${tokenDisplay}/${maxDisplay} (${usage}%)`,
-    );
+    ui.setStatus(`${statusPrefix} | ⚠️  ${statusSuffix}`);
   } else {
-    ui.setStatus(
-      `${modelInfo.name} | ${tokenDisplay}/${maxDisplay} (${usage}%)`,
-    );
+    ui.setStatus(`${statusPrefix} | ${statusSuffix}`);
   }
 }
 

@@ -144,7 +144,7 @@ export class TUIAdapter implements UIAdapter {
   }
 
   updateTokenCount(): void {
-    updateTokenCount(this, this.config);
+    updateTokenCount(this, this.config, "Paused");
   }
 
   saveCurrentSession(): void {
