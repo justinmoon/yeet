@@ -64,12 +64,16 @@ export class TUISolidAdapter implements UIAdapter {
       () => {
         const renderer = useRenderer();
         const [statusText, setStatusText] = createSignal(initialStatus);
-        const [outputContent, setOutputContent] = createSignal<Array<string | StyledText>>([]);
+        const [outputContent, setOutputContent] = createSignal<
+          Array<string | StyledText>
+        >([]);
         const [inputValue, setInputValue] = createSignal("");
-        const [inputPlaceholder, setInputPlaceholder] = createSignal("Type your message...");
+        const [inputPlaceholder, setInputPlaceholder] = createSignal(
+          "Type your message...",
+        );
         const [imageCount, setImageCount] = createSignal(0);
         let textareaRef: any = null;
-        let scrollBoxRef: any = null;
+        const scrollBoxRef: any = null;
 
         // Store signal setters for use by adapter methods
         this.setStatusText = setStatusText;
@@ -91,7 +95,9 @@ export class TUISolidAdapter implements UIAdapter {
           }
           // Show welcome message
           if (this.contentChunks.length === 0) {
-            this.contentChunks.push("Welcome to Yeet. Type your message and press Enter to send (Shift+Enter for newlines).\n");
+            this.contentChunks.push(
+              "Welcome to Yeet. Type your message and press Enter to send (Shift+Enter for newlines).\n",
+            );
             setOutputContent([...this.contentChunks]);
           }
         });
@@ -113,7 +119,9 @@ export class TUISolidAdapter implements UIAdapter {
             </box>
 
             {/* Spacing */}
-            <box style={{ height: 1 }}><text> </text></box>
+            <box style={{ height: 1 }}>
+              <text> </text>
+            </box>
 
             {/* Main content area */}
             <box style={{ flexGrow: 1 }}>
@@ -123,10 +131,14 @@ export class TUISolidAdapter implements UIAdapter {
             </box>
 
             {/* Spacing */}
-            <box style={{ height: 1 }}><text> </text></box>
+            <box style={{ height: 1 }}>
+              <text> </text>
+            </box>
 
             {/* Footer */}
-            <box style={{ backgroundColor: "#DCDCDC", height: 1, flexShrink: 0 }}>
+            <box
+              style={{ backgroundColor: "#DCDCDC", height: 1, flexShrink: 0 }}
+            >
               <textarea
                 ref={(el: any) => {
                   textareaRef = el;
@@ -156,14 +168,26 @@ export class TUISolidAdapter implements UIAdapter {
                         const verifier = this.pendingOAuthSetup.verifier;
                         this.pendingOAuthSetup = undefined;
                         this.clearInput();
-                        const { handleOAuthCodeInput } = await import("../commands");
-                        await handleOAuthCodeInput(code, verifier, this, this.config);
+                        const { handleOAuthCodeInput } = await import(
+                          "../commands"
+                        );
+                        await handleOAuthCodeInput(
+                          code,
+                          verifier,
+                          this,
+                          this.config,
+                        );
                       } else if (this.pendingMapleSetup) {
                         const apiKey = message;
                         const modelId = this.pendingMapleSetup.modelId;
                         this.pendingMapleSetup = undefined;
                         this.clearInput();
-                        await handleMapleSetup(apiKey, modelId, this, this.config);
+                        await handleMapleSetup(
+                          apiKey,
+                          modelId,
+                          this,
+                          this.config,
+                        );
                       } else {
                         const parsed = parseCommand(message);
                         if (parsed.isCommand && parsed.command) {
@@ -182,7 +206,9 @@ export class TUISolidAdapter implements UIAdapter {
                   } else if (e.name === "escape") {
                     if (this.isGenerating && this.abortController) {
                       this.abortController.abort();
-                      this.appendOutput("\n\n⚠️  Generation cancelled by user\n");
+                      this.appendOutput(
+                        "\n\n⚠️  Generation cancelled by user\n",
+                      );
                       this.setStatus("Cancelled");
                     }
                   }

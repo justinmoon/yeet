@@ -1,4 +1,4 @@
-declare module '@babel/preset-typescript' {
+declare module "@babel/preset-typescript" {
   const preset: any;
   export default preset;
 }
