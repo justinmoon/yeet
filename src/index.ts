@@ -1,5 +1,8 @@
 #!/usr/bin/env bun
-// Default entry point - runs TUI or orchestrator
+import "../solid-preload";
+import { loadConfig } from "./config";
+import { logger } from "./logger";
+import { createTUISolidAdapter } from "./ui/tui-solid-adapter";
 
 const args = process.argv.slice(2);
 
@@ -15,7 +18,27 @@ if (args.includes("--orchestrate") || args.includes("orchestrate")) {
   await runOrchestratorCLI(orchestrateArgs);
 } else {
   // Run normal TUI
-  await import("./tui");
-}
+  try {
+    logger.info("Yeet TUI starting");
 
-export {}; // Make this file a module
+    const config = await loadConfig();
+    logger.info("Config loaded", { activeProvider: config.activeProvider });
+
+    const ui = await createTUISolidAdapter(config);
+
+    // Keep process alive
+    process.on("SIGINT", async () => {
+      await ui.stop();
+      await logger.close();
+      process.exit(0);
+    });
+  } catch (error: any) {
+    logger.error("Failed to start yeet TUI", {
+      error: error.message,
+      stack: error.stack,
+    });
+    console.error(`Failed to start yeet TUI: ${error.message}`);
+    await logger.close();
+    process.exit(1);
+  }
+}

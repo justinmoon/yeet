@@ -18,6 +18,7 @@ export interface Config {
   };
   maxSteps?: number;
   temperature?: number;
+  theme?: string; // Color theme: tokyonight, nord, catppuccin, everforest
   // Maple AI configuration (optional)
   maple?: {
     apiUrl: string;

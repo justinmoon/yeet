@@ -21,7 +21,7 @@ stop-gui:
 
 # Run yeet TUI
 tui:
-    bun run src/tui.ts
+    bun run src/index.ts
 
 # Run yeet Web UI (adapter-based, for custom UI)
 web:
