@@ -225,6 +225,7 @@ export async function exchangeOAuthCode(
 }
 
 export async function refreshAnthropicToken(refreshToken: string): Promise<{
+  refresh: string;
   access: string;
   expires: number;
 } | null> {
@@ -241,11 +242,18 @@ export async function refreshAnthropicToken(refreshToken: string): Promise<{
   });
 
   if (!response.ok) {
+    const errorText = await response.text();
+    console.error("Failed to refresh Anthropic OAuth token:", {
+      status: response.status,
+      statusText: response.statusText,
+      body: errorText,
+    });
     return null;
   }
 
   const json = await response.json();
   return {
+    refresh: json.refresh_token,
     access: json.access_token,
     expires: Date.now() + json.expires_in * 1000,
   };
@@ -274,7 +282,8 @@ export function createAnthropicFetch(config: Config) {
         throw new Error("Failed to refresh Anthropic OAuth token");
       }
 
-      // Update config with new tokens
+      // Update config with new tokens (including new refresh token!)
+      anthropic.refresh = refreshed.refresh;
       anthropic.access = refreshed.access;
       anthropic.expires = refreshed.expires;
       await saveConfig(config);

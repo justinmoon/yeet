@@ -6,6 +6,12 @@ import {
   TextRenderable,
   TextareaRenderable,
   createCliRenderer,
+  cyan,
+  green,
+  dim,
+  t,
+  type StyledText,
+  stringToStyledText,
 } from "@opentui/core";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
@@ -40,7 +46,7 @@ export class TUIAdapter implements UIAdapter {
   private output!: TextRenderable;
   private status!: TextRenderable;
   private scrollBox!: ScrollBoxRenderable;
-  private contentBuffer = "";
+  private contentChunks: Array<string | StyledText> = [];
   private config: Config;
   private userInputCallback?: (message: string) => Promise<void>;
   private commandCallback?: (command: string, args: string[]) => Promise<void>;
@@ -87,9 +93,21 @@ export class TUIAdapter implements UIAdapter {
     this.commandCallback = callback;
   }
 
-  appendOutput(text: string): void {
-    this.contentBuffer += text;
-    this.output.content = this.contentBuffer;
+  appendOutput(text: string | StyledText): void {
+    // Add to chunks array
+    this.contentChunks.push(text);
+
+    // Combine all chunks into a single StyledText
+    const combined = this.contentChunks.map(chunk =>
+      typeof chunk === "string" ? stringToStyledText(chunk) : chunk
+    );
+
+    // Merge all StyledText chunks by concatenating their chunks arrays
+    const allChunks = combined.flatMap(st => st.chunks);
+    const StyledTextClass = stringToStyledText("").constructor as any;
+    const mergedContent = new StyledTextClass(allChunks);
+
+    this.output.content = mergedContent;
 
     // Force layout recalculation and scroll to bottom
     // @ts-ignore
@@ -107,8 +125,8 @@ export class TUIAdapter implements UIAdapter {
   }
 
   clearOutput(): void {
-    this.contentBuffer = "";
-    this.output.content = this.contentBuffer;
+    this.contentChunks = [];
+    this.output.content = "";
   }
 
   setStatus(text: string): void {
@@ -384,12 +402,12 @@ export class TUIAdapter implements UIAdapter {
               .filter((p) => p.type === "text")
               .map((p) => p.text)
               .join("");
-            this.appendOutput(`You: ${text} [${imageCount} image(s)]\n\n`);
+            this.appendOutput(t`${cyan("[you]")} ${text} ${dim(`[${imageCount} image(s)]`)}\n\n`);
           } else {
-            this.appendOutput(`You: ${message.content}\n\n`);
+            this.appendOutput(t`${cyan("[you]")} ${message.content}\n\n`);
           }
         } else {
-          this.appendOutput(`Assistant: ${message.content}\n\n`);
+          this.appendOutput(t`${green("[yeet]")} ${message.content}\n\n`);
         }
       }
 

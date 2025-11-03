@@ -1,5 +1,6 @@
 import type { MessageContent } from "../agent";
 import type { Config } from "../config";
+import type { StyledText } from "@opentui/core";
 
 /**
  * UI abstraction interface for Yeet.
@@ -27,7 +28,7 @@ export interface UIAdapter {
   abortController: AbortController | null;
 
   // Core UI operations
-  appendOutput(text: string): void;
+  appendOutput(text: string | StyledText): void;
   clearOutput(): void;
   setStatus(text: string): void;
   clearInput(): void;
