@@ -2,7 +2,7 @@
 import "../solid-preload";
 import { loadConfig } from "./config";
 import { logger } from "./logger";
-import { createTUISolidAdapter } from "./ui/tui-solid-adapter.tsx";
+import { createTUISolidAdapter } from "./ui/tui-solid-adapter";
 
 async function main() {
   try {

@@ -9,7 +9,6 @@ import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import type { UIAdapter } from "./interface";
-import { TUISolidWrapper } from "./tui-solid-wrapper";
 
 export class TUISolidAdapter implements UIAdapter {
   conversationHistory: Array<{
@@ -102,7 +101,8 @@ export class TUISolidAdapter implements UIAdapter {
           if (typeof content === "string") {
             return <text>{content}</text>;
           }
-          return <text style={{ fg: content.color }}>{content.text}</text>;
+          // StyledText is opaque, just render as-is
+          return <text>{String(content)}</text>;
         };
 
         return (

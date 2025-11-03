@@ -214,7 +214,7 @@ export async function handleMessage(
             // Indent bash output
             const indentedOutput = event.result.stdout
               .split("\n")
-              .map((line) => `  ${line}`)
+              .map((line: string) => `  ${line}`)
               .join("\n");
             ui.appendOutput(indentedOutput);
             if (event.result.stderr) {

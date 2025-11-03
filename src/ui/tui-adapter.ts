@@ -213,7 +213,6 @@ export class TUIAdapter implements UIAdapter {
     this.input = new TextareaRenderable(this.renderer, {
       id: "input",
       placeholder: "Type your message...",
-      placeholderColor: "gray",
       wrapMode: "word",
       showCursor: true,
       cursorColor: "blue",
