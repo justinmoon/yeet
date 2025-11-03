@@ -1,6 +1,6 @@
+import type { StyledText } from "@opentui/core";
 import type { MessageContent } from "../agent";
 import type { Config } from "../config";
-import type { StyledText } from "@opentui/core";
 
 /**
  * UI abstraction interface for Yeet.

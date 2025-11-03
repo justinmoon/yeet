@@ -1,3 +1,4 @@
+import { cyan, dim, green, magenta, red, t, yellow } from "@opentui/core";
 import type { MessageContent } from "../agent";
 import { runAgent } from "../agent";
 import type { Config } from "../config";
@@ -10,7 +11,6 @@ import {
   truncateMessages,
 } from "../tokens";
 import type { UIAdapter } from "./interface";
-import { cyan, green, magenta, yellow, red, dim, t } from "@opentui/core";
 
 /**
  * Backend logic for handling messages, agent interactions, and session management.
@@ -156,11 +156,15 @@ export async function handleMessage(
             t`\n${magenta("[search]")} "${event.args?.pattern}"${event.args?.path ? ` in ${event.args.path}` : ""}\n`,
           );
         } else if (event.name === "complete") {
-          ui.appendOutput(t`\n${green("✓ Task complete:")} ${event.args?.summary || ""}\n`);
+          ui.appendOutput(
+            t`\n${green("✓ Task complete:")} ${event.args?.summary || ""}\n`,
+          );
         } else if (event.name === "clarify") {
           ui.appendOutput(t`\n${yellow(`❓ ${event.args?.question || ""}`)}\n`);
         } else if (event.name === "pause") {
-          ui.appendOutput(t`\n${yellow(`⏸️  Paused: ${event.args?.reason || ""}`)}\n`);
+          ui.appendOutput(
+            t`\n${yellow(`⏸️  Paused: ${event.args?.reason || ""}`)}\n`,
+          );
         }
       } else if (event.type === "tool-result") {
         if (lastToolName === "read") {
@@ -208,13 +212,18 @@ export async function handleMessage(
             ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
           } else if (event.result?.stdout) {
             // Indent bash output
-            const indentedOutput = event.result.stdout.split('\n').map(line => `  ${line}`).join('\n');
+            const indentedOutput = event.result.stdout
+              .split("\n")
+              .map((line) => `  ${line}`)
+              .join("\n");
             ui.appendOutput(indentedOutput);
             if (event.result.stderr) {
               ui.appendOutput(t`  ${dim(`stderr: ${event.result.stderr}`)}\n`);
             }
             if (event.result.exitCode !== 0) {
-              ui.appendOutput(t`  ${red(`(exit code: ${event.result.exitCode})`)}\n`);
+              ui.appendOutput(
+                t`  ${red(`(exit code: ${event.result.exitCode})`)}\n`,
+              );
             }
           }
         }
@@ -268,7 +277,11 @@ export async function handleMessage(
   }
 }
 
-export function updateTokenCount(ui: UIAdapter, config: Config, statusPrefix = "Paused"): void {
+export function updateTokenCount(
+  ui: UIAdapter,
+  config: Config,
+  statusPrefix = "Paused",
+): void {
   const modelId =
     config.activeProvider === "anthropic"
       ? config.anthropic?.model || ""

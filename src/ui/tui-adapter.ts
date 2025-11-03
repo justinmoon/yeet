@@ -2,16 +2,17 @@ import {
   BoxRenderable,
   type CliRenderer,
   type KeyEvent,
+  RGBA,
   ScrollBoxRenderable,
+  type StyledText,
   TextRenderable,
   TextareaRenderable,
   createCliRenderer,
   cyan,
-  green,
   dim,
-  t,
-  type StyledText,
+  green,
   stringToStyledText,
+  t,
 } from "@opentui/core";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
@@ -98,12 +99,12 @@ export class TUIAdapter implements UIAdapter {
     this.contentChunks.push(text);
 
     // Combine all chunks into a single StyledText
-    const combined = this.contentChunks.map(chunk =>
-      typeof chunk === "string" ? stringToStyledText(chunk) : chunk
+    const combined = this.contentChunks.map((chunk) =>
+      typeof chunk === "string" ? stringToStyledText(chunk) : chunk,
     );
 
     // Merge all StyledText chunks by concatenating their chunks arrays
-    const allChunks = combined.flatMap(st => st.chunks);
+    const allChunks = combined.flatMap((st) => st.chunks);
     const StyledTextClass = stringToStyledText("").constructor as any;
     const mergedContent = new StyledTextClass(allChunks);
 
@@ -135,7 +136,7 @@ export class TUIAdapter implements UIAdapter {
 
   clearInput(): void {
     this.input.editBuffer.setText("", { history: false });
-    this.inputBox.height = 3; // Reset to minimum height
+    this.inputBox.height = 1; // Reset to minimum height
   }
 
   clearAttachments(): void {
@@ -169,21 +170,23 @@ export class TUIAdapter implements UIAdapter {
       ? `${modelInfo.name} (${modelInfo.provider})`
       : currentModelId;
 
+    // Status bar at top with light background (full width)
     this.status = new TextRenderable(this.renderer, {
       id: "status",
       content: `${modelDisplay} | 0/${modelInfo?.contextWindow || "?"} (0%)`,
-      fg: "gray",
+      fg: RGBA.fromInts(0, 0, 0, 255),
+      bg: RGBA.fromInts(220, 220, 220, 255),
       height: 1,
+      flexGrow: 1,
+      flexShrink: 0,
     });
     container.add(this.status);
 
+    // Messages area (no border)
     this.scrollBox = new ScrollBoxRenderable(this.renderer, {
       id: "output-scroll",
-      borderStyle: "single",
-      borderColor: "gray",
       flexGrow: 1,
       flexShrink: 1,
-      border: true,
       stickyScroll: true,
       stickyStart: "bottom",
       scrollY: true,
@@ -198,15 +201,12 @@ export class TUIAdapter implements UIAdapter {
     });
     this.scrollBox.add(this.output);
 
+    // Input area
     this.inputBox = new BoxRenderable(this.renderer, {
       id: "input-box",
-      borderStyle: "single",
-      borderColor: "blue",
-      minHeight: 3,
+      height: 1,
       flexGrow: 0,
       flexShrink: 0,
-      border: true,
-      zIndex: 100,
     });
     container.add(this.inputBox);
 
@@ -230,8 +230,8 @@ export class TUIAdapter implements UIAdapter {
     const maxInputHeight = Math.floor(terminalHeight / 2);
 
     // Count lines in the text, accounting for word wrapping
-    // Subtract 4 for borders and padding
-    const inputWidth = this.renderer.width - 4;
+    // Subtract 2 for padding (no borders now)
+    const inputWidth = this.renderer.width - 2;
     let lineCount = 1;
 
     if (text) {
@@ -243,9 +243,9 @@ export class TUIAdapter implements UIAdapter {
       }, 0);
     }
 
-    // Add padding for borders (2 lines for top/bottom border)
-    const desiredHeight = Math.min(lineCount + 2, maxInputHeight);
-    const newHeight = Math.max(3, desiredHeight); // Minimum 3 lines
+    // No borders, just the text content
+    const desiredHeight = Math.min(lineCount, maxInputHeight);
+    const newHeight = Math.max(1, desiredHeight); // Minimum 1 line
 
     if (this.inputBox.height !== newHeight) {
       this.inputBox.height = newHeight;
@@ -409,7 +409,9 @@ export class TUIAdapter implements UIAdapter {
               .filter((p) => p.type === "text")
               .map((p) => p.text)
               .join("");
-            this.appendOutput(t`${cyan("[you]")} ${text} ${dim(`[${imageCount} image(s)]`)}\n`);
+            this.appendOutput(
+              t`${cyan("[you]")} ${text} ${dim(`[${imageCount} image(s)]`)}\n`,
+            );
           } else {
             this.appendOutput(t`${cyan("[you]")} ${message.content}\n`);
           }
