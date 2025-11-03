@@ -8,6 +8,7 @@ import type { Config } from "../config";
 import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
+import { cycleTheme, getCurrentTheme, setTheme, themes } from "./colors";
 import type { UIAdapter } from "./interface";
 
 export class TUISolidAdapter implements UIAdapter {
@@ -29,6 +30,7 @@ export class TUISolidAdapter implements UIAdapter {
   private statusText = "";
   private scrollBoxEl: any;
   private inputEl: any;
+  private renderer: any;
 
   // Signals for reactive rendering
   private setStatusText!: (text: string) => void;
@@ -89,7 +91,14 @@ export class TUISolidAdapter implements UIAdapter {
         this.getImageCount = imageCount;
 
         onMount(() => {
-          renderer.setBackgroundColor("#000000");
+          // Store renderer reference
+          this.renderer = renderer;
+
+          // Initialize theme from config
+          const themeName = this.config.theme || "tokyonight";
+          const theme = setTheme(themeName);
+          renderer.setBackgroundColor(theme.background);
+
           if (textareaRef) {
             textareaRef.focus();
           }
@@ -107,8 +116,8 @@ export class TUISolidAdapter implements UIAdapter {
           if (typeof content === "string") {
             return <text>{content}</text>;
           }
-          // StyledText is opaque, just render as-is
-          return <text>{String(content)}</text>;
+          // StyledText should be rendered directly without conversion
+          return <text>{content as any}</text>;
         };
 
         return (
@@ -123,12 +132,17 @@ export class TUISolidAdapter implements UIAdapter {
               <text> </text>
             </box>
 
-            {/* Main content area */}
-            <box style={{ flexGrow: 1 }}>
+            {/* Main content area - scrollable */}
+            <scrollbox
+              ref={(el: any) => {
+                this.scrollBoxEl = el;
+              }}
+              style={{ flexGrow: 1 }}
+            >
               <For each={outputContent()}>
                 {(content) => renderStyledText(content)}
               </For>
-            </box>
+            </scrollbox>
 
             {/* Spacing */}
             <box style={{ height: 1 }}>
@@ -285,6 +299,12 @@ export class TUISolidAdapter implements UIAdapter {
 
   saveCurrentSession(): void {
     saveCurrentSession(this, this.config);
+  }
+
+  setBackgroundColor(color: string): void {
+    if (this.renderer) {
+      this.renderer.setBackgroundColor(color);
+    }
   }
 
   private updateAttachmentIndicator(): void {

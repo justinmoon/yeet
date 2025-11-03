@@ -52,6 +52,9 @@ export async function executeCommand(
     case "clear":
       await handleClearCommand(ui);
       break;
+    case "toggle":
+      await handleToggleCommand(ui, config);
+      break;
     case "help":
       await handleHelpCommand(ui);
       break;
@@ -59,6 +62,29 @@ export async function executeCommand(
       ui.appendOutput(`❌ Unknown command: /${command}\n`);
       ui.appendOutput(`Type /help for available commands\n`);
   }
+}
+
+async function handleToggleCommand(
+  ui: UIAdapter,
+  config: Config,
+): Promise<void> {
+  const { cycleTheme } = await import("../ui/colors");
+  const newTheme = cycleTheme();
+
+  // Update background color if UI supports it
+  if (ui.setBackgroundColor) {
+    ui.setBackgroundColor(newTheme.background);
+  }
+
+  // Save theme to config
+  const { themes } = await import("../ui/colors");
+  const themeName = Object.keys(themes).find((k) => themes[k] === newTheme);
+  if (themeName) {
+    config.theme = themeName;
+    await saveConfig(config);
+  }
+
+  ui.appendOutput(`🎨 Switched to ${newTheme.name} theme\n`);
 }
 
 async function handleHelpCommand(ui: UIAdapter): Promise<void> {
@@ -72,6 +98,7 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("  /load <id|number>   - Load a session by ID or number\n");
   ui.appendOutput("  /save <name>        - Name current session\n");
   ui.appendOutput("  /clear              - Clear current session\n");
+  ui.appendOutput("  /toggle             - Cycle through color themes\n");
   ui.appendOutput("  /help               - Show this help\n");
   ui.appendOutput("\nSession Management:\n");
   ui.appendOutput(

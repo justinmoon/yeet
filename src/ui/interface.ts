@@ -35,6 +35,7 @@ export interface UIAdapter {
   clearAttachments(): void;
   updateTokenCount(): void;
   saveCurrentSession(): void;
+  setBackgroundColor?(color: string): void;
 
   // Modal selectors
   showSessionSelector?(): void;

@@ -37,7 +37,7 @@ async function main() {
 
           // Spawn the TUI process
           const tuiProcess = spawn({
-            cmd: ["bun", "run", "src/tui.ts"],
+            cmd: ["bun", "run", "src/index.ts"],
             cwd: process.cwd(),
             env: {
               ...process.env,
