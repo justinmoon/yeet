@@ -1,6 +1,6 @@
 import { type StyledText, stringToStyledText } from "@opentui/core";
 import { render, useRenderer } from "@opentui/solid";
-import { For, createSignal, onMount } from "solid-js";
+import { For, Show, createMemo, createSignal, onMount } from "solid-js";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
@@ -10,6 +10,7 @@ import { getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import { cycleTheme, getCurrentTheme, setTheme, themes } from "./colors";
 import type { UIAdapter } from "./interface";
+import type { ExplainResult } from "../explain";
 
 export class TUISolidAdapter implements UIAdapter {
   conversationHistory: Array<{
@@ -39,6 +40,16 @@ export class TUISolidAdapter implements UIAdapter {
   private setInputPlaceholder!: (placeholder: string) => void;
   private setImageCount!: (count: number) => void;
 
+  private setExplainVisible?: (value: boolean) => void;
+  private setExplainResult?: (value: ExplainResult | null) => void;
+  private setExplainIndex?: (value: number) => void;
+
+  private getExplainVisible?: () => boolean;
+  private getExplainResult?: () => ExplainResult | null;
+  private getExplainIndex?: () => number;
+
+  private explainModalActive = false;
+
   private getStatusText!: () => string;
   private getOutputContent!: () => Array<string | StyledText>;
   private getInputValue!: () => string;
@@ -62,6 +73,8 @@ export class TUISolidAdapter implements UIAdapter {
       ? `Paused | ${modelInfo.name} | 0/${modelInfo.contextWindow} (0%)`
       : "Paused";
 
+    const adapter = this;
+
     render(
       () => {
         const renderer = useRenderer();
@@ -74,6 +87,11 @@ export class TUISolidAdapter implements UIAdapter {
           "Type your message...",
         );
         const [imageCount, setImageCount] = createSignal(0);
+        const [explainVisible, setExplainVisible] = createSignal(false);
+        const [explainResult, setExplainResult] = createSignal<
+          ExplainResult | null
+        >(null);
+        const [explainIndex, setExplainIndex] = createSignal(0);
         let textareaRef: any = null;
         const scrollBoxRef: any = null;
 
@@ -89,6 +107,32 @@ export class TUISolidAdapter implements UIAdapter {
         this.getInputValue = inputValue;
         this.getInputPlaceholder = inputPlaceholder;
         this.getImageCount = imageCount;
+
+        this.setExplainVisible = setExplainVisible;
+        this.setExplainResult = setExplainResult;
+        this.setExplainIndex = setExplainIndex;
+        this.getExplainVisible = explainVisible;
+        this.getExplainResult = explainResult;
+        this.getExplainIndex = explainIndex;
+
+        const explainData = createMemo(() => {
+          const result = explainResult();
+          if (!result) return null;
+          const index = Math.max(
+            0,
+            Math.min(result.sections.length - 1, explainIndex()),
+          );
+          const section = result.sections[index];
+          const diff = section
+            ? result.diffs.find((d) => d.id === section.diffId)
+            : undefined;
+          return {
+            result,
+            index,
+            section,
+            diff,
+          };
+        });
 
         onMount(() => {
           // Store renderer reference
@@ -173,62 +217,192 @@ export class TUISolidAdapter implements UIAdapter {
                   }
                 }}
                 onKeyDown={async (e: any) => {
+                  if (adapter.explainModalActive) {
+                    if (e.name === "escape") {
+                      e.preventDefault();
+                      adapter.hideExplainReview();
+                      return;
+                    }
+                    if (e.name === "left" || e.name === "up") {
+                      e.preventDefault();
+                      adapter.previousExplainSection();
+                      return;
+                    }
+                    if (e.name === "right" || e.name === "down") {
+                      e.preventDefault();
+                      adapter.nextExplainSection();
+                      return;
+                    }
+                    if (e.name === "return") {
+                      e.preventDefault();
+                      return;
+                    }
+                  }
+
                   if (e.name === "return" && !e.shift) {
                     e.preventDefault();
                     const message = textareaRef?.plainText || "";
                     if (message.trim()) {
-                      if (this.pendingOAuthSetup) {
+                      if (adapter.pendingOAuthSetup) {
                         const code = message;
-                        const verifier = this.pendingOAuthSetup.verifier;
-                        this.pendingOAuthSetup = undefined;
-                        this.clearInput();
+                        const verifier = adapter.pendingOAuthSetup.verifier;
+                        adapter.pendingOAuthSetup = undefined;
+                        adapter.clearInput();
                         const { handleOAuthCodeInput } = await import(
                           "../commands"
                         );
                         await handleOAuthCodeInput(
                           code,
                           verifier,
-                          this,
-                          this.config,
+                          adapter,
+                          adapter.config,
                         );
-                      } else if (this.pendingMapleSetup) {
+                      } else if (adapter.pendingMapleSetup) {
                         const apiKey = message;
-                        const modelId = this.pendingMapleSetup.modelId;
-                        this.pendingMapleSetup = undefined;
-                        this.clearInput();
+                        const modelId = adapter.pendingMapleSetup.modelId;
+                        adapter.pendingMapleSetup = undefined;
+                        adapter.clearInput();
                         await handleMapleSetup(
                           apiKey,
                           modelId,
-                          this,
-                          this.config,
+                          adapter,
+                          adapter.config,
                         );
                       } else {
                         const parsed = parseCommand(message);
                         if (parsed.isCommand && parsed.command) {
-                          this.clearInput();
+                          adapter.clearInput();
                           await executeCommand(
                             parsed.command,
                             parsed.args,
-                            this,
-                            this.config,
+                            adapter,
+                            adapter.config,
                           );
                         } else {
-                          await handleMessage(message, this, this.config);
+                          await handleMessage(message, adapter, adapter.config);
                         }
                       }
                     }
                   } else if (e.name === "escape") {
-                    if (this.isGenerating && this.abortController) {
-                      this.abortController.abort();
-                      this.appendOutput(
+                    if (adapter.isGenerating && adapter.abortController) {
+                      adapter.abortController.abort();
+                      adapter.appendOutput(
                         "\n\n⚠️  Generation cancelled by user\n",
                       );
-                      this.setStatus("Cancelled");
+                      adapter.setStatus("Cancelled");
                     }
                   }
                 }}
               />
             </box>
+
+            <Show when={explainVisible()}>
+              <box
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: "#0B1120",
+                  flexDirection: "column",
+                  padding: 1,
+                  gap: 1,
+                }}
+              >
+                <Show
+                  when={explainData()}
+                  fallback={
+                    <box flexGrow={1} alignItems="center" justifyContent="center">
+                      <text>No tutorial sections available.</text>
+                    </box>
+                  }
+                >
+                  {(accessor) => {
+                    const data = accessor();
+                    if (!data || !data.section) {
+                      return (
+                        <box flexGrow={1} alignItems="center" justifyContent="center">
+                          <text>No tutorial sections available.</text>
+                        </box>
+                      );
+                    }
+
+                    const { result, section, diff, index } = data;
+                    const total = result.sections.length;
+
+                    return (
+                      <>
+                        <box style={{ justifyContent: "space-between" }}>
+                          <text>
+                            Explain • Section {index + 1}/{total}
+                          </text>
+                          <text style={{ fg: "#38bdf8" }}>
+                            ←/→ navigate • Esc close
+                          </text>
+                        </box>
+                        <box>
+                          <text style={{ fg: "#38bdf8" }}>{section.title}</text>
+                        </box>
+                        <Show when={section.tags?.length}>
+                          <text style={{ fg: "#94a3b8" }}>
+                            tags: {section.tags?.join(", ")}
+                          </text>
+                        </Show>
+                        <box style={{ flexDirection: "column", gap: 1, flexGrow: 1 }}>
+                          <scrollbox style={{ height: 8, flexShrink: 0 }}>
+                            <text>{section.explanation}</text>
+                          </scrollbox>
+                          <box>
+                            <text style={{ fg: "#cbd5f5" }}>
+                              Diff: {diff ? diff.filePath : "(not found)"}
+                            </text>
+                          </box>
+                          <scrollbox style={{ flexGrow: 1 }}>
+                            <For each={diff ? diff.lines : []}>
+                              {(line) => {
+                                const prefix =
+                                  line.type === "add"
+                                    ? "+"
+                                    : line.type === "remove"
+                                      ? "-"
+                                      : " ";
+                                const color =
+                                  line.type === "add"
+                                    ? "#22c55e"
+                                    : line.type === "remove"
+                                      ? "#f87171"
+                                      : "#94a3b8";
+
+                                const oldNumber =
+                                  line.oldLineNumber ?? "";
+                                const newNumber =
+                                  line.newLineNumber ?? "";
+
+                                return (
+                                  <box style={{ flexDirection: "row", gap: 1 }}>
+                                    <text style={{ fg: "#64748b", width: 5 }}>
+                                      {String(oldNumber).padStart(3, " ")}
+                                    </text>
+                                    <text style={{ fg: "#64748b", width: 5 }}>
+                                      {String(newNumber).padStart(3, " ")}
+                                    </text>
+                                    <text style={{ fg: color }}>{`${prefix}${line.content}`}</text>
+                                  </box>
+                                );
+                              }}
+                            </For>
+                            <Show when={!diff || diff.lines.length === 0}>
+                              <text>No diff lines for this section.</text>
+                            </Show>
+                          </scrollbox>
+                        </box>
+                      </>
+                    );
+                  }}
+                </Show>
+              </box>
+            </Show>
           </box>
         );
       },
@@ -305,6 +479,55 @@ export class TUISolidAdapter implements UIAdapter {
     if (this.renderer) {
       this.renderer.setBackgroundColor(color);
     }
+  }
+
+  showExplainReview(result: ExplainResult): void {
+    if (!this.setExplainVisible || !this.setExplainResult || !this.setExplainIndex) {
+      this.appendOutput("Explain view is not available in this UI.\n");
+      return;
+    }
+
+    this.setExplainResult(result);
+    this.setExplainIndex(0);
+    this.setExplainVisible(true);
+    this.explainModalActive = true;
+    this.setStatus(`Explain • ${result.sections.length} section(s)`);
+  }
+
+  private hideExplainReview(): void {
+    if (this.setExplainVisible) {
+      this.setExplainVisible(false);
+    }
+    if (this.setExplainResult) {
+      this.setExplainResult(null);
+    }
+    this.explainModalActive = false;
+    this.setStatus(`Ready`);
+    if (this.inputEl?.focus) {
+      this.inputEl.focus();
+    }
+  }
+
+  private nextExplainSection(): void {
+    if (!this.getExplainResult || !this.getExplainIndex || !this.setExplainIndex) {
+      return;
+    }
+    const result = this.getExplainResult();
+    if (!result) return;
+    const current = this.getExplainIndex();
+    const next = Math.min(result.sections.length - 1, current + 1);
+    this.setExplainIndex(next);
+  }
+
+  private previousExplainSection(): void {
+    if (!this.getExplainResult || !this.getExplainIndex || !this.setExplainIndex) {
+      return;
+    }
+    const result = this.getExplainResult();
+    if (!result) return;
+    const current = this.getExplainIndex();
+    const next = Math.max(0, current - 1);
+    this.setExplainIndex(next);
   }
 
   private updateAttachmentIndicator(): void {

@@ -2,6 +2,7 @@ import { exchangeOAuthCode, startAnthropicOAuth } from "../auth";
 import type { Config } from "../config";
 import { saveConfig } from "../config";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
+import { explain, resolveDefaultBaseRef } from "../explain";
 import type { UIAdapter } from "../ui/interface";
 
 export interface ParsedCommand {
@@ -58,6 +59,9 @@ export async function executeCommand(
     case "help":
       await handleHelpCommand(ui);
       break;
+    case "explain":
+      await handleExplainCommand(args, ui);
+      break;
     default:
       ui.appendOutput(`❌ Unknown command: /${command}\n`);
       ui.appendOutput(`Type /help for available commands\n`);
@@ -99,6 +103,7 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("  /save <name>        - Name current session\n");
   ui.appendOutput("  /clear              - Clear current session\n");
   ui.appendOutput("  /toggle             - Cycle through color themes\n");
+  ui.appendOutput("  /explain [prompt]   - Generate tutorial for current diff\n");
   ui.appendOutput("  /help               - Show this help\n");
   ui.appendOutput("\nSession Management:\n");
   ui.appendOutput(
@@ -113,6 +118,55 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput(
     "  ✗ mistral-small-3-1-24b, llama-3.3-70b (no tool calling)\n",
   );
+}
+
+async function handleExplainCommand(args: string[], ui: UIAdapter): Promise<void> {
+  const prompt = args.length
+    ? args.join(" ")
+    : "Explain the current branch changes";
+
+  const cwd = process.cwd();
+  ui.appendOutput(`\n🔍 Running /explain in ${cwd}\n`);
+
+  try {
+    const base = await resolveDefaultBaseRef(cwd);
+    const head = "HEAD";
+    ui.appendOutput(`  • Comparing ${base}..${head}\n`);
+
+    const result = await explain({
+      prompt,
+      cwd,
+      base,
+      head,
+    });
+
+    if (result.diffs.length === 0) {
+      ui.appendOutput("⚠️ No diff content detected for this range.\n");
+      return;
+    }
+
+    if (result.sections.length === 0) {
+      ui.appendOutput("⚠️ No tutorial sections generated.\n");
+      return;
+    }
+
+    ui.appendOutput(
+      `✓ Generated ${result.sections.length} tutorial section(s). Press Esc to close the viewer.\n`,
+    );
+
+    if (ui.showExplainReview) {
+      ui.showExplainReview(result);
+    } else {
+      for (const section of result.sections) {
+        ui.appendOutput(`\n== ${section.title} ==\n`);
+        ui.appendOutput(`${section.explanation}\n`);
+      }
+    }
+  } catch (error: any) {
+    ui.appendOutput(
+      `❌ /explain failed: ${error?.message || String(error)}\n`,
+    );
+  }
 }
 
 async function handleSessionsCommand(ui: UIAdapter): Promise<void> {

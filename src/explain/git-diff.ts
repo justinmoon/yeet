@@ -18,6 +18,60 @@ export interface GitDiffOptions {
   maxFiles?: number;
 }
 
+const DEFAULT_BASE_CANDIDATES = [
+  "origin/master",
+  "origin/main",
+  "upstream/master",
+  "upstream/main",
+  "master",
+  "main",
+];
+
+export async function resolveDefaultBaseRef(cwd: string): Promise<string> {
+  await ensureGitRepo(cwd);
+
+  for (const candidate of DEFAULT_BASE_CANDIDATES) {
+    try {
+      await execAsync(`git rev-parse --verify ${candidate}`, { cwd });
+      try {
+        const { stdout } = await execAsync(
+          `git merge-base HEAD ${candidate}`,
+          { cwd },
+        );
+        const mergeBase = stdout.trim();
+        if (mergeBase) {
+          return mergeBase;
+        }
+      } catch {
+        // Fall back to the candidate itself if merge-base fails
+        return candidate;
+      }
+    } catch {
+      // candidate not found, continue
+    }
+  }
+
+  // Fall back to previous commit
+  const fallbacks = ["HEAD~1", "HEAD^1"];
+  for (const fallback of fallbacks) {
+    try {
+      const { stdout } = await execAsync(`git rev-parse ${fallback}`, {
+        cwd,
+      });
+      const ref = stdout.trim();
+      if (ref) {
+        return ref;
+      }
+    } catch {
+      // Ignore failures and continue
+    }
+  }
+
+  throw new Error(
+    "Unable to determine base ref automatically. Please specify a base ref.",
+  );
+}
+
 export async function ensureGitRepo(cwd: string): Promise<void> {
   const gitDir = path.join(cwd, ".git");
   if (!fs.existsSync(gitDir)) {
