@@ -31,6 +31,9 @@ bun run src/index.ts
 # Or build and run
 bun run build
 ./yeet
+
+# Explain a diff range via CLI
+./src/explain/cli.ts --prompt "Teach me the PTY changes" --cwd ~/code/project --base main --head feature
 ```
 
 ### Keyboard Shortcuts
