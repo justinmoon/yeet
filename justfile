@@ -8,6 +8,15 @@ default:
 ci:
     nix run .#ci
 
+# Run pre-merge checks
+pre-merge:
+    nix run .#pre-merge
+
+# Run post-merge updates
+post-merge:
+    bun install
+    @echo "✓ Dependencies updated"
+
 # Run GUI dev server (starts both API and Vite)
 gui:
     bash scripts/gui.sh
