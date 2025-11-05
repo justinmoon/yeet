@@ -1,7 +1,7 @@
 import type { StyledText } from "@opentui/core";
 import type { MessageContent } from "../agent";
-import type { ExplainResult } from "../explain";
 import type { Config } from "../config";
+import type { ExplainResult } from "../explain";
 
 /**
  * Represents a rendered message part (text, tool call, etc.)

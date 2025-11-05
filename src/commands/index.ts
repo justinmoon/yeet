@@ -1,7 +1,6 @@
 import { exchangeOAuthCode, startAnthropicOAuth } from "../auth";
 import type { Config } from "../config";
 import { saveConfig } from "../config";
-import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
 import {
   createStubExplainResult,
   getGitDiff,
@@ -10,6 +9,7 @@ import {
   resolveDefaultBaseRef,
 } from "../explain";
 import type { ExplainResult } from "../explain";
+import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
 import type { UIAdapter } from "../ui/interface";
 
 export interface ParsedCommand {

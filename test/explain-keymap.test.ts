@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
-  interpretExplainKey,
   type ExplainKeyAction,
+  interpretExplainKey,
 } from "../src/explain/keymap";
 
 describe("interpretExplainKey", () => {

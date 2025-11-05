@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 import { Command } from "commander";
 import ora from "ora";
-import { normalizeRequest } from "./intent";
 import { getGitDiff } from "./git-diff";
-import { planSections } from "./section-planner";
 import { createStubExplainResult } from "./index";
+import { normalizeRequest } from "./intent";
+import { planSections } from "./section-planner";
 import type { ExplainResult } from "./types";
 
 const program = new Command();

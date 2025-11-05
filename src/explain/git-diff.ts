@@ -1,10 +1,10 @@
+import { exec } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 import { parse } from "diff2html/lib-esm/diff-parser.js";
 import type { DiffBlock, DiffFile } from "diff2html/lib-esm/types.js";
-import { randomUUID } from "node:crypto";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import type { DiffLine, DiffSection } from "./types";
 
 const execAsync = promisify(exec);
