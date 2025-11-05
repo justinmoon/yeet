@@ -24,9 +24,7 @@ export async function createExplainModel(): Promise<LanguageModel> {
           "anthropic-beta": CLAUDE_CODE_BETA,
         },
       });
-      return provider(
-        anthropicConfig.model || "claude-sonnet-4-5-20250929",
-      );
+      return provider(anthropicConfig.model || "claude-sonnet-4-5-20250929");
     }
 
     const provider = createAnthropic({

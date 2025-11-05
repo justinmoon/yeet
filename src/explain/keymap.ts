@@ -7,7 +7,9 @@ export type ExplainKeyAction =
   | "close"
   | "submit";
 
-function normalizeKey(event: Pick<KeyEvent, "name"> & { key?: string; code?: string }): string {
+function normalizeKey(
+  event: Pick<KeyEvent, "name"> & { key?: string; code?: string },
+): string {
   return (event.name || event.key || event.code || "").toLowerCase();
 }
 

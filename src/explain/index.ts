@@ -73,8 +73,7 @@ export function createStubExplainResult(intent: ExplainIntent): ExplainResult {
       },
       {
         type: "add",
-        content:
-          "./src/explain/cli.ts --prompt \"Teach me the PTY changes\"",
+        content: './src/explain/cli.ts --prompt "Teach me the PTY changes"',
         oldLineNumber: null,
         newLineNumber: 32,
       },
@@ -100,14 +99,13 @@ export function createStubExplainResult(intent: ExplainIntent): ExplainResult {
       },
       {
         type: "add",
-        content:
-          ".option(\"--include <path>\", \"Optional path filter\")",
+        content: '.option("--include <path>", "Optional path filter")',
         oldLineNumber: null,
         newLineNumber: 18,
       },
       {
         type: "context",
-        content: ".option(\"--json\", \"Output raw JSON\", false);",
+        content: '.option("--json", "Output raw JSON", false);',
         oldLineNumber: 19,
         newLineNumber: 20,
       },
@@ -137,4 +135,3 @@ export function createStubExplainResult(intent: ExplainIntent): ExplainResult {
     sections,
   };
 }
-
