@@ -106,7 +106,6 @@ export async function handleMessage(
 
     let assistantResponse = "";
     let textChunks = 0;
-    let hasOutputText = false;
     let lastToolName = "";
     let lastToolArgs: any = {};
 
