@@ -1,6 +1,8 @@
-import { type StyledText, stringToStyledText } from "@opentui/core";
+import { type StyledText, stringToStyledText, addDefaultParsers, getTreeSitterClient } from "@opentui/core";
 import { render, useRenderer } from "@opentui/solid";
 import { For, createSignal, onMount } from "solid-js";
+import path from "path";
+import { fileURLToPath } from "url";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
@@ -9,7 +11,17 @@ import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import { cycleTheme, getCurrentTheme, setTheme, themes } from "./colors";
-import type { UIAdapter } from "./interface";
+import type { MessagePart, UIAdapter } from "./interface";
+import { createSyntaxStyle } from "./syntax-theme";
+
+// Set up tree-sitter worker path for Bun
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const workerPath = path.resolve(__dirname, "../../node_modules/@opentui/core/parser.worker.js");
+process.env.OTUI_TREE_SITTER_WORKER_PATH = workerPath;
+
+// Initialize built-in tree-sitter parsers (markdown, javascript, typescript)
+addDefaultParsers([]);
 
 export class TUISolidAdapter implements UIAdapter {
   conversationHistory: Array<{
@@ -26,6 +38,7 @@ export class TUISolidAdapter implements UIAdapter {
 
   private config: Config;
   private contentChunks: Array<string | StyledText> = [];
+  private messageParts: MessagePart[] = [];
   private inputText = "";
   private statusText = "";
   private scrollBoxEl: any;
@@ -35,12 +48,14 @@ export class TUISolidAdapter implements UIAdapter {
   // Signals for reactive rendering
   private setStatusText!: (text: string) => void;
   private setOutputContent!: (content: Array<string | StyledText>) => void;
+  private setMessageParts!: (parts: MessagePart[]) => void;
   private setInputValue!: (value: string) => void;
   private setInputPlaceholder!: (placeholder: string) => void;
   private setImageCount!: (count: number) => void;
 
   private getStatusText!: () => string;
   private getOutputContent!: () => Array<string | StyledText>;
+  private getMessageParts!: () => MessagePart[];
   private getInputValue!: () => string;
   private getInputPlaceholder!: () => string;
   private getImageCount!: () => number;
@@ -69,6 +84,7 @@ export class TUISolidAdapter implements UIAdapter {
         const [outputContent, setOutputContent] = createSignal<
           Array<string | StyledText>
         >([]);
+        const [messageParts, setMessageParts] = createSignal<MessagePart[]>([]);
         const [inputValue, setInputValue] = createSignal("");
         const [inputPlaceholder, setInputPlaceholder] = createSignal(
           "Type your message...",
@@ -77,15 +93,22 @@ export class TUISolidAdapter implements UIAdapter {
         let textareaRef: any = null;
         const scrollBoxRef: any = null;
 
+        // Initialize theme and create reactive syntax style
+        const themeName = this.config.theme || "tokyonight";
+        const theme = setTheme(themeName);
+        const syntaxStyle = createSyntaxStyle(theme);
+
         // Store signal setters for use by adapter methods
         this.setStatusText = setStatusText;
         this.setOutputContent = setOutputContent;
+        this.setMessageParts = setMessageParts;
         this.setInputValue = setInputValue;
         this.setInputPlaceholder = setInputPlaceholder;
         this.setImageCount = setImageCount;
 
         this.getStatusText = statusText;
         this.getOutputContent = outputContent;
+        this.getMessageParts = messageParts;
         this.getInputValue = inputValue;
         this.getInputPlaceholder = inputPlaceholder;
         this.getImageCount = imageCount;
@@ -94,9 +117,7 @@ export class TUISolidAdapter implements UIAdapter {
           // Store renderer reference
           this.renderer = renderer;
 
-          // Initialize theme from config
-          const themeName = this.config.theme || "tokyonight";
-          const theme = setTheme(themeName);
+          // Set background color
           renderer.setBackgroundColor(theme.background);
 
           if (textareaRef) {
@@ -139,8 +160,47 @@ export class TUISolidAdapter implements UIAdapter {
               }}
               style={{ flexGrow: 1 }}
             >
+              {/* Legacy text chunks (for backwards compatibility during transition) */}
               <For each={outputContent()}>
                 {(content) => renderStyledText(content)}
+              </For>
+
+              {/* New message parts with proper markdown rendering */}
+              <For each={messageParts()}>
+                {(part) => {
+                  if (part.type === "text") {
+                    return (
+                      <box paddingLeft={3} marginTop={1} flexShrink={0}>
+                        <code
+                          filetype="markdown"
+                          drawUnstyledText={false}
+                          syntaxStyle={syntaxStyle}
+                          content={part.content}
+                          conceal={true}
+                        />
+                      </box>
+                    );
+                  } else if (part.type === "user") {
+                    return (
+                      <box marginTop={1} flexShrink={0}>
+                        <text>{part.content}</text>
+                      </box>
+                    );
+                  } else if (part.type === "separator") {
+                    return (
+                      <box marginTop={1} flexShrink={0}>
+                        <text>{part.content}</text>
+                      </box>
+                    );
+                  } else if (part.type === "tool") {
+                    return (
+                      <box marginTop={1} flexShrink={0}>
+                        <text>{part.content}</text>
+                      </box>
+                    );
+                  }
+                  return null;
+                }}
               </For>
             </scrollbox>
 
@@ -270,9 +330,27 @@ export class TUISolidAdapter implements UIAdapter {
     }
   }
 
+  addMessagePart(part: MessagePart): void {
+    this.messageParts.push(part);
+    this.setMessageParts([...this.messageParts]);
+
+    // Auto-scroll to bottom
+    if (this.scrollBoxEl) {
+      setTimeout(() => {
+        this.scrollBoxEl.scrollTop = Math.max(
+          0,
+          this.scrollBoxEl.scrollHeight -
+            (this.scrollBoxEl.viewport?.height || 0),
+        );
+      }, 0);
+    }
+  }
+
   clearOutput(): void {
     this.contentChunks = [];
+    this.messageParts = [];
     this.setOutputContent([]);
+    this.setMessageParts([]);
   }
 
   setStatus(text: string): void {
