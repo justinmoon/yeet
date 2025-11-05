@@ -1,6 +1,6 @@
-import { type StyledText, stringToStyledText } from "@opentui/core";
+import { type KeyEvent, type StyledText, stringToStyledText } from "@opentui/core";
 import { render, useRenderer } from "@opentui/solid";
-import { For, createSignal, onMount } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
@@ -10,6 +10,8 @@ import { getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import { cycleTheme, getCurrentTheme, setTheme, themes } from "./colors";
 import type { UIAdapter } from "./interface";
+import type { ExplainResult } from "../explain";
+import { interpretExplainKey } from "../explain/keymap";
 
 export class TUISolidAdapter implements UIAdapter {
   conversationHistory: Array<{
@@ -39,6 +41,20 @@ export class TUISolidAdapter implements UIAdapter {
   private setInputPlaceholder!: (placeholder: string) => void;
   private setImageCount!: (count: number) => void;
 
+  private setExplainVisible?: (value: boolean) => void;
+  private setExplainResult?: (value: ExplainResult | null) => void;
+  private setExplainIndex?: (value: number) => void;
+
+  private getExplainVisible?: () => boolean;
+  private getExplainResult?: () => ExplainResult | null;
+  private getExplainIndex?: () => number;
+
+  private explainModalActive = false;
+  private explainState: { result: ExplainResult | null; index: number } = {
+    result: null,
+    index: 0,
+  };
+
   private getStatusText!: () => string;
   private getOutputContent!: () => Array<string | StyledText>;
   private getInputValue!: () => string;
@@ -62,6 +78,8 @@ export class TUISolidAdapter implements UIAdapter {
       ? `Paused | ${modelInfo.name} | 0/${modelInfo.contextWindow} (0%)`
       : "Paused";
 
+    const adapter = this;
+
     render(
       () => {
         const renderer = useRenderer();
@@ -74,6 +92,11 @@ export class TUISolidAdapter implements UIAdapter {
           "Type your message...",
         );
         const [imageCount, setImageCount] = createSignal(0);
+        const [explainVisible, setExplainVisible] = createSignal(false);
+        const [explainResult, setExplainResult] = createSignal<
+          ExplainResult | null
+        >(null);
+        const [explainIndex, setExplainIndex] = createSignal(0);
         let textareaRef: any = null;
         const scrollBoxRef: any = null;
 
@@ -90,9 +113,59 @@ export class TUISolidAdapter implements UIAdapter {
         this.getInputPlaceholder = inputPlaceholder;
         this.getImageCount = imageCount;
 
+        this.setExplainVisible = setExplainVisible;
+        this.setExplainResult = setExplainResult;
+        this.setExplainIndex = setExplainIndex;
+        this.getExplainVisible = explainVisible;
+        this.getExplainResult = explainResult;
+        this.getExplainIndex = explainIndex;
+
+        const explainData = createMemo(() => {
+          const result = explainResult();
+          if (!result) return null;
+          const index = Math.max(
+            0,
+            Math.min(result.sections.length - 1, explainIndex()),
+          );
+          const section = result.sections[index];
+          const diff = section
+            ? result.diffs.find((d) => d.id === section.diffId)
+            : undefined;
+          return {
+            result,
+            index,
+            section,
+            diff,
+          };
+        });
+
+        createEffect(() => {
+          const index = explainIndex();
+          logger.debug("explain-index-signal", { index });
+        });
+
+        createEffect(() => {
+          const data = explainData();
+          logger.debug("explain-render", {
+            index: data?.index ?? null,
+            title: data?.section?.title ?? null,
+            diffPath: data?.diff?.filePath ?? null,
+            snippet: data?.section?.explanation?.slice(0, 48) ?? null,
+            visible: explainVisible(),
+          });
+        });
+
         onMount(() => {
           // Store renderer reference
           this.renderer = renderer;
+
+          const handleExplainKeys = (key: KeyEvent) => {
+            this.processExplainKeyEvent(key);
+          };
+
+          this.renderer.keyInput?.on?.("keypress", handleExplainKeys);
+          this.renderer.keyInput?.on?.("keyrepeat", handleExplainKeys);
+          this.renderer.keyInput?.on?.("keyrelease", handleExplainKeys);
 
           // Initialize theme from config
           const themeName = this.config.theme || "tokyonight";
@@ -173,62 +246,182 @@ export class TUISolidAdapter implements UIAdapter {
                   }
                 }}
                 onKeyDown={async (e: any) => {
-                  if (e.name === "return" && !e.shift) {
+                  if (adapter.explainModalActive) {
+                    e.preventDefault();
+                    return;
+                  }
+
+                  const keyName = (e.name || e.key || e.code || "").toLowerCase();
+
+                  if ((keyName === "return" || keyName === "enter") && !e.shift) {
                     e.preventDefault();
                     const message = textareaRef?.plainText || "";
                     if (message.trim()) {
-                      if (this.pendingOAuthSetup) {
+                      if (adapter.pendingOAuthSetup) {
                         const code = message;
-                        const verifier = this.pendingOAuthSetup.verifier;
-                        this.pendingOAuthSetup = undefined;
-                        this.clearInput();
+                        const verifier = adapter.pendingOAuthSetup.verifier;
+                        adapter.pendingOAuthSetup = undefined;
+                        adapter.clearInput();
                         const { handleOAuthCodeInput } = await import(
                           "../commands"
                         );
                         await handleOAuthCodeInput(
                           code,
                           verifier,
-                          this,
-                          this.config,
+                          adapter,
+                          adapter.config,
                         );
-                      } else if (this.pendingMapleSetup) {
+                      } else if (adapter.pendingMapleSetup) {
                         const apiKey = message;
-                        const modelId = this.pendingMapleSetup.modelId;
-                        this.pendingMapleSetup = undefined;
-                        this.clearInput();
+                        const modelId = adapter.pendingMapleSetup.modelId;
+                        adapter.pendingMapleSetup = undefined;
+                        adapter.clearInput();
                         await handleMapleSetup(
                           apiKey,
                           modelId,
-                          this,
-                          this.config,
+                          adapter,
+                          adapter.config,
                         );
                       } else {
                         const parsed = parseCommand(message);
                         if (parsed.isCommand && parsed.command) {
-                          this.clearInput();
+                          adapter.clearInput();
                           await executeCommand(
                             parsed.command,
                             parsed.args,
-                            this,
-                            this.config,
+                            adapter,
+                            adapter.config,
                           );
                         } else {
-                          await handleMessage(message, this, this.config);
+                          await handleMessage(message, adapter, adapter.config);
                         }
                       }
                     }
-                  } else if (e.name === "escape") {
-                    if (this.isGenerating && this.abortController) {
-                      this.abortController.abort();
-                      this.appendOutput(
+                  } else if (keyName === "escape") {
+                    if (adapter.isGenerating && adapter.abortController) {
+                      adapter.abortController.abort();
+                      adapter.appendOutput(
                         "\n\n⚠️  Generation cancelled by user\n",
                       );
-                      this.setStatus("Cancelled");
+                      adapter.setStatus("Cancelled");
                     }
                   }
                 }}
               />
             </box>
+
+            <Show when={explainVisible()}>
+              <box
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: "#0B1120",
+                  flexDirection: "column",
+                  padding: 1,
+                  gap: 1,
+                }}
+              >
+                <Show
+                  when={explainData()}
+                  keyed
+                  fallback={
+                    <box flexGrow={1} alignItems="center" justifyContent="center">
+                      <text>No tutorial sections available.</text>
+                    </box>
+                  }
+                >
+                  {(data) => {
+                    if (!data || !data.section) {
+                      return (
+                        <box flexGrow={1} alignItems="center" justifyContent="center">
+                          <text>No tutorial sections available.</text>
+                        </box>
+                      );
+                    }
+
+                    const { result, section, diff, index } = data;
+                    const total = result.sections.length;
+
+                    return (
+                      <box
+                        style={{ flexDirection: "column", gap: 1, flexGrow: 1 }}
+                        data-explain-section={section.id}
+                      >
+                        <box style={{ justifyContent: "space-between" }}>
+                          <text>
+                            Explain • Section {index + 1}/{total}
+                          </text>
+                          <text style={{ fg: "#38bdf8" }}>
+                            Left/Right navigate • Esc close
+                          </text>
+                        </box>
+                        <box>
+                          <text style={{ fg: "#38bdf8" }}>{section.title}</text>
+                        </box>
+                        <Show when={section.tags?.length}>
+                          <text style={{ fg: "#94a3b8" }}>
+                            tags: {section.tags?.join(", ")}
+                          </text>
+                        </Show>
+                        <scrollbox style={{ height: 8, flexShrink: 0 }}>
+                          <text>{section.explanation}</text>
+                        </scrollbox>
+                        <box>
+                          <text style={{ fg: "#cbd5f5" }}>
+                            Diff: {diff ? diff.filePath : "(not found)"}
+                          </text>
+                        </box>
+                        <scrollbox
+                          style={{ flexGrow: 1 }}
+                          data-explain-diff={diff ? diff.id : "missing"}
+                        >
+                          <For each={diff ? diff.lines : []}>
+                            {(line) => {
+                              const prefix =
+                                line.type === "add"
+                                  ? "+"
+                                  : line.type === "remove"
+                                    ? "-"
+                                    : " ";
+                              const color =
+                                line.type === "add"
+                                  ? "#22c55e"
+                                  : line.type === "remove"
+                                    ? "#f87171"
+                                    : "#94a3b8";
+
+                              const oldNumber = line.oldLineNumber ?? "";
+                              const newNumber = line.newLineNumber ?? "";
+
+                              return (
+                                <box
+                                  style={{ flexDirection: "row", gap: 1 }}
+                                  data-explain-diff-line={`${section.id}-${line.oldLineNumber ?? "n"}-${line.newLineNumber ?? "n"}`}
+                                >
+                                  <text style={{ fg: "#64748b", width: 5 }}>
+                                    {String(oldNumber).padStart(3, " ")}
+                                  </text>
+                                  <text style={{ fg: "#64748b", width: 5 }}>
+                                    {String(newNumber).padStart(3, " ")}
+                                  </text>
+                                  <text style={{ fg: color }}>{`${prefix}${line.content}`}</text>
+                                </box>
+                              );
+                            }}
+                          </For>
+                          <Show when={!diff || diff.lines.length === 0}>
+                            <text>No diff lines for this section.</text>
+                          </Show>
+                        </scrollbox>
+                      </box>
+                    );
+                  }}
+                </Show>
+              </box>
+            </Show>
           </box>
         );
       },
@@ -304,6 +497,130 @@ export class TUISolidAdapter implements UIAdapter {
   setBackgroundColor(color: string): void {
     if (this.renderer) {
       this.renderer.setBackgroundColor(color);
+    }
+  }
+
+  showExplainReview(result: ExplainResult): void {
+    if (!this.setExplainVisible || !this.setExplainResult || !this.setExplainIndex) {
+      this.appendOutput("Explain view is not available in this UI.\n");
+      return;
+    }
+
+    this.explainState.result = result;
+    this.explainState.index = 0;
+    this.setExplainResult(result);
+    this.setExplainIndex(0);
+    this.setExplainVisible(true);
+    this.explainModalActive = true;
+    if (this.inputEl?.blur) {
+      this.inputEl.blur();
+    }
+    this.setStatus(`Explain • ${result.sections.length} section(s)`);
+  }
+
+  private hideExplainReview(): void {
+    if (this.setExplainVisible) {
+      this.setExplainVisible(false);
+    }
+    if (this.setExplainResult) {
+      this.setExplainResult(null);
+    }
+    this.explainModalActive = false;
+    this.explainState.result = null;
+    this.explainState.index = 0;
+    this.setStatus(`Ready`);
+    if (this.inputEl?.focus) {
+      this.inputEl.focus();
+    }
+  }
+
+  private updateExplainSection(delta: number): void {
+    const setter = this.setExplainIndex;
+    const activeResult = this.explainState.result ?? this.getExplainResult?.();
+
+    if (!setter || !activeResult) {
+      logger.debug("explain-index-missing", {
+        hasSetter: Boolean(setter),
+        hasResult: Boolean(activeResult),
+        delta,
+      });
+      return;
+    }
+
+    const total = activeResult.sections.length;
+    if (total === 0) {
+      logger.debug("explain-index-empty");
+      return;
+    }
+
+    const current = this.getExplainIndex?.() ?? this.explainState.index;
+    const next = Math.max(0, Math.min(total - 1, current + delta));
+
+    if (next === current) {
+      logger.debug("explain-index-noop", { current, delta, total });
+      this.explainState.index = current;
+      return;
+    }
+
+    this.explainState.index = next;
+    setter(next);
+    this.renderer?.requestRender?.();
+    this.renderer?.requestAnimationFrame?.(() => {});
+    logger.debug("explain-index-update", { current, next, total, delta });
+  }
+
+  private nextExplainSection(): void {
+    this.updateExplainSection(1);
+  }
+
+  private previousExplainSection(): void {
+    this.updateExplainSection(-1);
+  }
+
+  private processExplainKeyEvent(key: Pick<KeyEvent, "name" | "code"> & {
+    preventDefault?: () => void;
+    raw?: string;
+    sequence?: string;
+  }): void {
+    if (!this.explainModalActive) {
+      return;
+    }
+
+    if (!key || typeof key !== "object") {
+      return;
+    }
+
+    const action = interpretExplainKey({
+      name: key?.name,
+      code: key?.code,
+    });
+
+    logger.debug("explain-key", {
+      action,
+      name: key?.name,
+      code: key?.code,
+      raw: key?.raw,
+      sequence: key?.sequence,
+    });
+
+    switch (action) {
+      case "close":
+        key.preventDefault?.();
+        this.hideExplainReview();
+        break;
+      case "previous":
+        key.preventDefault?.();
+        this.previousExplainSection();
+        break;
+      case "next":
+        key.preventDefault?.();
+        this.nextExplainSection();
+        break;
+      case "submit":
+        key.preventDefault?.();
+        break;
+      default:
+        break;
     }
   }
 

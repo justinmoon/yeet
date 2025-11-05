@@ -1,5 +1,6 @@
 import type { StyledText } from "@opentui/core";
 import type { MessageContent } from "../agent";
+import type { ExplainResult } from "../explain";
 import type { Config } from "../config";
 
 /**
@@ -40,6 +41,7 @@ export interface UIAdapter {
   // Modal selectors
   showSessionSelector?(): void;
   showModelSelector?(): void;
+  showExplainReview?(result: ExplainResult): void;
 
   // Input handling
   onUserInput(callback: (message: string) => Promise<void>): void;
