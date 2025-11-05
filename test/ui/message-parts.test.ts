@@ -20,28 +20,14 @@ test("MessagePart can have different types", () => {
     content: "# Markdown content",
   };
 
-  const userPart: MessagePart = {
-    id: "2",
-    type: "user",
-    content: "User message",
-  };
-
   const toolPart: MessagePart = {
-    id: "3",
+    id: "2",
     type: "tool",
     content: "Tool output",
   };
 
-  const separatorPart: MessagePart = {
-    id: "4",
-    type: "separator",
-    content: "─".repeat(60),
-  };
-
   expect(textPart.type).toBe("text");
-  expect(userPart.type).toBe("user");
   expect(toolPart.type).toBe("tool");
-  expect(separatorPart.type).toBe("separator");
 });
 
 test("MessagePart can have optional metadata", () => {

@@ -58,7 +58,6 @@ export function createSyntaxStyle(theme: Theme): SyntaxStyle {
       style: {
         foreground: RGBA.fromHex(theme.foreground),
         dim: true,
-        strikethrough: true,
       },
     },
 
