@@ -553,23 +553,20 @@ export class TUISolidAdapter implements UIAdapter {
       return;
     }
 
-    setter((currentSignal: number | undefined) => {
-      const current =
-        typeof currentSignal === "number" ? currentSignal : this.explainState.index;
-      const next = Math.max(0, Math.min(total - 1, current + delta));
+    const current = this.getExplainIndex?.() ?? this.explainState.index;
+    const next = Math.max(0, Math.min(total - 1, current + delta));
 
-      if (next === current) {
-        logger.debug("explain-index-noop", { current, delta, total });
-        this.explainState.index = current;
-        return current;
-      }
+    if (next === current) {
+      logger.debug("explain-index-noop", { current, delta, total });
+      this.explainState.index = current;
+      return;
+    }
 
-      this.explainState.index = next;
-      this.renderer?.requestRender?.();
-      this.renderer?.requestAnimationFrame?.(() => {});
-      logger.debug("explain-index-update", { current, next, total, delta });
-      return next;
-    });
+    this.explainState.index = next;
+    setter(next);
+    this.renderer?.requestRender?.();
+    this.renderer?.requestAnimationFrame?.(() => {});
+    logger.debug("explain-index-update", { current, next, total, delta });
   }
 
   private nextExplainSection(): void {
@@ -580,7 +577,7 @@ export class TUISolidAdapter implements UIAdapter {
     this.updateExplainSection(-1);
   }
 
-  private processExplainKeyEvent(key: Pick<KeyEvent, "name" | "key" | "code"> & {
+  private processExplainKeyEvent(key: Pick<KeyEvent, "name" | "code"> & {
     preventDefault?: () => void;
     raw?: string;
     sequence?: string;
@@ -595,7 +592,6 @@ export class TUISolidAdapter implements UIAdapter {
 
     const action = interpretExplainKey({
       name: key?.name,
-      key: key?.key,
       code: key?.code,
     });
 
