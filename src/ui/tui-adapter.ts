@@ -125,6 +125,12 @@ export class TUIAdapter implements UIAdapter {
     this.renderer.requestAnimationFrame?.(() => {});
   }
 
+  addMessagePart(part: import("./interface").MessagePart): void {
+    // Legacy TUI adapter doesn't use message parts yet
+    // Just append as text for now
+    this.appendOutput(part.content);
+  }
+
   clearOutput(): void {
     this.contentChunks = [];
     this.output.content = "";

@@ -1,10 +1,10 @@
 #!/usr/bin/env bun
 import { Command } from "commander";
 import ora from "ora";
-import { normalizeRequest } from "./intent";
 import { getGitDiff } from "./git-diff";
-import { planSections } from "./section-planner";
 import { createStubExplainResult } from "./index";
+import { normalizeRequest } from "./intent";
+import { planSections } from "./section-planner";
 import type { ExplainResult } from "./types";
 
 const program = new Command();
@@ -22,7 +22,8 @@ program
 
 program.action(async (options) => {
   const spinner = ora();
-  const useStub = Boolean(options.stub) || process.env.YEET_EXPLAIN_STUB === "1";
+  const useStub =
+    Boolean(options.stub) || process.env.YEET_EXPLAIN_STUB === "1";
 
   try {
     const intent = normalizeRequest({

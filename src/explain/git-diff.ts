@@ -1,10 +1,10 @@
+import { exec } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
+import { promisify } from "node:util";
 import { parse } from "diff2html/lib-esm/diff-parser.js";
 import type { DiffBlock, DiffFile } from "diff2html/lib-esm/types.js";
-import { randomUUID } from "node:crypto";
-import { exec } from "node:child_process";
-import { promisify } from "node:util";
 import type { DiffLine, DiffSection } from "./types";
 
 const execAsync = promisify(exec);
@@ -34,10 +34,9 @@ export async function resolveDefaultBaseRef(cwd: string): Promise<string> {
     try {
       await execAsync(`git rev-parse --verify ${candidate}`, { cwd });
       try {
-        const { stdout } = await execAsync(
-          `git merge-base HEAD ${candidate}`,
-          { cwd },
-        );
+        const { stdout } = await execAsync(`git merge-base HEAD ${candidate}`, {
+          cwd,
+        });
         const mergeBase = stdout.trim();
         if (mergeBase) {
           return mergeBase;
@@ -89,11 +88,7 @@ export async function getGitDiff({
 }: GitDiffOptions): Promise<DiffSection[]> {
   await ensureGitRepo(cwd);
 
-  const args = [
-    "diff",
-    `--unified=${contextLines}`,
-    `${base}..${head}`,
-  ];
+  const args = ["diff", `--unified=${contextLines}`, `${base}..${head}`];
 
   if (includePath) {
     args.push("--", includePath);

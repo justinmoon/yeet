@@ -1,4 +1,4 @@
-import { describe, expect, test, mock } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type { Config } from "../src/config";
 
 mock.module("@opentui/solid/jsx-runtime", () => ({

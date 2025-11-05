@@ -1,7 +1,18 @@
 import type { StyledText } from "@opentui/core";
 import type { MessageContent } from "../agent";
-import type { ExplainResult } from "../explain";
 import type { Config } from "../config";
+import type { ExplainResult } from "../explain";
+
+/**
+ * Represents a rendered message part (text, tool call, etc.)
+ * User messages and separators use appendOutput for proper StyledText handling.
+ */
+export interface MessagePart {
+  id: string;
+  type: "text" | "tool";
+  content: string;
+  metadata?: any;
+}
 
 /**
  * UI abstraction interface for Yeet.
@@ -30,6 +41,7 @@ export interface UIAdapter {
 
   // Core UI operations
   appendOutput(text: string | StyledText): void;
+  addMessagePart(part: MessagePart): void;
   clearOutput(): void;
   setStatus(text: string): void;
   clearInput(): void;

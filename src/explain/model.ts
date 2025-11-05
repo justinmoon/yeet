@@ -1,12 +1,12 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
-import { loadConfig } from "../config";
 import {
   CLAUDE_CODE_API_BETA,
   CLAUDE_CODE_BETA,
   createAnthropicFetch,
 } from "../auth";
+import { loadConfig } from "../config";
 import { createMapleFetch } from "../maple";
 
 export async function createExplainModel(): Promise<LanguageModel> {
@@ -24,9 +24,7 @@ export async function createExplainModel(): Promise<LanguageModel> {
           "anthropic-beta": CLAUDE_CODE_BETA,
         },
       });
-      return provider(
-        anthropicConfig.model || "claude-sonnet-4-5-20250929",
-      );
+      return provider(anthropicConfig.model || "claude-sonnet-4-5-20250929");
     }
 
     const provider = createAnthropic({

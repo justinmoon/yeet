@@ -1,17 +1,46 @@
-import { type KeyEvent, type StyledText, stringToStyledText } from "@opentui/core";
+import path from "path";
+import { fileURLToPath } from "url";
+import {
+  type KeyEvent,
+  type StyledText,
+  addDefaultParsers,
+  getTreeSitterClient,
+  stringToStyledText,
+} from "@opentui/core";
 import { render, useRenderer } from "@opentui/solid";
-import { For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js";
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onMount,
+} from "solid-js";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
 import type { Config } from "../config";
+import type { ExplainResult } from "../explain";
+import { interpretExplainKey } from "../explain/keymap";
 import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import { cycleTheme, getCurrentTheme, setTheme, themes } from "./colors";
 import type { UIAdapter } from "./interface";
-import type { ExplainResult } from "../explain";
-import { interpretExplainKey } from "../explain/keymap";
+import type { MessagePart } from "./interface";
+import { createSyntaxStyle } from "./syntax-theme";
+
+// Set up tree-sitter worker path for Bun
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const workerPath = path.resolve(
+  __dirname,
+  "../../node_modules/@opentui/core/parser.worker.js",
+);
+process.env.OTUI_TREE_SITTER_WORKER_PATH = workerPath;
+
+// Initialize built-in tree-sitter parsers (markdown, javascript, typescript)
+addDefaultParsers([]);
 
 export class TUISolidAdapter implements UIAdapter {
   conversationHistory: Array<{
@@ -28,6 +57,7 @@ export class TUISolidAdapter implements UIAdapter {
 
   private config: Config;
   private contentChunks: Array<string | StyledText> = [];
+  private messageParts: MessagePart[] = [];
   private inputText = "";
   private statusText = "";
   private scrollBoxEl: any;
@@ -37,6 +67,7 @@ export class TUISolidAdapter implements UIAdapter {
   // Signals for reactive rendering
   private setStatusText!: (text: string) => void;
   private setOutputContent!: (content: Array<string | StyledText>) => void;
+  private setMessageParts!: (parts: MessagePart[]) => void;
   private setInputValue!: (value: string) => void;
   private setInputPlaceholder!: (placeholder: string) => void;
   private setImageCount!: (count: number) => void;
@@ -57,6 +88,7 @@ export class TUISolidAdapter implements UIAdapter {
 
   private getStatusText!: () => string;
   private getOutputContent!: () => Array<string | StyledText>;
+  private getMessageParts!: () => MessagePart[];
   private getInputValue!: () => string;
   private getInputPlaceholder!: () => string;
   private getImageCount!: () => number;
@@ -78,8 +110,6 @@ export class TUISolidAdapter implements UIAdapter {
       ? `Paused | ${modelInfo.name} | 0/${modelInfo.contextWindow} (0%)`
       : "Paused";
 
-    const adapter = this;
-
     render(
       () => {
         const renderer = useRenderer();
@@ -87,73 +117,34 @@ export class TUISolidAdapter implements UIAdapter {
         const [outputContent, setOutputContent] = createSignal<
           Array<string | StyledText>
         >([]);
+        const [messageParts, setMessageParts] = createSignal<MessagePart[]>([]);
         const [inputValue, setInputValue] = createSignal("");
         const [inputPlaceholder, setInputPlaceholder] = createSignal(
           "Type your message...",
         );
         const [imageCount, setImageCount] = createSignal(0);
-        const [explainVisible, setExplainVisible] = createSignal(false);
-        const [explainResult, setExplainResult] = createSignal<
-          ExplainResult | null
-        >(null);
-        const [explainIndex, setExplainIndex] = createSignal(0);
         let textareaRef: any = null;
         const scrollBoxRef: any = null;
+
+        // Initialize theme and create reactive syntax style
+        const themeName = this.config.theme || "tokyonight";
+        const theme = setTheme(themeName);
+        const syntaxStyle = createSyntaxStyle(theme);
 
         // Store signal setters for use by adapter methods
         this.setStatusText = setStatusText;
         this.setOutputContent = setOutputContent;
+        this.setMessageParts = setMessageParts;
         this.setInputValue = setInputValue;
         this.setInputPlaceholder = setInputPlaceholder;
         this.setImageCount = setImageCount;
 
         this.getStatusText = statusText;
         this.getOutputContent = outputContent;
+        this.getMessageParts = messageParts;
         this.getInputValue = inputValue;
         this.getInputPlaceholder = inputPlaceholder;
         this.getImageCount = imageCount;
-
-        this.setExplainVisible = setExplainVisible;
-        this.setExplainResult = setExplainResult;
-        this.setExplainIndex = setExplainIndex;
-        this.getExplainVisible = explainVisible;
-        this.getExplainResult = explainResult;
-        this.getExplainIndex = explainIndex;
-
-        const explainData = createMemo(() => {
-          const result = explainResult();
-          if (!result) return null;
-          const index = Math.max(
-            0,
-            Math.min(result.sections.length - 1, explainIndex()),
-          );
-          const section = result.sections[index];
-          const diff = section
-            ? result.diffs.find((d) => d.id === section.diffId)
-            : undefined;
-          return {
-            result,
-            index,
-            section,
-            diff,
-          };
-        });
-
-        createEffect(() => {
-          const index = explainIndex();
-          logger.debug("explain-index-signal", { index });
-        });
-
-        createEffect(() => {
-          const data = explainData();
-          logger.debug("explain-render", {
-            index: data?.index ?? null,
-            title: data?.section?.title ?? null,
-            diffPath: data?.diff?.filePath ?? null,
-            snippet: data?.section?.explanation?.slice(0, 48) ?? null,
-            visible: explainVisible(),
-          });
-        });
 
         onMount(() => {
           // Store renderer reference
@@ -167,9 +158,7 @@ export class TUISolidAdapter implements UIAdapter {
           this.renderer.keyInput?.on?.("keyrepeat", handleExplainKeys);
           this.renderer.keyInput?.on?.("keyrelease", handleExplainKeys);
 
-          // Initialize theme from config
-          const themeName = this.config.theme || "tokyonight";
-          const theme = setTheme(themeName);
+          // Set background color
           renderer.setBackgroundColor(theme.background);
 
           if (textareaRef) {
@@ -212,8 +201,37 @@ export class TUISolidAdapter implements UIAdapter {
               }}
               style={{ flexGrow: 1 }}
             >
+              {/* Legacy text chunks (for backwards compatibility during transition) */}
               <For each={outputContent()}>
                 {(content) => renderStyledText(content)}
+              </For>
+
+              {/* New message parts with proper markdown rendering */}
+              <For each={messageParts()}>
+                {(part) => {
+                  // Only render "text" parts (assistant responses) with markdown
+                  // User messages and separators use the legacy appendOutput path
+                  if (part.type === "text") {
+                    return (
+                      <box paddingLeft={3} marginTop={1} flexShrink={0}>
+                        <code
+                          filetype="markdown"
+                          drawUnstyledText={false}
+                          syntaxStyle={syntaxStyle}
+                          content={part.content}
+                          conceal={true}
+                        />
+                      </box>
+                    );
+                  } else if (part.type === "tool") {
+                    return (
+                      <box marginTop={1} flexShrink={0}>
+                        <text>{part.content}</text>
+                      </box>
+                    );
+                  }
+                  return null;
+                }}
               </For>
             </scrollbox>
 
@@ -246,182 +264,62 @@ export class TUISolidAdapter implements UIAdapter {
                   }
                 }}
                 onKeyDown={async (e: any) => {
-                  if (adapter.explainModalActive) {
-                    e.preventDefault();
-                    return;
-                  }
-
-                  const keyName = (e.name || e.key || e.code || "").toLowerCase();
-
-                  if ((keyName === "return" || keyName === "enter") && !e.shift) {
+                  if (e.name === "return" && !e.shift) {
                     e.preventDefault();
                     const message = textareaRef?.plainText || "";
                     if (message.trim()) {
-                      if (adapter.pendingOAuthSetup) {
+                      if (this.pendingOAuthSetup) {
                         const code = message;
-                        const verifier = adapter.pendingOAuthSetup.verifier;
-                        adapter.pendingOAuthSetup = undefined;
-                        adapter.clearInput();
+                        const verifier = this.pendingOAuthSetup.verifier;
+                        this.pendingOAuthSetup = undefined;
+                        this.clearInput();
                         const { handleOAuthCodeInput } = await import(
                           "../commands"
                         );
                         await handleOAuthCodeInput(
                           code,
                           verifier,
-                          adapter,
-                          adapter.config,
+                          this,
+                          this.config,
                         );
-                      } else if (adapter.pendingMapleSetup) {
+                      } else if (this.pendingMapleSetup) {
                         const apiKey = message;
-                        const modelId = adapter.pendingMapleSetup.modelId;
-                        adapter.pendingMapleSetup = undefined;
-                        adapter.clearInput();
+                        const modelId = this.pendingMapleSetup.modelId;
+                        this.pendingMapleSetup = undefined;
+                        this.clearInput();
                         await handleMapleSetup(
                           apiKey,
                           modelId,
-                          adapter,
-                          adapter.config,
+                          this,
+                          this.config,
                         );
                       } else {
                         const parsed = parseCommand(message);
                         if (parsed.isCommand && parsed.command) {
-                          adapter.clearInput();
+                          this.clearInput();
                           await executeCommand(
                             parsed.command,
                             parsed.args,
-                            adapter,
-                            adapter.config,
+                            this,
+                            this.config,
                           );
                         } else {
-                          await handleMessage(message, adapter, adapter.config);
+                          await handleMessage(message, this, this.config);
                         }
                       }
                     }
-                  } else if (keyName === "escape") {
-                    if (adapter.isGenerating && adapter.abortController) {
-                      adapter.abortController.abort();
-                      adapter.appendOutput(
+                  } else if (e.name === "escape") {
+                    if (this.isGenerating && this.abortController) {
+                      this.abortController.abort();
+                      this.appendOutput(
                         "\n\n⚠️  Generation cancelled by user\n",
                       );
-                      adapter.setStatus("Cancelled");
+                      this.setStatus("Cancelled");
                     }
                   }
                 }}
               />
             </box>
-
-            <Show when={explainVisible()}>
-              <box
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  backgroundColor: "#0B1120",
-                  flexDirection: "column",
-                  padding: 1,
-                  gap: 1,
-                }}
-              >
-                <Show
-                  when={explainData()}
-                  keyed
-                  fallback={
-                    <box flexGrow={1} alignItems="center" justifyContent="center">
-                      <text>No tutorial sections available.</text>
-                    </box>
-                  }
-                >
-                  {(data) => {
-                    if (!data || !data.section) {
-                      return (
-                        <box flexGrow={1} alignItems="center" justifyContent="center">
-                          <text>No tutorial sections available.</text>
-                        </box>
-                      );
-                    }
-
-                    const { result, section, diff, index } = data;
-                    const total = result.sections.length;
-
-                    return (
-                      <box
-                        style={{ flexDirection: "column", gap: 1, flexGrow: 1 }}
-                        data-explain-section={section.id}
-                      >
-                        <box style={{ justifyContent: "space-between" }}>
-                          <text>
-                            Explain • Section {index + 1}/{total}
-                          </text>
-                          <text style={{ fg: "#38bdf8" }}>
-                            Left/Right navigate • Esc close
-                          </text>
-                        </box>
-                        <box>
-                          <text style={{ fg: "#38bdf8" }}>{section.title}</text>
-                        </box>
-                        <Show when={section.tags?.length}>
-                          <text style={{ fg: "#94a3b8" }}>
-                            tags: {section.tags?.join(", ")}
-                          </text>
-                        </Show>
-                        <scrollbox style={{ height: 8, flexShrink: 0 }}>
-                          <text>{section.explanation}</text>
-                        </scrollbox>
-                        <box>
-                          <text style={{ fg: "#cbd5f5" }}>
-                            Diff: {diff ? diff.filePath : "(not found)"}
-                          </text>
-                        </box>
-                        <scrollbox
-                          style={{ flexGrow: 1 }}
-                          data-explain-diff={diff ? diff.id : "missing"}
-                        >
-                          <For each={diff ? diff.lines : []}>
-                            {(line) => {
-                              const prefix =
-                                line.type === "add"
-                                  ? "+"
-                                  : line.type === "remove"
-                                    ? "-"
-                                    : " ";
-                              const color =
-                                line.type === "add"
-                                  ? "#22c55e"
-                                  : line.type === "remove"
-                                    ? "#f87171"
-                                    : "#94a3b8";
-
-                              const oldNumber = line.oldLineNumber ?? "";
-                              const newNumber = line.newLineNumber ?? "";
-
-                              return (
-                                <box
-                                  style={{ flexDirection: "row", gap: 1 }}
-                                  data-explain-diff-line={`${section.id}-${line.oldLineNumber ?? "n"}-${line.newLineNumber ?? "n"}`}
-                                >
-                                  <text style={{ fg: "#64748b", width: 5 }}>
-                                    {String(oldNumber).padStart(3, " ")}
-                                  </text>
-                                  <text style={{ fg: "#64748b", width: 5 }}>
-                                    {String(newNumber).padStart(3, " ")}
-                                  </text>
-                                  <text style={{ fg: color }}>{`${prefix}${line.content}`}</text>
-                                </box>
-                              );
-                            }}
-                          </For>
-                          <Show when={!diff || diff.lines.length === 0}>
-                            <text>No diff lines for this section.</text>
-                          </Show>
-                        </scrollbox>
-                      </box>
-                    );
-                  }}
-                </Show>
-              </box>
-            </Show>
           </box>
         );
       },
@@ -463,9 +361,27 @@ export class TUISolidAdapter implements UIAdapter {
     }
   }
 
+  addMessagePart(part: MessagePart): void {
+    this.messageParts.push(part);
+    this.setMessageParts([...this.messageParts]);
+
+    // Auto-scroll to bottom
+    if (this.scrollBoxEl) {
+      setTimeout(() => {
+        this.scrollBoxEl.scrollTop = Math.max(
+          0,
+          this.scrollBoxEl.scrollHeight -
+            (this.scrollBoxEl.viewport?.height || 0),
+        );
+      }, 0);
+    }
+  }
+
   clearOutput(): void {
     this.contentChunks = [];
+    this.messageParts = [];
     this.setOutputContent([]);
+    this.setMessageParts([]);
   }
 
   setStatus(text: string): void {
@@ -501,87 +417,45 @@ export class TUISolidAdapter implements UIAdapter {
   }
 
   showExplainReview(result: ExplainResult): void {
-    if (!this.setExplainVisible || !this.setExplainResult || !this.setExplainIndex) {
-      this.appendOutput("Explain view is not available in this UI.\n");
-      return;
-    }
-
-    this.explainState.result = result;
-    this.explainState.index = 0;
-    this.setExplainResult(result);
-    this.setExplainIndex(0);
-    this.setExplainVisible(true);
     this.explainModalActive = true;
-    if (this.inputEl?.blur) {
-      this.inputEl.blur();
-    }
-    this.setStatus(`Explain • ${result.sections.length} section(s)`);
+    this.explainState = { result, index: 0 };
+    this.setExplainVisible?.(true);
+    this.setExplainResult?.(result);
+    this.setExplainIndex?.(0);
   }
 
-  private hideExplainReview(): void {
-    if (this.setExplainVisible) {
-      this.setExplainVisible(false);
-    }
-    if (this.setExplainResult) {
-      this.setExplainResult(null);
-    }
+  hideExplainReview(): void {
     this.explainModalActive = false;
-    this.explainState.result = null;
-    this.explainState.index = 0;
-    this.setStatus(`Ready`);
-    if (this.inputEl?.focus) {
-      this.inputEl.focus();
-    }
-  }
-
-  private updateExplainSection(delta: number): void {
-    const setter = this.setExplainIndex;
-    const activeResult = this.explainState.result ?? this.getExplainResult?.();
-
-    if (!setter || !activeResult) {
-      logger.debug("explain-index-missing", {
-        hasSetter: Boolean(setter),
-        hasResult: Boolean(activeResult),
-        delta,
-      });
-      return;
-    }
-
-    const total = activeResult.sections.length;
-    if (total === 0) {
-      logger.debug("explain-index-empty");
-      return;
-    }
-
-    const current = this.getExplainIndex?.() ?? this.explainState.index;
-    const next = Math.max(0, Math.min(total - 1, current + delta));
-
-    if (next === current) {
-      logger.debug("explain-index-noop", { current, delta, total });
-      this.explainState.index = current;
-      return;
-    }
-
-    this.explainState.index = next;
-    setter(next);
-    this.renderer?.requestRender?.();
-    this.renderer?.requestAnimationFrame?.(() => {});
-    logger.debug("explain-index-update", { current, next, total, delta });
+    this.explainState = { result: null, index: 0 };
+    this.setExplainVisible?.(false);
+    this.setExplainResult?.(null);
+    this.setExplainIndex?.(0);
   }
 
   private nextExplainSection(): void {
-    this.updateExplainSection(1);
+    if (!this.explainState.result) return;
+    const nextIndex = Math.min(
+      this.explainState.index + 1,
+      this.explainState.result.sections.length - 1,
+    );
+    this.explainState.index = nextIndex;
+    this.setExplainIndex?.(nextIndex);
   }
 
   private previousExplainSection(): void {
-    this.updateExplainSection(-1);
+    if (!this.explainState.result) return;
+    const prevIndex = Math.max(this.explainState.index - 1, 0);
+    this.explainState.index = prevIndex;
+    this.setExplainIndex?.(prevIndex);
   }
 
-  private processExplainKeyEvent(key: Pick<KeyEvent, "name" | "code"> & {
-    preventDefault?: () => void;
-    raw?: string;
-    sequence?: string;
-  }): void {
+  private processExplainKeyEvent(
+    key: Pick<KeyEvent, "name" | "code"> & {
+      preventDefault?: () => void;
+      raw?: string;
+      sequence?: string;
+    },
+  ): void {
     if (!this.explainModalActive) {
       return;
     }

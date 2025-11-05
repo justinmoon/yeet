@@ -15,7 +15,10 @@ const PlannerSchema = z.object({
   sections: z.array(SectionSchema),
 });
 
-function buildPlannerPrompt(intent: ExplainIntent, diffs: DiffSection[]): string {
+function buildPlannerPrompt(
+  intent: ExplainIntent,
+  diffs: DiffSection[],
+): string {
   const diffSummary = diffs
     .map(
       (diff) =>
