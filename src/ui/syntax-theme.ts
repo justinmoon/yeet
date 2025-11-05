@@ -31,7 +31,15 @@ export function createSyntaxStyle(theme: Theme): SyntaxStyle {
 
     // Markdown headings
     {
-      scope: ["markup.heading", "markup.heading.1", "markup.heading.2", "markup.heading.3", "markup.heading.4", "markup.heading.5", "markup.heading.6"],
+      scope: [
+        "markup.heading",
+        "markup.heading.1",
+        "markup.heading.2",
+        "markup.heading.3",
+        "markup.heading.4",
+        "markup.heading.5",
+        "markup.heading.6",
+      ],
       style: {
         foreground: RGBA.fromHex(theme.userBlue),
         bold: true,
@@ -151,7 +159,12 @@ export function createSyntaxStyle(theme: Theme): SyntaxStyle {
       },
     },
     {
-      scope: ["keyword", "keyword.return", "keyword.conditional", "keyword.repeat"],
+      scope: [
+        "keyword",
+        "keyword.return",
+        "keyword.conditional",
+        "keyword.repeat",
+      ],
       style: {
         foreground: RGBA.fromHex(theme.errorRed),
         italic: true,

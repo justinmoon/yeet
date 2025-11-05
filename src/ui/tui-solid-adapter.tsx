@@ -1,4 +1,9 @@
-import { type StyledText, stringToStyledText, addDefaultParsers, getTreeSitterClient } from "@opentui/core";
+import {
+  type StyledText,
+  stringToStyledText,
+  addDefaultParsers,
+  getTreeSitterClient,
+} from "@opentui/core";
 import { render, useRenderer } from "@opentui/solid";
 import { For, createSignal, onMount } from "solid-js";
 import path from "path";
@@ -17,7 +22,10 @@ import { createSyntaxStyle } from "./syntax-theme";
 // Set up tree-sitter worker path for Bun
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const workerPath = path.resolve(__dirname, "../../node_modules/@opentui/core/parser.worker.js");
+const workerPath = path.resolve(
+  __dirname,
+  "../../node_modules/@opentui/core/parser.worker.js",
+);
 process.env.OTUI_TREE_SITTER_WORKER_PATH = workerPath;
 
 // Initialize built-in tree-sitter parsers (markdown, javascript, typescript)

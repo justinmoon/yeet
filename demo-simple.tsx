@@ -5,10 +5,18 @@ import { fileURLToPath } from "url";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const workerPath = path.resolve(__dirname, "node_modules/@opentui/core/parser.worker.js");
+const workerPath = path.resolve(
+  __dirname,
+  "node_modules/@opentui/core/parser.worker.js",
+);
 process.env.OTUI_TREE_SITTER_WORKER_PATH = workerPath;
 
-import { addDefaultParsers, SyntaxStyle, RGBA, getTreeSitterClient } from "@opentui/core";
+import {
+  addDefaultParsers,
+  SyntaxStyle,
+  RGBA,
+  getTreeSitterClient,
+} from "@opentui/core";
 import { render, useRenderer } from "@opentui/solid";
 
 // Initialize built-in parsers (markdown, JS, TS) - MUST be at module level
@@ -101,7 +109,13 @@ render(
     // Create syntax style with basic colors
     const syntaxStyle = SyntaxStyle.fromTheme([
       {
-        scope: ["markup.heading", "markup.heading.1", "markup.heading.2", "markup.heading.3", "markup.heading.4"],
+        scope: [
+          "markup.heading",
+          "markup.heading.1",
+          "markup.heading.2",
+          "markup.heading.3",
+          "markup.heading.4",
+        ],
         style: {
           foreground: RGBA.fromHex("#7aa2f7"),
           bold: true,
@@ -252,5 +266,5 @@ render(
   {
     exitOnCtrlC: true,
     targetFps: 30,
-  }
+  },
 );
