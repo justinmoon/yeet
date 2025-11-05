@@ -3,11 +3,12 @@ import type { MessageContent } from "../agent";
 import type { Config } from "../config";
 
 /**
- * Represents a rendered message part (text, tool call, separator, etc.)
+ * Represents a rendered message part (text, tool call, etc.)
+ * User messages and separators use appendOutput for proper StyledText handling.
  */
 export interface MessagePart {
   id: string;
-  type: "text" | "tool" | "separator" | "user";
+  type: "text" | "tool";
   content: string;
   metadata?: any;
 }

@@ -29,11 +29,7 @@ export async function handleMessage(
 
   // Add subtle separator between turns
   if (ui.conversationHistory.length > 0) {
-    ui.addMessagePart({
-      id: `sep-${Date.now()}`,
-      type: "separator",
-      content: dim("─".repeat(60)) + "\n\n",
-    });
+    ui.appendOutput(t`${dim("─".repeat(60))}\n\n`);
   }
 
   // Build message content (text + images if any)
@@ -54,15 +50,13 @@ export async function handleMessage(
   }
 
   // Display user message with › prefix
-  const userContent = hasImages
-    ? `${semantic.userPrefix("›")} ${message} ${dim(`[${ui.imageAttachments.length} image(s)]`)}\n\n`
-    : `${semantic.userPrefix("›")} ${message}\n\n`;
-
-  ui.addMessagePart({
-    id: `user-${Date.now()}`,
-    type: "user",
-    content: userContent,
-  });
+  if (hasImages) {
+    ui.appendOutput(
+      t`${semantic.userPrefix("›")} ${message} ${dim(`[${ui.imageAttachments.length} image(s)]`)}\n\n`,
+    );
+  } else {
+    ui.appendOutput(t`${semantic.userPrefix("›")} ${message}\n\n`);
+  }
 
   ui.clearInput();
   updateTokenCount(ui, config, "Thinking");

@@ -168,6 +168,8 @@ export class TUISolidAdapter implements UIAdapter {
               {/* New message parts with proper markdown rendering */}
               <For each={messageParts()}>
                 {(part) => {
+                  // Only render "text" parts (assistant responses) with markdown
+                  // User messages and separators use the legacy appendOutput path
                   if (part.type === "text") {
                     return (
                       <box paddingLeft={3} marginTop={1} flexShrink={0}>
@@ -178,18 +180,6 @@ export class TUISolidAdapter implements UIAdapter {
                           content={part.content}
                           conceal={true}
                         />
-                      </box>
-                    );
-                  } else if (part.type === "user") {
-                    return (
-                      <box marginTop={1} flexShrink={0}>
-                        <text>{part.content}</text>
-                      </box>
-                    );
-                  } else if (part.type === "separator") {
-                    return (
-                      <box marginTop={1} flexShrink={0}>
-                        <text>{part.content}</text>
                       </box>
                     );
                   } else if (part.type === "tool") {
