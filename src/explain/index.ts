@@ -17,4 +17,6 @@ export async function explain(request: ExplainRequest): Promise<ExplainResult> {
 
 export * from "./types";
 
-export { resolveDefaultBaseRef } from "./git-diff";
+export { getGitDiff, resolveDefaultBaseRef } from "./git-diff";
+export { normalizeRequest } from "./intent";
+export { planSections } from "./section-planner";

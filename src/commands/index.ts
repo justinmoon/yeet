@@ -2,7 +2,13 @@ import { exchangeOAuthCode, startAnthropicOAuth } from "../auth";
 import type { Config } from "../config";
 import { saveConfig } from "../config";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
-import { explain, resolveDefaultBaseRef } from "../explain";
+import {
+  getGitDiff,
+  normalizeRequest,
+  planSections,
+  resolveDefaultBaseRef,
+} from "../explain";
+import type { ExplainResult } from "../explain";
 import type { UIAdapter } from "../ui/interface";
 
 export interface ParsedCommand {
@@ -133,22 +139,41 @@ async function handleExplainCommand(args: string[], ui: UIAdapter): Promise<void
     const head = "HEAD";
     ui.appendOutput(`  • Comparing ${base}..${head}\n`);
 
-    const result = await explain({
+    const intent = normalizeRequest({
       prompt,
       cwd,
       base,
       head,
     });
 
-    if (result.diffs.length === 0) {
+    ui.appendOutput("  • Loading diff...\n");
+    const diffs = await getGitDiff({
+      cwd: intent.cwd,
+      base: intent.base,
+      head: intent.head,
+      includePath: intent.includePath,
+    });
+    ui.appendOutput(`  • Loaded ${diffs.length} diff hunks\n`);
+
+    if (diffs.length === 0) {
       ui.appendOutput("⚠️ No diff content detected for this range.\n");
       return;
     }
 
-    if (result.sections.length === 0) {
+    ui.appendOutput("  • Planning tutorial...\n");
+    const sections = await planSections(intent, diffs);
+    ui.appendOutput(`  • Generated ${sections.length} section(s)\n`);
+
+    if (sections.length === 0) {
       ui.appendOutput("⚠️ No tutorial sections generated.\n");
       return;
     }
+
+    const result: ExplainResult = {
+      intent,
+      diffs,
+      sections,
+    };
 
     ui.appendOutput(
       `✓ Generated ${result.sections.length} tutorial section(s). Press Esc to close the viewer.\n`,
