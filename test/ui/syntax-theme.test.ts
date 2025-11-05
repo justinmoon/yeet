@@ -1,6 +1,6 @@
 import { expect, test } from "bun:test";
-import { createSyntaxStyle } from "../../src/ui/syntax-theme";
 import { themes } from "../../src/ui/colors";
+import { createSyntaxStyle } from "../../src/ui/syntax-theme";
 
 test("createSyntaxStyle should create a valid SyntaxStyle", () => {
   const theme = themes.tokyonight;

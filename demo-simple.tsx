@@ -12,9 +12,9 @@ const workerPath = path.resolve(
 process.env.OTUI_TREE_SITTER_WORKER_PATH = workerPath;
 
 import {
-  addDefaultParsers,
-  SyntaxStyle,
   RGBA,
+  SyntaxStyle,
+  addDefaultParsers,
   getTreeSitterClient,
 } from "@opentui/core";
 import { render, useRenderer } from "@opentui/solid";

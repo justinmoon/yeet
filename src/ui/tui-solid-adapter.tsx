@@ -1,13 +1,13 @@
+import path from "path";
+import { fileURLToPath } from "url";
 import {
   type StyledText,
-  stringToStyledText,
   addDefaultParsers,
   getTreeSitterClient,
+  stringToStyledText,
 } from "@opentui/core";
 import { render, useRenderer } from "@opentui/solid";
 import { For, createSignal, onMount } from "solid-js";
-import path from "path";
-import { fileURLToPath } from "url";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
