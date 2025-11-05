@@ -1,22 +1,33 @@
 import path from "path";
 import { fileURLToPath } from "url";
 import {
+  type KeyEvent,
   type StyledText,
   addDefaultParsers,
   getTreeSitterClient,
   stringToStyledText,
 } from "@opentui/core";
 import { render, useRenderer } from "@opentui/solid";
-import { For, createSignal, onMount } from "solid-js";
+import {
+  For,
+  Show,
+  createEffect,
+  createMemo,
+  createSignal,
+  onMount,
+} from "solid-js";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
 import type { Config } from "../config";
+import type { ExplainResult } from "../explain";
+import { interpretExplainKey } from "../explain/keymap";
 import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import { cycleTheme, getCurrentTheme, setTheme, themes } from "./colors";
-import type { MessagePart, UIAdapter } from "./interface";
+import type { UIAdapter } from "./interface";
+import type { MessagePart } from "./interface";
 import { createSyntaxStyle } from "./syntax-theme";
 
 // Set up tree-sitter worker path for Bun
@@ -60,6 +71,20 @@ export class TUISolidAdapter implements UIAdapter {
   private setInputValue!: (value: string) => void;
   private setInputPlaceholder!: (placeholder: string) => void;
   private setImageCount!: (count: number) => void;
+
+  private setExplainVisible?: (value: boolean) => void;
+  private setExplainResult?: (value: ExplainResult | null) => void;
+  private setExplainIndex?: (value: number) => void;
+
+  private getExplainVisible?: () => boolean;
+  private getExplainResult?: () => ExplainResult | null;
+  private getExplainIndex?: () => number;
+
+  private explainModalActive = false;
+  private explainState: { result: ExplainResult | null; index: number } = {
+    result: null,
+    index: 0,
+  };
 
   private getStatusText!: () => string;
   private getOutputContent!: () => Array<string | StyledText>;
@@ -124,6 +149,14 @@ export class TUISolidAdapter implements UIAdapter {
         onMount(() => {
           // Store renderer reference
           this.renderer = renderer;
+
+          const handleExplainKeys = (key: KeyEvent) => {
+            this.processExplainKeyEvent(key);
+          };
+
+          this.renderer.keyInput?.on?.("keypress", handleExplainKeys);
+          this.renderer.keyInput?.on?.("keyrepeat", handleExplainKeys);
+          this.renderer.keyInput?.on?.("keyrelease", handleExplainKeys);
 
           // Set background color
           renderer.setBackgroundColor(theme.background);
@@ -380,6 +413,88 @@ export class TUISolidAdapter implements UIAdapter {
   setBackgroundColor(color: string): void {
     if (this.renderer) {
       this.renderer.setBackgroundColor(color);
+    }
+  }
+
+  showExplainReview(result: ExplainResult): void {
+    this.explainModalActive = true;
+    this.explainState = { result, index: 0 };
+    this.setExplainVisible?.(true);
+    this.setExplainResult?.(result);
+    this.setExplainIndex?.(0);
+  }
+
+  hideExplainReview(): void {
+    this.explainModalActive = false;
+    this.explainState = { result: null, index: 0 };
+    this.setExplainVisible?.(false);
+    this.setExplainResult?.(null);
+    this.setExplainIndex?.(0);
+  }
+
+  private nextExplainSection(): void {
+    if (!this.explainState.result) return;
+    const nextIndex = Math.min(
+      this.explainState.index + 1,
+      this.explainState.result.sections.length - 1,
+    );
+    this.explainState.index = nextIndex;
+    this.setExplainIndex?.(nextIndex);
+  }
+
+  private previousExplainSection(): void {
+    if (!this.explainState.result) return;
+    const prevIndex = Math.max(this.explainState.index - 1, 0);
+    this.explainState.index = prevIndex;
+    this.setExplainIndex?.(prevIndex);
+  }
+
+  private processExplainKeyEvent(
+    key: Pick<KeyEvent, "name" | "code"> & {
+      preventDefault?: () => void;
+      raw?: string;
+      sequence?: string;
+    },
+  ): void {
+    if (!this.explainModalActive) {
+      return;
+    }
+
+    if (!key || typeof key !== "object") {
+      return;
+    }
+
+    const action = interpretExplainKey({
+      name: key?.name,
+      code: key?.code,
+    });
+
+    logger.debug("explain-key", {
+      action,
+      name: key?.name,
+      code: key?.code,
+      raw: key?.raw,
+      sequence: key?.sequence,
+    });
+
+    switch (action) {
+      case "close":
+        key.preventDefault?.();
+        this.hideExplainReview();
+        break;
+      case "previous":
+        key.preventDefault?.();
+        this.previousExplainSection();
+        break;
+      case "next":
+        key.preventDefault?.();
+        this.nextExplainSection();
+        break;
+      case "submit":
+        key.preventDefault?.();
+        break;
+      default:
+        break;
     }
   }
 

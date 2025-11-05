@@ -2,6 +2,14 @@ import { exchangeOAuthCode, startAnthropicOAuth } from "../auth";
 import type { Config } from "../config";
 import { saveConfig } from "../config";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
+import {
+  createStubExplainResult,
+  getGitDiff,
+  normalizeRequest,
+  planSections,
+  resolveDefaultBaseRef,
+} from "../explain";
+import type { ExplainResult } from "../explain";
 import type { UIAdapter } from "../ui/interface";
 
 export interface ParsedCommand {
@@ -58,6 +66,9 @@ export async function executeCommand(
     case "help":
       await handleHelpCommand(ui);
       break;
+    case "explain":
+      await handleExplainCommand(args, ui);
+      break;
     default:
       ui.appendOutput(`❌ Unknown command: /${command}\n`);
       ui.appendOutput(`Type /help for available commands\n`);
@@ -99,6 +110,7 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("  /save <name>        - Name current session\n");
   ui.appendOutput("  /clear              - Clear current session\n");
   ui.appendOutput("  /toggle             - Cycle through color themes\n");
+  ui.appendOutput("  /explain [prompt]   - Generate tutorial for current diff\n");
   ui.appendOutput("  /help               - Show this help\n");
   ui.appendOutput("\nSession Management:\n");
   ui.appendOutput(
@@ -113,6 +125,85 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput(
     "  ✗ mistral-small-3-1-24b, llama-3.3-70b (no tool calling)\n",
   );
+}
+
+async function handleExplainCommand(args: string[], ui: UIAdapter): Promise<void> {
+  const useStub = process.env.YEET_EXPLAIN_STUB === "1" || args.includes("--stub");
+  const filteredArgs = args.filter((arg) => arg !== "--stub");
+  const prompt = filteredArgs.length
+    ? filteredArgs.join(" ")
+    : "Explain the current branch changes";
+
+  const cwd = process.cwd();
+  ui.appendOutput(`\n🔍 Running /explain in ${cwd}\n`);
+
+  try {
+    const base = await resolveDefaultBaseRef(cwd);
+    const head = "HEAD";
+    ui.appendOutput(`  • Comparing ${base}..${head}\n`);
+
+    const intent = normalizeRequest({
+      prompt,
+      cwd,
+      base,
+      head,
+    });
+
+    let result: ExplainResult;
+
+    if (useStub) {
+      result = createStubExplainResult(intent);
+      ui.appendOutput(
+        `  • Using stub tutorial with ${result.sections.length} section(s)\n`,
+      );
+    } else {
+      ui.appendOutput("  • Loading diff...\n");
+      const diffs = await getGitDiff({
+        cwd: intent.cwd,
+        base: intent.base,
+        head: intent.head,
+        includePath: intent.includePath,
+      });
+      ui.appendOutput(`  • Loaded ${diffs.length} diff hunks\n`);
+
+      if (diffs.length === 0) {
+        ui.appendOutput("⚠️ No diff content detected for this range.\n");
+        return;
+      }
+
+      ui.appendOutput("  • Planning tutorial...\n");
+      const sections = await planSections(intent, diffs);
+      ui.appendOutput(`  • Generated ${sections.length} section(s)\n`);
+
+      if (sections.length === 0) {
+        ui.appendOutput("⚠️ No tutorial sections generated.\n");
+        return;
+      }
+
+      result = {
+        intent,
+        diffs,
+        sections,
+      };
+    }
+
+    ui.appendOutput(
+      `✓ Generated ${result.sections.length} tutorial section(s). Press Esc to close the viewer.\n`,
+    );
+
+    if (ui.showExplainReview) {
+      ui.showExplainReview(result);
+    } else {
+      for (const section of result.sections) {
+        ui.appendOutput(`\n== ${section.title} ==\n`);
+        ui.appendOutput(`${section.explanation}\n`);
+      }
+    }
+  } catch (error: any) {
+    ui.appendOutput(
+      `❌ /explain failed: ${error?.message || String(error)}\n`,
+    );
+  }
 }
 
 async function handleSessionsCommand(ui: UIAdapter): Promise<void> {
