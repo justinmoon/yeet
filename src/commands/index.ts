@@ -149,34 +149,43 @@ async function handleExplainCommand(args: string[], ui: UIAdapter): Promise<void
       head,
     });
 
-    ui.appendOutput("  • Loading diff...\n");
-    const diffs = await getGitDiff({
-      cwd: intent.cwd,
-      base: intent.base,
-      head: intent.head,
-      includePath: intent.includePath,
-    });
-    ui.appendOutput(`  • Loaded ${diffs.length} diff hunks\n`);
+    let result: ExplainResult;
 
-    if (diffs.length === 0) {
-      ui.appendOutput("⚠️ No diff content detected for this range.\n");
-      return;
+    if (useStub) {
+      result = createStubExplainResult(intent);
+      ui.appendOutput(
+        `  • Using stub tutorial with ${result.sections.length} section(s)\n`,
+      );
+    } else {
+      ui.appendOutput("  • Loading diff...\n");
+      const diffs = await getGitDiff({
+        cwd: intent.cwd,
+        base: intent.base,
+        head: intent.head,
+        includePath: intent.includePath,
+      });
+      ui.appendOutput(`  • Loaded ${diffs.length} diff hunks\n`);
+
+      if (diffs.length === 0) {
+        ui.appendOutput("⚠️ No diff content detected for this range.\n");
+        return;
+      }
+
+      ui.appendOutput("  • Planning tutorial...\n");
+      const sections = await planSections(intent, diffs);
+      ui.appendOutput(`  • Generated ${sections.length} section(s)\n`);
+
+      if (sections.length === 0) {
+        ui.appendOutput("⚠️ No tutorial sections generated.\n");
+        return;
+      }
+
+      result = {
+        intent,
+        diffs,
+        sections,
+      };
     }
-
-    ui.appendOutput("  • Planning tutorial...\n");
-    const sections = await planSections(intent, diffs);
-    ui.appendOutput(`  • Generated ${sections.length} section(s)\n`);
-
-    if (sections.length === 0) {
-      ui.appendOutput("⚠️ No tutorial sections generated.\n");
-      return;
-    }
-
-    const result: ExplainResult = {
-      intent,
-      diffs,
-      sections,
-    };
 
     ui.appendOutput(
       `✓ Generated ${result.sections.length} tutorial section(s). Press Esc to close the viewer.\n`,

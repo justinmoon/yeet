@@ -1,6 +1,6 @@
-import { type StyledText, stringToStyledText } from "@opentui/core";
+import { type KeyEvent, type StyledText, stringToStyledText } from "@opentui/core";
 import { render, useRenderer } from "@opentui/solid";
-import { For, Show, createMemo, createSignal, onMount } from "solid-js";
+import { For, Show, createEffect, createMemo, createSignal, onMount } from "solid-js";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
@@ -50,6 +50,10 @@ export class TUISolidAdapter implements UIAdapter {
   private getExplainIndex?: () => number;
 
   private explainModalActive = false;
+  private explainState: { result: ExplainResult | null; index: number } = {
+    result: null,
+    index: 0,
+  };
 
   private getStatusText!: () => string;
   private getOutputContent!: () => Array<string | StyledText>;
@@ -135,40 +139,33 @@ export class TUISolidAdapter implements UIAdapter {
           };
         });
 
+        createEffect(() => {
+          const index = explainIndex();
+          logger.debug("explain-index-signal", { index });
+        });
+
+        createEffect(() => {
+          const data = explainData();
+          logger.debug("explain-render", {
+            index: data?.index ?? null,
+            title: data?.section?.title ?? null,
+            diffPath: data?.diff?.filePath ?? null,
+            snippet: data?.section?.explanation?.slice(0, 48) ?? null,
+            visible: explainVisible(),
+          });
+        });
+
         onMount(() => {
           // Store renderer reference
           this.renderer = renderer;
-          this.renderer.keyInput?.on?.("keypress", (key: any) => {
-            if (!this.explainModalActive) {
-              return;
-            }
 
-            const action = interpretExplainKey({
-              name: key.name,
-              key: key.key,
-              code: key.code,
-            });
+          const handleExplainKeys = (key: KeyEvent) => {
+            this.processExplainKeyEvent(key);
+          };
 
-            switch (action) {
-              case "close":
-                key.preventDefault?.();
-                this.hideExplainReview();
-                break;
-              case "previous":
-                key.preventDefault?.();
-                this.previousExplainSection();
-                break;
-              case "next":
-                key.preventDefault?.();
-                this.nextExplainSection();
-                break;
-              case "submit":
-                key.preventDefault?.();
-                break;
-              default:
-                break;
-            }
-          });
+          this.renderer.keyInput?.on?.("keypress", handleExplainKeys);
+          this.renderer.keyInput?.on?.("keyrepeat", handleExplainKeys);
+          this.renderer.keyInput?.on?.("keyrelease", handleExplainKeys);
 
           // Initialize theme from config
           const themeName = this.config.theme || "tokyonight";
@@ -249,32 +246,9 @@ export class TUISolidAdapter implements UIAdapter {
                   }
                 }}
                 onKeyDown={async (e: any) => {
-                  const action = interpretExplainKey({
-                    name: e.name,
-                    key: e.key,
-                    code: e.code,
-                  });
-
                   if (adapter.explainModalActive) {
-                    if (action === "close") {
-                      e.preventDefault();
-                      adapter.hideExplainReview();
-                      return;
-                    }
-                    if (action === "previous") {
-                      e.preventDefault();
-                      adapter.previousExplainSection();
-                      return;
-                    }
-                    if (action === "next") {
-                      e.preventDefault();
-                      adapter.nextExplainSection();
-                      return;
-                    }
-                    if (action === "submit") {
-                      e.preventDefault();
-                      return;
-                    }
+                    e.preventDefault();
+                    return;
                   }
 
                   const keyName = (e.name || e.key || e.code || "").toLowerCase();
@@ -352,14 +326,14 @@ export class TUISolidAdapter implements UIAdapter {
               >
                 <Show
                   when={explainData()}
+                  keyed
                   fallback={
                     <box flexGrow={1} alignItems="center" justifyContent="center">
                       <text>No tutorial sections available.</text>
                     </box>
                   }
                 >
-                  {(accessor) => {
-                    const data = accessor();
+                  {(data) => {
                     if (!data || !data.section) {
                       return (
                         <box flexGrow={1} alignItems="center" justifyContent="center">
@@ -372,7 +346,10 @@ export class TUISolidAdapter implements UIAdapter {
                     const total = result.sections.length;
 
                     return (
-                      <>
+                      <box
+                        style={{ flexDirection: "column", gap: 1, flexGrow: 1 }}
+                        data-explain-section={section.id}
+                      >
                         <box style={{ justifyContent: "space-between" }}>
                           <text>
                             Explain • Section {index + 1}/{total}
@@ -389,55 +366,57 @@ export class TUISolidAdapter implements UIAdapter {
                             tags: {section.tags?.join(", ")}
                           </text>
                         </Show>
-                        <box style={{ flexDirection: "column", gap: 1, flexGrow: 1 }}>
-                          <scrollbox style={{ height: 8, flexShrink: 0 }}>
-                            <text>{section.explanation}</text>
-                          </scrollbox>
-                          <box>
-                            <text style={{ fg: "#cbd5f5" }}>
-                              Diff: {diff ? diff.filePath : "(not found)"}
-                            </text>
-                          </box>
-                          <scrollbox style={{ flexGrow: 1 }}>
-                            <For each={diff ? diff.lines : []}>
-                              {(line) => {
-                                const prefix =
-                                  line.type === "add"
-                                    ? "+"
-                                    : line.type === "remove"
-                                      ? "-"
-                                      : " ";
-                                const color =
-                                  line.type === "add"
-                                    ? "#22c55e"
-                                    : line.type === "remove"
-                                      ? "#f87171"
-                                      : "#94a3b8";
-
-                                const oldNumber =
-                                  line.oldLineNumber ?? "";
-                                const newNumber =
-                                  line.newLineNumber ?? "";
-
-                                return (
-                                  <box style={{ flexDirection: "row", gap: 1 }}>
-                                    <text style={{ fg: "#64748b", width: 5 }}>
-                                      {String(oldNumber).padStart(3, " ")}
-                                    </text>
-                                    <text style={{ fg: "#64748b", width: 5 }}>
-                                      {String(newNumber).padStart(3, " ")}
-                                    </text>
-                                    <text style={{ fg: color }}>{`${prefix}${line.content}`}</text>
-                                  </box>
-                                );
-                              }}
-                            </For>
-                            <Show when={!diff || diff.lines.length === 0}>
-                              <text>No diff lines for this section.</text>
-                            </Show>
-                          </scrollbox>
+                        <scrollbox style={{ height: 8, flexShrink: 0 }}>
+                          <text>{section.explanation}</text>
+                        </scrollbox>
+                        <box>
+                          <text style={{ fg: "#cbd5f5" }}>
+                            Diff: {diff ? diff.filePath : "(not found)"}
+                          </text>
                         </box>
-                      </>
+                        <scrollbox
+                          style={{ flexGrow: 1 }}
+                          data-explain-diff={diff ? diff.id : "missing"}
+                        >
+                          <For each={diff ? diff.lines : []}>
+                            {(line) => {
+                              const prefix =
+                                line.type === "add"
+                                  ? "+"
+                                  : line.type === "remove"
+                                    ? "-"
+                                    : " ";
+                              const color =
+                                line.type === "add"
+                                  ? "#22c55e"
+                                  : line.type === "remove"
+                                    ? "#f87171"
+                                    : "#94a3b8";
+
+                              const oldNumber = line.oldLineNumber ?? "";
+                              const newNumber = line.newLineNumber ?? "";
+
+                              return (
+                                <box
+                                  style={{ flexDirection: "row", gap: 1 }}
+                                  data-explain-diff-line={`${section.id}-${line.oldLineNumber ?? "n"}-${line.newLineNumber ?? "n"}`}
+                                >
+                                  <text style={{ fg: "#64748b", width: 5 }}>
+                                    {String(oldNumber).padStart(3, " ")}
+                                  </text>
+                                  <text style={{ fg: "#64748b", width: 5 }}>
+                                    {String(newNumber).padStart(3, " ")}
+                                  </text>
+                                  <text style={{ fg: color }}>{`${prefix}${line.content}`}</text>
+                                </box>
+                              );
+                            }}
+                          </For>
+                          <Show when={!diff || diff.lines.length === 0}>
+                            <text>No diff lines for this section.</text>
+                          </Show>
+                        </scrollbox>
+                      </box>
                     );
                   }}
                 </Show>
@@ -527,10 +506,15 @@ export class TUISolidAdapter implements UIAdapter {
       return;
     }
 
+    this.explainState.result = result;
+    this.explainState.index = 0;
     this.setExplainResult(result);
     this.setExplainIndex(0);
     this.setExplainVisible(true);
     this.explainModalActive = true;
+    if (this.inputEl?.blur) {
+      this.inputEl.blur();
+    }
     this.setStatus(`Explain • ${result.sections.length} section(s)`);
   }
 
@@ -542,32 +526,106 @@ export class TUISolidAdapter implements UIAdapter {
       this.setExplainResult(null);
     }
     this.explainModalActive = false;
+    this.explainState.result = null;
+    this.explainState.index = 0;
     this.setStatus(`Ready`);
     if (this.inputEl?.focus) {
       this.inputEl.focus();
     }
   }
 
-  private nextExplainSection(): void {
-    if (!this.getExplainResult || !this.getExplainIndex || !this.setExplainIndex) {
+  private updateExplainSection(delta: number): void {
+    const setter = this.setExplainIndex;
+    const activeResult = this.explainState.result ?? this.getExplainResult?.();
+
+    if (!setter || !activeResult) {
+      logger.debug("explain-index-missing", {
+        hasSetter: Boolean(setter),
+        hasResult: Boolean(activeResult),
+        delta,
+      });
       return;
     }
-    const result = this.getExplainResult();
-    if (!result) return;
-    const current = this.getExplainIndex();
-    const next = Math.min(result.sections.length - 1, current + 1);
-    this.setExplainIndex(next);
+
+    const total = activeResult.sections.length;
+    if (total === 0) {
+      logger.debug("explain-index-empty");
+      return;
+    }
+
+    setter((currentSignal: number | undefined) => {
+      const current =
+        typeof currentSignal === "number" ? currentSignal : this.explainState.index;
+      const next = Math.max(0, Math.min(total - 1, current + delta));
+
+      if (next === current) {
+        logger.debug("explain-index-noop", { current, delta, total });
+        this.explainState.index = current;
+        return current;
+      }
+
+      this.explainState.index = next;
+      this.renderer?.requestRender?.();
+      this.renderer?.requestAnimationFrame?.(() => {});
+      logger.debug("explain-index-update", { current, next, total, delta });
+      return next;
+    });
+  }
+
+  private nextExplainSection(): void {
+    this.updateExplainSection(1);
   }
 
   private previousExplainSection(): void {
-    if (!this.getExplainResult || !this.getExplainIndex || !this.setExplainIndex) {
+    this.updateExplainSection(-1);
+  }
+
+  private processExplainKeyEvent(key: Pick<KeyEvent, "name" | "key" | "code"> & {
+    preventDefault?: () => void;
+    raw?: string;
+    sequence?: string;
+  }): void {
+    if (!this.explainModalActive) {
       return;
     }
-    const result = this.getExplainResult();
-    if (!result) return;
-    const current = this.getExplainIndex();
-    const next = Math.max(0, current - 1);
-    this.setExplainIndex(next);
+
+    if (!key || typeof key !== "object") {
+      return;
+    }
+
+    const action = interpretExplainKey({
+      name: key?.name,
+      key: key?.key,
+      code: key?.code,
+    });
+
+    logger.debug("explain-key", {
+      action,
+      name: key?.name,
+      code: key?.code,
+      raw: key?.raw,
+      sequence: key?.sequence,
+    });
+
+    switch (action) {
+      case "close":
+        key.preventDefault?.();
+        this.hideExplainReview();
+        break;
+      case "previous":
+        key.preventDefault?.();
+        this.previousExplainSection();
+        break;
+      case "next":
+        key.preventDefault?.();
+        this.nextExplainSection();
+        break;
+      case "submit":
+        key.preventDefault?.();
+        break;
+      default:
+        break;
+    }
   }
 
   private updateAttachmentIndicator(): void {
