@@ -35,6 +35,8 @@ export interface UIAdapter {
   };
   pendingOAuthSetup?: {
     verifier: string;
+    provider?: "anthropic" | "openai";
+    state?: string;
   };
   isGenerating: boolean;
   abortController: AbortController | null;

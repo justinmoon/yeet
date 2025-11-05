@@ -284,9 +284,11 @@ export function updateTokenCount(
   const modelId =
     config.activeProvider === "anthropic"
       ? config.anthropic?.model || ""
-      : config.activeProvider === "maple"
-        ? config.maple!.model
-        : config.opencode.model;
+      : config.activeProvider === "openai"
+        ? config.openai?.model || ""
+        : config.activeProvider === "maple"
+          ? config.maple!.model
+          : config.opencode.model;
   const modelInfo = getModelInfo(modelId);
 
   if (!modelInfo) {
@@ -313,9 +315,13 @@ export function updateTokenCount(
 
 export function saveCurrentSession(ui: UIAdapter, config: Config): void {
   const modelId =
-    config.activeProvider === "maple"
-      ? config.maple!.model
-      : config.opencode.model;
+    config.activeProvider === "anthropic"
+      ? config.anthropic?.model || ""
+      : config.activeProvider === "openai"
+        ? config.openai?.model || ""
+        : config.activeProvider === "maple"
+          ? config.maple!.model
+          : config.opencode.model;
 
   const { createSession, saveSession, loadSession } = require("../sessions");
 

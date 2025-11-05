@@ -1,4 +1,9 @@
 import { exchangeOAuthCode, startAnthropicOAuth } from "../auth";
+import {
+  exchangeAuthorizationCode,
+  parseAuthorizationInput,
+  startOpenAIOAuth,
+} from "../openai-auth";
 import type { Config } from "../config";
 import { saveConfig } from "../config";
 import {
@@ -44,6 +49,12 @@ export async function executeCommand(
   switch (command) {
     case "auth":
       await handleAuthCommand(args, ui, config);
+      break;
+    case "login-anthropic":
+      await handleLoginAnthropicCommand(ui, config);
+      break;
+    case "login-openai":
+      await handleLoginOpenAICommand(ui, config);
       break;
     case "models":
       await handleModelsCommand(args, ui, config);
@@ -100,7 +111,8 @@ async function handleToggleCommand(
 
 async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("Available commands:\n");
-  ui.appendOutput("  /auth login         - Login with Anthropic OAuth\n");
+  ui.appendOutput("  /login-anthropic    - Login with Anthropic OAuth (Claude Pro/Max)\n");
+  ui.appendOutput("  /login-openai       - Login with OpenAI OAuth (ChatGPT Pro)\n");
   ui.appendOutput("  /auth status        - Show current authentication\n");
   ui.appendOutput("  /models [model-id]  - List or switch models\n");
   ui.appendOutput(
@@ -436,7 +448,16 @@ async function handleModelsCommand(
       !config.anthropic?.refresh
     ) {
       ui.appendOutput(`❌ Anthropic not configured\n`);
-      ui.appendOutput(`Run /auth login to set up Anthropic OAuth\n`);
+      ui.appendOutput(`Run /login-anthropic to set up Anthropic OAuth\n`);
+      return;
+    }
+
+    if (
+      modelInfo.provider === "openai" &&
+      !config.openai?.refresh
+    ) {
+      ui.appendOutput(`❌ OpenAI not configured\n`);
+      ui.appendOutput(`Run /login-openai to set up ChatGPT Pro OAuth\n`);
       return;
     }
 
@@ -452,6 +473,11 @@ async function handleModelsCommand(
         config.anthropic = { type: "api", apiKey: "" };
       }
       config.anthropic.model = modelId;
+    } else if (modelInfo.provider === "openai") {
+      if (!config.openai) {
+        throw new Error("OpenAI not configured");
+      }
+      config.openai.model = modelId;
     } else if (modelInfo.provider === "opencode") {
       config.opencode.model = modelId;
     } else if (modelInfo.provider === "maple") {
@@ -476,15 +502,18 @@ async function handleModelsCommand(
   ui.appendOutput("Available Models:\n\n");
 
   const anthropicModels = getModelsByProvider("anthropic");
+  const openaiModels = getModelsByProvider("openai");
   const openCodeModels = getModelsByProvider("opencode");
   const mapleModels = getModelsByProvider("maple");
 
   const currentModel =
     config.activeProvider === "anthropic"
       ? config.anthropic?.model
-      : config.activeProvider === "opencode"
-        ? config.opencode.model
-        : config.maple?.model;
+      : config.activeProvider === "openai"
+        ? config.openai?.model
+        : config.activeProvider === "opencode"
+          ? config.opencode.model
+          : config.maple?.model;
 
   // Show Anthropic models if configured
   if (config.anthropic?.apiKey || config.anthropic?.refresh) {
@@ -492,6 +521,21 @@ async function handleModelsCommand(
     for (const model of anthropicModels) {
       const current =
         model.id === currentModel && config.activeProvider === "anthropic"
+          ? " (current)"
+          : "";
+      ui.appendOutput(
+        `  ${model.id.padEnd(40)} ${model.name.padEnd(25)} ${model.pricing}${current}\n`,
+      );
+    }
+    ui.appendOutput("\n");
+  }
+
+  // Show OpenAI models if configured
+  if (config.openai?.refresh) {
+    ui.appendOutput("OpenAI (ChatGPT Pro):\n");
+    for (const model of openaiModels) {
+      const current =
+        model.id === currentModel && config.activeProvider === "openai"
           ? " (current)"
           : "";
       ui.appendOutput(
@@ -567,6 +611,94 @@ export async function handleMapleSetup(
   ui.setStatus(`Ready • ${modelInfo.name} • Press Enter to send`);
 }
 
+async function handleLoginAnthropicCommand(
+  ui: UIAdapter,
+  config: Config,
+): Promise<void> {
+  ui.appendOutput("🔐 Starting Anthropic OAuth (Claude Pro/Max)...\n\n");
+
+  try {
+    const { url, verifier } = await startAnthropicOAuth();
+
+    // Automatically open browser
+    ui.appendOutput("Opening browser for authentication...\n\n");
+
+    try {
+      const platform = process.platform;
+      const openCmd =
+        platform === "darwin"
+          ? "open"
+          : platform === "win32"
+            ? "start"
+            : "xdg-open";
+
+      await Bun.spawn([openCmd, url], {
+        stdout: "ignore",
+        stderr: "ignore",
+      }).exited;
+    } catch (e) {
+      // If auto-open fails, show the URL
+      ui.appendOutput("⚠️  Could not open browser automatically.\n");
+      ui.appendOutput("Please open this URL manually:\n");
+      ui.appendOutput(`   ${url}\n\n`);
+    }
+
+    ui.appendOutput("After authorizing:\n");
+    ui.appendOutput("1. Copy the authorization code\n");
+    ui.appendOutput("2. Paste it here: ");
+
+    // Set up state for receiving the code
+    ui.pendingOAuthSetup = { verifier, provider: "anthropic" };
+    ui.setStatus("Waiting for Anthropic OAuth code...");
+  } catch (error: any) {
+    ui.appendOutput(`\n❌ Failed to start OAuth: ${error.message}\n`);
+  }
+}
+
+async function handleLoginOpenAICommand(
+  ui: UIAdapter,
+  config: Config,
+): Promise<void> {
+  ui.appendOutput("🔐 Starting OpenAI OAuth (ChatGPT Pro)...\n\n");
+
+  try {
+    const { url, verifier, state } = await startOpenAIOAuth();
+
+    // Automatically open browser
+    ui.appendOutput("Opening browser for authentication...\n\n");
+
+    try {
+      const platform = process.platform;
+      const openCmd =
+        platform === "darwin"
+          ? "open"
+          : platform === "win32"
+            ? "start"
+            : "xdg-open";
+
+      await Bun.spawn([openCmd, url], {
+        stdout: "ignore",
+        stderr: "ignore",
+      }).exited;
+    } catch (e) {
+      // If auto-open fails, show the URL
+      ui.appendOutput("⚠️  Could not open browser automatically.\n");
+      ui.appendOutput("Please open this URL manually:\n");
+      ui.appendOutput(`   ${url}\n\n`);
+    }
+
+    ui.appendOutput("After authorizing:\n");
+    ui.appendOutput("1. Copy the authorization code or full URL\n");
+    ui.appendOutput("2. Paste it here: ");
+
+    // Set up state for receiving the code
+    ui.pendingOAuthSetup = { verifier, state, provider: "openai" };
+    ui.setStatus("Waiting for OpenAI OAuth code...");
+  } catch (error: any) {
+    ui.appendOutput(`\n❌ Failed to start OAuth: ${error.message}\n`);
+  }
+}
+
 async function handleAuthCommand(
   args: string[],
   ui: UIAdapter,
@@ -588,6 +720,17 @@ async function handleAuthCommand(
       );
     } else if (config.anthropic?.type === "api") {
       ui.appendOutput("✓ Anthropic: API Key\n");
+    } else if (config.openai?.type === "oauth") {
+      const expiresIn = config.openai.expires
+        ? Math.floor((config.openai.expires - Date.now()) / 1000 / 60)
+        : 0;
+      ui.appendOutput("✓ OpenAI: OAuth (ChatGPT Pro)\n");
+      ui.appendOutput(
+        `  Token expires in: ${expiresIn > 0 ? `${expiresIn} minutes` : "expired (will auto-refresh)"}\n`,
+      );
+      if (config.openai.accountId) {
+        ui.appendOutput(`  Account ID: ${config.openai.accountId}\n`);
+      }
     } else if (config.opencode.apiKey) {
       ui.appendOutput("✓ OpenCode Zen API\n");
       ui.appendOutput(`  Model: ${config.opencode.model}\n`);
@@ -596,57 +739,21 @@ async function handleAuthCommand(
       ui.appendOutput(`  Model: ${config.maple.model}\n`);
     } else {
       ui.appendOutput("❌ No authentication configured\n\n");
-      ui.appendOutput("Run /auth login to set up Anthropic OAuth\n");
+      ui.appendOutput("Run /login-anthropic or /login-openai to set up OAuth\n");
     }
     return;
   }
 
   if (subcommand === "login") {
-    ui.appendOutput("🔐 Starting Anthropic OAuth (Claude Pro/Max)...\n\n");
-
-    try {
-      const { url, verifier } = await startAnthropicOAuth();
-
-      // Automatically open browser
-      ui.appendOutput("Opening browser for authentication...\n\n");
-
-      try {
-        const platform = process.platform;
-        const openCmd =
-          platform === "darwin"
-            ? "open"
-            : platform === "win32"
-              ? "start"
-              : "xdg-open";
-
-        await Bun.spawn([openCmd, url], {
-          stdout: "ignore",
-          stderr: "ignore",
-        }).exited;
-      } catch (e) {
-        // If auto-open fails, show the URL
-        ui.appendOutput("⚠️  Could not open browser automatically.\n");
-        ui.appendOutput("Please open this URL manually:\n");
-        ui.appendOutput(`   ${url}\n\n`);
-      }
-
-      ui.appendOutput("After authorizing:\n");
-      ui.appendOutput("1. Copy the authorization code\n");
-      ui.appendOutput("2. Paste it here: ");
-
-      // Set up state for receiving the code
-      ui.pendingOAuthSetup = { verifier };
-      ui.setStatus("Waiting for OAuth code...");
-    } catch (error: any) {
-      ui.appendOutput(`\n❌ Failed to start OAuth: ${error.message}\n`);
-    }
+    ui.appendOutput("⚠️  /auth login is deprecated. Use /login-anthropic or /login-openai instead.\n");
     return;
   }
 
   ui.appendOutput(`❌ Unknown auth subcommand: ${subcommand}\n`);
   ui.appendOutput("Usage:\n");
-  ui.appendOutput("  /auth login  - Login with Anthropic OAuth\n");
   ui.appendOutput("  /auth status - Show current authentication\n");
+  ui.appendOutput("  /login-anthropic - Login with Anthropic OAuth\n");
+  ui.appendOutput("  /login-openai - Login with OpenAI OAuth\n");
 }
 
 export async function handleOAuthCodeInput(
@@ -654,34 +761,84 @@ export async function handleOAuthCodeInput(
   verifier: string,
   ui: UIAdapter,
   config: Config,
+  provider: "anthropic" | "openai" = "anthropic",
+  expectedState?: string,
 ): Promise<void> {
   ui.appendOutput("\n\n🔄 Exchanging code for tokens...\n");
 
   try {
-    const result = await exchangeOAuthCode(code.trim(), verifier);
+    if (provider === "openai") {
+      // Parse the input in case user pasted the full URL
+      const parsed = parseAuthorizationInput(code.trim());
+      const authCode = parsed.code || code.trim();
+      const receivedState = parsed.state;
 
-    if (result.type === "failed") {
-      ui.appendOutput("❌ Failed to exchange OAuth code\n");
-      ui.appendOutput("Please try /auth login again\n");
-      return;
+      // CSRF protection: verify state matches
+      // If we expect a state, we must receive it and it must match
+      if (expectedState) {
+        if (!receivedState) {
+          ui.appendOutput("❌ Security error: Missing OAuth state parameter\n");
+          ui.appendOutput("This might be a CSRF attack. Please try /login-openai again.\n");
+          return;
+        }
+        if (receivedState !== expectedState) {
+          ui.appendOutput("❌ Security error: Invalid OAuth state parameter\n");
+          ui.appendOutput("This might be a CSRF attack. Please try /login-openai again.\n");
+          return;
+        }
+      }
+
+      const result = await exchangeAuthorizationCode(authCode, verifier);
+
+      if (result.type === "failed") {
+        ui.appendOutput("❌ Failed to exchange OpenAI OAuth code\n");
+        ui.appendOutput("Please try /login-openai again\n");
+        return;
+      }
+
+      // Save OAuth credentials
+      config.openai = {
+        type: "oauth",
+        refresh: result.refresh!,
+        access: result.access!,
+        expires: result.expires!,
+        model: "gpt-5-codex",
+      };
+      config.activeProvider = "openai";
+
+      await saveConfig(config);
+
+      ui.appendOutput("✓ Successfully authenticated with OpenAI!\n");
+      ui.appendOutput("✓ Using ChatGPT Pro subscription\n");
+      ui.appendOutput(`✓ Active model: ${config.openai.model}\n\n`);
+      ui.setStatus(`Ready • ${config.openai.model} • Press Enter to send`);
+    } else {
+      // Anthropic OAuth
+      const result = await exchangeOAuthCode(code.trim(), verifier);
+
+      if (result.type === "failed") {
+        ui.appendOutput("❌ Failed to exchange Anthropic OAuth code\n");
+        ui.appendOutput("Please try /login-anthropic again\n");
+        return;
+      }
+
+      // Save OAuth credentials
+      config.anthropic = {
+        type: "oauth",
+        refresh: result.refresh!,
+        access: result.access!,
+        expires: result.expires!,
+        model: "claude-sonnet-4-5-20250929",
+      };
+      config.activeProvider = "anthropic";
+
+      await saveConfig(config);
+
+      ui.appendOutput("✓ Successfully authenticated with Anthropic!\n");
+      ui.appendOutput("✓ Using Claude Pro/Max subscription\n");
+      ui.appendOutput(`✓ Active model: ${config.anthropic.model}\n\n`);
+      ui.setStatus(`Ready • ${config.anthropic.model} • Press Enter to send`);
     }
-
-    // Save OAuth credentials
-    config.anthropic = {
-      type: "oauth",
-      refresh: result.refresh!,
-      access: result.access!,
-      expires: result.expires!,
-      model: "claude-sonnet-4-5-20250929",
-    };
-    config.activeProvider = "anthropic";
-
-    await saveConfig(config);
-
-    ui.appendOutput("✓ Successfully authenticated with Anthropic!\n");
-    ui.appendOutput("✓ Using Claude Pro/Max subscription\n");
-    ui.appendOutput(`✓ Active model: ${config.anthropic.model}\n\n`);
-    ui.setStatus(`Ready • ${config.anthropic.model} • Press Enter to send`);
   } catch (error: any) {
     ui.appendOutput(`❌ Error: ${error.message}\n`);
   }

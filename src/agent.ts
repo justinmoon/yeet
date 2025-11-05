@@ -7,6 +7,7 @@ import {
   CLAUDE_CODE_BETA,
   createAnthropicFetch,
 } from "./auth";
+import { createOpenAIFetch } from "./openai-auth";
 import type { Config } from "./config";
 import { logger } from "./logger";
 import { createMapleFetch } from "./maple";
@@ -119,6 +120,18 @@ export async function* runAgent(
       }
 
       modelName = anthropicConfig.model || "claude-sonnet-4-5-20250929";
+    } else if (config.activeProvider === "openai") {
+      logger.info("Using OpenAI (ChatGPT Pro via Codex)");
+      const customFetch = createOpenAIFetch(config);
+
+      provider = createOpenAICompatible({
+        name: "openai",
+        apiKey: "chatgpt-oauth", // Dummy key - actual auth via custom fetch
+        baseURL: "https://chatgpt.com/backend-api",
+        fetch: customFetch as any,
+      });
+
+      modelName = config.openai!.model || "gpt-5-codex";
     } else if (config.activeProvider === "maple") {
       logger.info("Using Maple AI with encrypted inference");
       const mapleFetch = await createMapleFetch({

@@ -21,7 +21,11 @@ export class WebAdapter implements UIAdapter {
   currentTokens = 0;
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
-  pendingOAuthSetup?: { verifier: string };
+  pendingOAuthSetup?: {
+    verifier: string;
+    provider?: "anthropic" | "openai";
+    state?: string;
+  };
   isGenerating = false;
   abortController: AbortController | null = null;
 
@@ -68,9 +72,13 @@ export class WebAdapter implements UIAdapter {
 
           // Send initial status
           const modelId =
-            self.config.activeProvider === "opencode"
-              ? self.config.opencode.model
-              : self.config.maple?.model || "";
+            self.config.activeProvider === "anthropic"
+              ? self.config.anthropic?.model || ""
+              : self.config.activeProvider === "openai"
+                ? self.config.openai?.model || ""
+                : self.config.activeProvider === "maple"
+                  ? self.config.maple?.model || ""
+                  : self.config.opencode.model;
           const modelInfo = getModelInfo(modelId);
           const modelDisplay = modelInfo
             ? `${modelInfo.name} (${self.config.activeProvider})`
@@ -202,9 +210,13 @@ export class WebAdapter implements UIAdapter {
 
   private updateAttachmentIndicator(): void {
     const modelId =
-      this.config.activeProvider === "maple"
-        ? this.config.maple!.model
-        : this.config.opencode.model;
+      this.config.activeProvider === "anthropic"
+        ? this.config.anthropic?.model || ""
+        : this.config.activeProvider === "openai"
+          ? this.config.openai?.model || ""
+          : this.config.activeProvider === "maple"
+            ? this.config.maple!.model
+            : this.config.opencode.model;
     const modelInfo = getModelInfo(modelId);
     const modelName = modelInfo?.name || modelId;
 

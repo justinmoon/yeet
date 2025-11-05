@@ -7,6 +7,7 @@ import {
   createAnthropicFetch,
 } from "../auth";
 import { loadConfig } from "../config";
+import { createOpenAIFetch } from "../openai-auth";
 import { createMapleFetch } from "../maple";
 
 export async function createExplainModel(): Promise<LanguageModel> {
@@ -35,6 +36,18 @@ export async function createExplainModel(): Promise<LanguageModel> {
     });
 
     return provider(anthropicConfig.model || "claude-sonnet-4-5-20250929");
+  }
+
+  if (config.activeProvider === "openai") {
+    const openaiConfig = config.openai!;
+    const customFetch = createOpenAIFetch(config);
+    const provider = createOpenAICompatible({
+      name: "openai",
+      apiKey: "chatgpt-oauth",
+      baseURL: "https://chatgpt.com/backend-api",
+      fetch: customFetch as any,
+    });
+    return provider(openaiConfig.model || "gpt-5-codex");
   }
 
   if (config.activeProvider === "maple") {

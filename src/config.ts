@@ -10,7 +10,7 @@ async function ensureConfigDir(): Promise<void> {
 }
 
 export interface Config {
-  activeProvider: "opencode" | "maple" | "anthropic";
+  activeProvider: "opencode" | "maple" | "anthropic" | "openai";
   opencode: {
     apiKey: string;
     baseURL: string;
@@ -38,6 +38,15 @@ export interface Config {
     userUuid?: string;
     // For API key
     apiKey?: string;
+    model?: string;
+  };
+  // OpenAI ChatGPT Pro OAuth
+  openai?: {
+    type: "oauth";
+    refresh: string;
+    access: string;
+    expires: number;
+    accountId?: string;
     model?: string;
   };
 }
@@ -89,9 +98,10 @@ async function createDefaultConfig(configPath: string): Promise<Config> {
       `No authentication configured.\n\n` +
         `Choose one of:\n\n` +
         `1. Anthropic Claude Pro/Max OAuth:\n` +
-        `   Run: yeet auth login\n` +
-        `   Then select Anthropic and follow prompts\n\n` +
-        `2. Anthropic API Key:\n` +
+        `   Run: yeet /login-anthropic\n\n` +
+        `2. ChatGPT Pro/Codex OAuth:\n` +
+        `   Run: yeet /login-openai\n\n` +
+        `3. Anthropic API Key:\n` +
         `   Create ${configPath} with:\n` +
         `   {\n` +
         `     "activeProvider": "anthropic",\n` +
@@ -101,7 +111,7 @@ async function createDefaultConfig(configPath: string): Promise<Config> {
         `       "model": "claude-sonnet-4-5-20250929"\n` +
         `     }\n` +
         `   }\n\n` +
-        `3. OpenCode Zen API:\n` +
+        `4. OpenCode Zen API:\n` +
         `   Create ${configPath} with:\n` +
         `   {\n` +
         `     "activeProvider": "opencode",\n` +

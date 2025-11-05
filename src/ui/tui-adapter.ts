@@ -34,7 +34,11 @@ export class TUIAdapter implements UIAdapter {
   currentTokens = 0;
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
-  pendingOAuthSetup?: { verifier: string };
+  pendingOAuthSetup?: {
+    verifier: string;
+    provider?: "anthropic" | "openai";
+    state?: string;
+  };
   isGenerating = false;
   abortController: AbortController | null = null;
   private sessionModal?: SessionSelectorModal;
@@ -168,9 +172,11 @@ export class TUIAdapter implements UIAdapter {
     const currentModelId =
       this.config.activeProvider === "anthropic"
         ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "maple"
-          ? this.config.maple?.model || ""
-          : this.config.opencode.model;
+        : this.config.activeProvider === "openai"
+          ? this.config.openai?.model || ""
+          : this.config.activeProvider === "maple"
+            ? this.config.maple?.model || ""
+            : this.config.opencode.model;
     const modelInfo = getModelInfo(currentModelId);
     const modelDisplay = modelInfo
       ? `${modelInfo.name} (${modelInfo.provider})`
@@ -268,6 +274,9 @@ export class TUIAdapter implements UIAdapter {
           !!this.config.anthropic?.apiKey || !!this.config.anthropic?.refresh
         );
       }
+      if (model.provider === "openai") {
+        return !!this.config.openai?.refresh;
+      }
       if (model.provider === "opencode") {
         return !!this.config.opencode.apiKey;
       }
@@ -281,7 +290,7 @@ export class TUIAdapter implements UIAdapter {
       this.appendOutput(
         "No models available. Please configure authentication first.\n",
       );
-      this.appendOutput("Run /auth login for Anthropic OAuth\n");
+      this.appendOutput("Run /login-anthropic or /login-openai to authenticate\n");
       return;
     }
 
@@ -307,6 +316,10 @@ export class TUIAdapter implements UIAdapter {
           this.config.anthropic = { type: "api", apiKey: "" };
         }
         this.config.anthropic.model = modelId;
+      } else if (modelInfo.provider === "openai") {
+        if (this.config.openai) {
+          this.config.openai.model = modelId;
+        }
       } else if (modelInfo.provider === "opencode") {
         this.config.opencode.model = modelId;
       } else if (modelInfo.provider === "maple") {
@@ -503,10 +516,12 @@ export class TUIAdapter implements UIAdapter {
           if (this.pendingOAuthSetup) {
             const code = message;
             const verifier = this.pendingOAuthSetup.verifier;
+            const provider = this.pendingOAuthSetup.provider || "anthropic";
+            const state = this.pendingOAuthSetup.state;
             this.pendingOAuthSetup = undefined;
             this.clearInput();
             const { handleOAuthCodeInput } = await import("../commands");
-            await handleOAuthCodeInput(code, verifier, this, this.config);
+            await handleOAuthCodeInput(code, verifier, this, this.config, provider, state);
           } else if (this.pendingMapleSetup) {
             const apiKey = message;
             const modelId = this.pendingMapleSetup.modelId;
@@ -536,9 +551,11 @@ export class TUIAdapter implements UIAdapter {
     const modelId =
       this.config.activeProvider === "anthropic"
         ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "maple"
-          ? this.config.maple!.model
-          : this.config.opencode.model;
+        : this.config.activeProvider === "openai"
+          ? this.config.openai?.model || ""
+          : this.config.activeProvider === "maple"
+            ? this.config.maple!.model
+            : this.config.opencode.model;
     const modelInfo = getModelInfo(modelId);
     const modelName = modelInfo?.name || modelId;
 
