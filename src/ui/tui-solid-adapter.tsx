@@ -11,6 +11,7 @@ import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import { cycleTheme, getCurrentTheme, setTheme, themes } from "./colors";
 import type { UIAdapter } from "./interface";
 import type { ExplainResult } from "../explain";
+import { interpretExplainKey } from "../explain/keymap";
 
 export class TUISolidAdapter implements UIAdapter {
   conversationHistory: Array<{
@@ -142,22 +143,30 @@ export class TUISolidAdapter implements UIAdapter {
               return;
             }
 
-            if (key.name === "escape") {
-              key.preventDefault?.();
-              this.hideExplainReview();
-              return;
-            }
+            const action = interpretExplainKey({
+              name: key.name,
+              key: key.key,
+              code: key.code,
+            });
 
-            if (key.name === "left" || key.name === "up") {
-              key.preventDefault?.();
-              this.previousExplainSection();
-              return;
-            }
-
-            if (key.name === "right" || key.name === "down") {
-              key.preventDefault?.();
-              this.nextExplainSection();
-              return;
+            switch (action) {
+              case "close":
+                key.preventDefault?.();
+                this.hideExplainReview();
+                break;
+              case "previous":
+                key.preventDefault?.();
+                this.previousExplainSection();
+                break;
+              case "next":
+                key.preventDefault?.();
+                this.nextExplainSection();
+                break;
+              case "submit":
+                key.preventDefault?.();
+                break;
+              default:
+                break;
             }
           });
 
@@ -240,29 +249,37 @@ export class TUISolidAdapter implements UIAdapter {
                   }
                 }}
                 onKeyDown={async (e: any) => {
+                  const action = interpretExplainKey({
+                    name: e.name,
+                    key: e.key,
+                    code: e.code,
+                  });
+
                   if (adapter.explainModalActive) {
-                    if (e.name === "escape") {
+                    if (action === "close") {
                       e.preventDefault();
                       adapter.hideExplainReview();
                       return;
                     }
-                    if (e.name === "left" || e.name === "up") {
+                    if (action === "previous") {
                       e.preventDefault();
                       adapter.previousExplainSection();
                       return;
                     }
-                    if (e.name === "right" || e.name === "down") {
+                    if (action === "next") {
                       e.preventDefault();
                       adapter.nextExplainSection();
                       return;
                     }
-                    if (e.name === "return") {
+                    if (action === "submit") {
                       e.preventDefault();
                       return;
                     }
                   }
 
-                  if (e.name === "return" && !e.shift) {
+                  const keyName = (e.name || e.key || e.code || "").toLowerCase();
+
+                  if ((keyName === "return" || keyName === "enter") && !e.shift) {
                     e.preventDefault();
                     const message = textareaRef?.plainText || "";
                     if (message.trim()) {
@@ -306,7 +323,7 @@ export class TUISolidAdapter implements UIAdapter {
                         }
                       }
                     }
-                  } else if (e.name === "escape") {
+                  } else if (keyName === "escape") {
                     if (adapter.isGenerating && adapter.abortController) {
                       adapter.abortController.abort();
                       adapter.appendOutput(
@@ -361,7 +378,7 @@ export class TUISolidAdapter implements UIAdapter {
                             Explain • Section {index + 1}/{total}
                           </text>
                           <text style={{ fg: "#38bdf8" }}>
-                            ←/→ navigate • Esc close
+                            Left/Right navigate • Esc close
                           </text>
                         </box>
                         <box>
