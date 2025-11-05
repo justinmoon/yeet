@@ -110,7 +110,9 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("  /save <name>        - Name current session\n");
   ui.appendOutput("  /clear              - Clear current session\n");
   ui.appendOutput("  /toggle             - Cycle through color themes\n");
-  ui.appendOutput("  /explain [prompt]   - Generate tutorial for current diff\n");
+  ui.appendOutput(
+    "  /explain [prompt]   - Generate tutorial for current diff\n",
+  );
   ui.appendOutput("  /help               - Show this help\n");
   ui.appendOutput("\nSession Management:\n");
   ui.appendOutput(
@@ -127,8 +129,12 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   );
 }
 
-async function handleExplainCommand(args: string[], ui: UIAdapter): Promise<void> {
-  const useStub = process.env.YEET_EXPLAIN_STUB === "1" || args.includes("--stub");
+async function handleExplainCommand(
+  args: string[],
+  ui: UIAdapter,
+): Promise<void> {
+  const useStub =
+    process.env.YEET_EXPLAIN_STUB === "1" || args.includes("--stub");
   const filteredArgs = args.filter((arg) => arg !== "--stub");
   const prompt = filteredArgs.length
     ? filteredArgs.join(" ")
@@ -200,9 +206,7 @@ async function handleExplainCommand(args: string[], ui: UIAdapter): Promise<void
       }
     }
   } catch (error: any) {
-    ui.appendOutput(
-      `❌ /explain failed: ${error?.message || String(error)}\n`,
-    );
+    ui.appendOutput(`❌ /explain failed: ${error?.message || String(error)}\n`);
   }
 }
 

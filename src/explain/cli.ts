@@ -22,7 +22,8 @@ program
 
 program.action(async (options) => {
   const spinner = ora();
-  const useStub = Boolean(options.stub) || process.env.YEET_EXPLAIN_STUB === "1";
+  const useStub =
+    Boolean(options.stub) || process.env.YEET_EXPLAIN_STUB === "1";
 
   try {
     const intent = normalizeRequest({
