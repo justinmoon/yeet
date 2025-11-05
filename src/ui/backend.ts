@@ -29,7 +29,11 @@ export async function handleMessage(
 
   // Add subtle separator between turns
   if (ui.conversationHistory.length > 0) {
-    ui.appendOutput(t`${dim("─".repeat(60))}\n\n`);
+    ui.addMessagePart({
+      id: `sep-${Date.now()}`,
+      type: "separator",
+      content: dim("─".repeat(60)) + "\n\n",
+    });
   }
 
   // Build message content (text + images if any)
@@ -50,13 +54,15 @@ export async function handleMessage(
   }
 
   // Display user message with › prefix
-  if (hasImages) {
-    ui.appendOutput(
-      t`${semantic.userPrefix("›")} ${message} ${dim(`[${ui.imageAttachments.length} image(s)]`)}\n\n`,
-    );
-  } else {
-    ui.appendOutput(t`${semantic.userPrefix("›")} ${message}\n\n`);
-  }
+  const userContent = hasImages
+    ? `${semantic.userPrefix("›")} ${message} ${dim(`[${ui.imageAttachments.length} image(s)]`)}\n\n`
+    : `${semantic.userPrefix("›")} ${message}\n\n`;
+
+  ui.addMessagePart({
+    id: `user-${Date.now()}`,
+    type: "user",
+    content: userContent,
+  });
 
   ui.clearInput();
   updateTokenCount(ui, config, "Thinking");
@@ -109,7 +115,6 @@ export async function handleMessage(
     let textChunks = 0;
     let lastToolName = "";
     let lastToolArgs: any = {};
-    let hasOutputText = false; // Track if we've output any text
 
     for await (const event of runAgent(
       messages,
@@ -131,15 +136,7 @@ export async function handleMessage(
         });
         const text = event.content || "";
         assistantResponse += text;
-
-        // Print • prefix only before the first text output
-        if (!hasOutputText) {
-          ui.appendOutput(t`${semantic.assistantPrefix("•")} `);
-          hasOutputText = true;
-          updateTokenCount(ui, config, "Responding");
-        }
-
-        ui.appendOutput(text);
+        updateTokenCount(ui, config, "Responding");
       } else if (event.type === "tool") {
         lastToolName = event.name || "";
         lastToolArgs = event.args || {};
@@ -264,7 +261,15 @@ export async function handleMessage(
         ui.appendOutput(t`\n${semantic.error(`❌ Error: ${event.error}`)}\n`);
       }
     }
-    ui.appendOutput("\n");
+
+    // Add assistant response as a message part for markdown rendering
+    if (assistantResponse.trim()) {
+      ui.addMessagePart({
+        id: `assistant-${Date.now()}`,
+        type: "text",
+        content: assistantResponse.trim(),
+      });
+    }
 
     // Save conversation to history
     ui.conversationHistory.push({ role: "user", content: messageContent });

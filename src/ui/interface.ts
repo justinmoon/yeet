@@ -3,6 +3,16 @@ import type { MessageContent } from "../agent";
 import type { Config } from "../config";
 
 /**
+ * Represents a rendered message part (text, tool call, separator, etc.)
+ */
+export interface MessagePart {
+  id: string;
+  type: "text" | "tool" | "separator" | "user";
+  content: string;
+  metadata?: any;
+}
+
+/**
  * UI abstraction interface for Yeet.
  * Allows different frontend implementations (TUI, Web, etc.) while sharing the same backend logic.
  */
@@ -29,6 +39,7 @@ export interface UIAdapter {
 
   // Core UI operations
   appendOutput(text: string | StyledText): void;
+  addMessagePart(part: MessagePart): void;
   clearOutput(): void;
   setStatus(text: string): void;
   clearInput(): void;
