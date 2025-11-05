@@ -137,6 +137,29 @@ export class TUISolidAdapter implements UIAdapter {
         onMount(() => {
           // Store renderer reference
           this.renderer = renderer;
+          this.renderer.keyInput?.on?.("keypress", (key: any) => {
+            if (!this.explainModalActive) {
+              return;
+            }
+
+            if (key.name === "escape") {
+              key.preventDefault?.();
+              this.hideExplainReview();
+              return;
+            }
+
+            if (key.name === "left" || key.name === "up") {
+              key.preventDefault?.();
+              this.previousExplainSection();
+              return;
+            }
+
+            if (key.name === "right" || key.name === "down") {
+              key.preventDefault?.();
+              this.nextExplainSection();
+              return;
+            }
+          });
 
           // Initialize theme from config
           const themeName = this.config.theme || "tokyonight";
