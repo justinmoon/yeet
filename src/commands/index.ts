@@ -3,6 +3,7 @@ import type { Config } from "../config";
 import { saveConfig } from "../config";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
 import {
+  createStubExplainResult,
   getGitDiff,
   normalizeRequest,
   planSections,
@@ -127,8 +128,10 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
 }
 
 async function handleExplainCommand(args: string[], ui: UIAdapter): Promise<void> {
-  const prompt = args.length
-    ? args.join(" ")
+  const useStub = process.env.YEET_EXPLAIN_STUB === "1" || args.includes("--stub");
+  const filteredArgs = args.filter((arg) => arg !== "--stub");
+  const prompt = filteredArgs.length
+    ? filteredArgs.join(" ")
     : "Explain the current branch changes";
 
   const cwd = process.cwd();

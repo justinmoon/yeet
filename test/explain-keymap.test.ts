@@ -8,10 +8,13 @@ describe("interpretExplainKey", () => {
   ]> = [
     [{ name: "left" }, "previous"],
     [{ name: "up" }, "previous"],
+    [{ name: "p" }, "previous"],
     [{ key: "ArrowLeft" }, "previous"],
     [{ name: "right" }, "next"],
+    [{ name: "n" }, "next"],
     [{ code: "ArrowDown" }, "next"],
     [{ name: "escape" }, "close"],
+    [{ name: "q" }, "close"],
     [{ key: "Escape" }, "close"],
     [{ name: "return" }, "submit"],
     [{ key: "Enter" }, "submit"],
