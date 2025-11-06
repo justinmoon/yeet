@@ -305,7 +305,10 @@ export function createOpenAIFetch(config: Config) {
 
     // Rewrite URL to Codex backend
     // The AI SDK may use standard OpenAI paths, we need to rewrite to Codex
-    if (url.includes("/v1/chat/completions")) {
+    if (url.includes("/chat/completions")) {
+      // Standard chat completions endpoint -> Codex responses endpoint
+      url = url.replace("/chat/completions", "/codex/responses");
+    } else if (url.includes("/v1/chat/completions")) {
       // Standard OpenAI SDK path -> Codex responses endpoint
       url = url.replace("/v1/chat/completions", "/codex/responses");
     } else if (url.includes("/responses")) {
@@ -335,6 +338,21 @@ export function createOpenAIFetch(config: Config) {
     if (body && typeof body === "string") {
       try {
         const parsed = JSON.parse(body) as Record<string, any>;
+        logger.debug("OpenAI fetch - original body:", parsed);
+
+        // The OpenAI-compatible SDK sends standard OpenAI format with "messages"
+        // Codex expects "input" array format instead
+        if (parsed.messages && Array.isArray(parsed.messages)) {
+          // Convert messages to input format
+          parsed.input = parsed.messages.map((msg: any) => ({
+            type: "message",
+            role: msg.role,
+            content: Array.isArray(msg.content)
+              ? msg.content
+              : [{ type: "input_text", text: msg.content }],
+          }));
+          delete parsed.messages;
+        }
 
         // Normalize model name to Codex-supported variants
         if (parsed.model) {
@@ -352,6 +370,56 @@ export function createOpenAIFetch(config: Config) {
         parsed.store = false;
         parsed.stream = true;
 
+        // Codex requires instructions (system prompt)
+        // Extract system message if present and use it as instructions
+        if (!parsed.instructions) {
+          let systemMessage = "";
+          if (parsed.input && Array.isArray(parsed.input)) {
+            const systemMsg = parsed.input.find(
+              (item: any) => item.type === "message" && item.role === "system"
+            );
+            if (systemMsg) {
+              // Extract text from system message content
+              if (Array.isArray(systemMsg.content)) {
+                systemMessage = systemMsg.content
+                  .filter((c: any) => c.type === "input_text")
+                  .map((c: any) => c.text)
+                  .join("\n");
+              }
+              // Remove system message from input array
+              parsed.input = parsed.input.filter((item: any) => item !== systemMsg);
+            }
+          }
+          // Use system message or provide basic Codex-style instructions
+          parsed.instructions = systemMessage || `You are Codex, based on GPT-5. You are an AI assistant helping a user.
+
+## General Behavior
+
+- Be concise and helpful
+- Use tools when appropriate
+- Think step by step when solving problems
+- Default to plain text responses
+
+## Response Style
+
+- Use clear, friendly language
+- Be collaborative and factual
+- Present information in an easy-to-scan format
+
+When the user asks questions or makes requests, help them accomplish their goals effectively.`;
+        }
+
+        // Handle max_tokens -> max_output_tokens for Codex
+        if (parsed.max_tokens) {
+          parsed.max_output_tokens = parsed.max_tokens;
+          delete parsed.max_tokens;
+        }
+
+        // Set default max_output_tokens if not present
+        if (!parsed.max_output_tokens && !parsed.max_completion_tokens) {
+          parsed.max_output_tokens = 4096;
+        }
+
         // Filter input to remove AI SDK constructs
         if (Array.isArray(parsed.input)) {
           parsed.input = parsed.input
@@ -365,6 +433,7 @@ export function createOpenAIFetch(config: Config) {
             });
         }
 
+        logger.debug("OpenAI fetch - transformed body:", parsed);
         body = JSON.stringify(parsed);
       } catch (error) {
         logger.error("Failed to transform OpenAI request:", error as Error);
