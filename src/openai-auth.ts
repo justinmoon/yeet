@@ -301,8 +301,19 @@ export function createOpenAIFetch(config: Config) {
       url = String(input);
     }
 
+    logger.debug("OpenAI fetch - original URL:", url);
+
     // Rewrite URL to Codex backend
-    url = url.replace("/responses", "/codex/responses");
+    // The AI SDK may use standard OpenAI paths, we need to rewrite to Codex
+    if (url.includes("/v1/chat/completions")) {
+      // Standard OpenAI SDK path -> Codex responses endpoint
+      url = url.replace("/v1/chat/completions", "/codex/responses");
+    } else if (url.includes("/responses")) {
+      // Already using responses endpoint -> just add /codex prefix
+      url = url.replace("/responses", "/codex/responses");
+    }
+
+    logger.debug("OpenAI fetch - rewritten URL:", url);
 
     // Create headers with OAuth token and Codex-specific headers
     const headers = new Headers(init?.headers ?? {});
