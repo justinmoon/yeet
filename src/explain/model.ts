@@ -1,4 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import type { LanguageModel } from "ai";
 import {
@@ -41,7 +42,7 @@ export async function createExplainModel(): Promise<LanguageModel> {
   if (config.activeProvider === "openai") {
     const openaiConfig = config.openai!;
     const customFetch = createOpenAIFetch(config);
-    const provider = createOpenAICompatible({
+    const provider = createOpenAI({
       name: "openai",
       apiKey: "chatgpt-oauth",
       baseURL: "https://chatgpt.com/backend-api",

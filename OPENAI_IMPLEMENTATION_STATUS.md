@@ -1,5 +1,16 @@
 # OpenAI/ChatGPT Pro Implementation Status
 
+## Summary
+
+**Status:** OAuth working, API accessible, but **incompatible with yeet's tool system**
+
+The Codex API successfully responds to requests, but it uses a different:
+- Streaming format (Server-Sent Events vs OpenAI JSON streaming)
+- Tool/function calling format (incompatible with AI SDK's tooling)
+- Parameter set (doesn't support temperature, system messages, etc.)
+
+**Conclusion:** Would require significant changes to yeet's agent system to support Codex. Not a drop-in replacement for Anthropic/OpenAI providers.
+
 ## ✅ Completed
 
 ### OAuth Flow
@@ -29,85 +40,141 @@
 ### Request Transformation
 - [x] URL rewriting: `/chat/completions` → `/codex/responses`
 - [x] Message format conversion: `messages` array → `input` array
-- [x] Token field mapping: `max_tokens` → `max_output_tokens`
+- [x] System message filtering (Codex doesn't support them)
+- [x] Parameter filtering (temperature, top_p, tool_choice, etc.)
 - [x] Request body transformation in custom fetch wrapper
 - [x] Header injection (Bearer token, account ID, Codex headers)
 - [x] Automatic token refresh on expiration
+- [x] Codex instructions fetching from GitHub with ETag caching
 
-## ❌ Blocking Issue
+## ❌ Blocking Issues
 
-### Codex Instructions Validation
+### 1. Incompatible Streaming Format
 
-**Problem:** Codex API returns `400 Bad Request` with error: `"Instructions are not valid"`
+**Problem:** Codex uses Server-Sent Events (SSE) with a custom format, not OpenAI's streaming JSON
 
-**Root Cause:** The Codex API requires specific, comprehensive instructions that must be fetched from the official Codex GitHub repository. Our simplified instructions are rejected.
+Codex response format:
+```
+event: response.created
+data: {"type":"response.created","response":{...}}
 
-**What's Needed:**
-1. Fetch instructions from: `https://raw.githubusercontent.com/openai/codex/{release-tag}/codex-rs/core/gpt_5_codex_prompt.md`
-2. Cache instructions locally (with ETag-based caching)
-3. Handle updates when new Codex releases come out
-4. Add rate limiting (15-minute cache TTL as in reference implementation)
+event: response.output_text.delta
+data: {"type":"response.output_text.delta","text":"Hello"}
 
-**Reference Implementation:** See `~/code/opencode-openai-codex-auth/lib/prompts/codex.ts`
+event: response.done
+data: {"type":"response.done","response":{...}}
+```
 
-## Test Results
+OpenAI format (expected by AI SDK):
+```json
+{"id":"...","choices":[{"delta":{"content":"Hello"}}]}
+```
 
-**OAuth Flow:** ✅ Working perfectly
-- Browser opens automatically
-- Callback server captures redirect
-- Tokens saved to config
-- Account ID extracted correctly
+**Impact:** AI SDK's `streamText()` fails to parse Codex responses
 
-**API Requests:** ❌ Failing at instructions validation
+### 2. Incompatible Tool/Function Calling
+
+**Problem:** Codex uses a different tool format than OpenAI
+
+AI SDK sends:
+```json
+{
+  "tools": [{
+    "type": "function",
+    "function": {
+      "name": "bash",
+      "description": "Execute bash command",
+      "parameters": {...}
+    }
+  }]
+}
+```
+
+Codex expects: Unknown format (returns error: `Missing required parameter: 'tools[0].name'`)
+
+**Impact:** yeet's core functionality (bash, read, write, edit tools) doesn't work
+
+### 3. Unsupported Parameters
+
+Codex doesn't support:
+- `temperature` - Sampling parameter
+- `top_p` - Nucleus sampling
+- `frequency_penalty` / `presence_penalty` - Token penalties
+- `stop` - Stop sequences
+- `seed` - Reproducibility
+- `tool_choice` - Tool selection strategy
+- `max_tokens` / `max_output_tokens` - Token limits
+- System messages in messages array (must use `instructions` field)
+
+## What Works
+
+**Basic API calls without tools:**
+- OAuth authentication ✅
+- Token refresh ✅
+- Simple text generation requests ✅
+- Codex instructions injection ✅
+- Account ID tracking ✅
+
+**Test results:**
 ```bash
-# Test command
 bun run test-openai.ts
-
-# Result
-Error: Bad Request
-Response: {"detail":"Instructions are not valid"}
+# Result: Successfully counted r's in "strawberry" = 3
 ```
 
-## Next Steps
+## What Doesn't Work
 
-1. **Implement Codex instructions fetcher**
-   - Create `src/codex-instructions.ts`
-   - Fetch from GitHub with release tag lookup
-   - Implement ETag-based caching
-   - Handle fallback to bundled instructions
+- Tool/function calling (core yeet functionality)
+- Streaming response parsing through AI SDK
+- Multi-step agent workflows
+- Any yeet commands that use tools (bash, read, write, edit)
 
-2. **Update request transformer**
-   - Use fetched instructions instead of hardcoded string
-   - Handle instruction caching/refresh
-   - Add error handling for fetch failures
+## Technical Details
 
-3. **Test end-to-end**
-   - Verify simple queries work
-   - Test with tool use (once instructions work)
-   - Verify streaming responses
+### Files Created
+- `src/openai-auth.ts` - OAuth and fetch wrapper (427 lines)
+- `src/openai-callback-server.ts` - Local OAuth server (135 lines)
+- `src/codex-instructions.ts` - GitHub instructions fetcher (205 lines)
+- `CODEX_INSTRUCTIONS.md` - Official Codex prompt (for reference)
+- `test-openai.ts` - Simple API test (works)
+- `test-openai-with-tools.ts` - Tool test (fails)
 
-## Files Changed
-
-- `src/openai-auth.ts` - OAuth and fetch wrapper (new)
-- `src/openai-callback-server.ts` - Local OAuth callback server (new)
-- `src/config.ts` - OpenAI provider config
-- `src/models/registry.ts` - OpenAI models
-- `src/agent.ts` - OpenAI provider support
-- `src/explain/model.ts` - OpenAI provider support
-- `src/commands/index.ts` - Login commands
-- `src/ui/interface.ts` - OAuth state in UI interface
-- `src/ui/tui-adapter.ts` - OpenAI provider support
-- `src/ui/tui-solid-adapter.tsx` - OpenAI provider support
-- `src/ui/web-adapter.ts` - OpenAI provider support
-- `src/ui/backend.ts` - Token counting, session management
-- `src/ui/model-modal.ts` - OpenAI in model picker
-
-## Commit History
-
+### Commits
 ```
+[Latest] Fix Codex API compatibility issues (streaming/tools incompatible)
 df2fc2f WIP: Add Codex API request transformation (instructions validation failing)
 30bc600 Fix URL rewriting for Codex API and add debug logging
 34d9a62 Fix OAuth state verification for automatic callback
 b66e3c5 Add automatic OAuth callback server for OpenAI login
 2cc4f42 Add ChatGPT Pro OAuth support via OpenAI Codex API
 ```
+
+## Recommendations
+
+### Option 1: Custom Codex Agent Implementation (High effort)
+- Write custom SSE streaming parser for Codex format
+- Reverse-engineer Codex tool calling format
+- Create separate agent implementation for Codex
+- Maintain two parallel systems (Anthropic + Codex)
+
+### Option 2: Wait for Official Support (Zero effort)
+- OpenAI may release official Codex SDK
+- AI SDK maintainers may add Codex support
+- Keep OAuth implementation for future use
+
+### Option 3: Use Different Provider (Recommended)
+- Stick with Anthropic (Claude Code) - fully working
+- Use OpenCode/Maple for alternatives
+- ChatGPT Pro OAuth works but Codex API not compatible with yeet's architecture
+
+## Next Steps
+
+If pursuing Codex integration:
+1. Study openai/codex CLI source for SSE parsing
+2. Reverse-engineer tool calling format
+3. Create custom agent implementation
+4. Test end-to-end with all yeet commands
+
+If abandoning Codex:
+1. Keep OAuth implementation (works perfectly)
+2. Document as experimental/incomplete
+3. Focus on improving Anthropic/Claude support

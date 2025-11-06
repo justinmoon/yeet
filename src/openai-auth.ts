@@ -3,6 +3,8 @@ import { randomBytes } from "crypto";
 import type { Config } from "./config";
 import { saveConfig } from "./config";
 import { logger } from "./logger";
+import { getCodexInstructions } from "./codex-instructions";
+import { getToolCallByCallId } from "./call-cache";
 
 // OpenAI OAuth constants (from codex CLI)
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -243,6 +245,183 @@ export async function refreshAccessToken(
 }
 
 /**
+ * Convert Codex Responses API SSE stream to Chat Completions JSON stream
+ * This allows AI SDK to properly parse tool calls and text
+ */
+async function codexSseToChatCompletionsStream(
+  codexResponse: Response,
+): Promise<Response> {
+  const decoder = new TextDecoder();
+  const encoder = new TextEncoder();
+
+  const reader = codexResponse.body!.getReader();
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let buffer = "";
+      const toolCallsMap = new Map<string, { id: string; name: string; args: string }>();
+
+      const sendChunk = (obj: unknown) => {
+        const line = `data: ${JSON.stringify(obj)}\n\n`;
+        controller.enqueue(encoder.encode(line));
+      };
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          buffer += decoder.decode(value, { stream: true });
+
+          // Process complete SSE blocks (separated by \n\n)
+          while (true) {
+            const blockEnd = buffer.indexOf("\n\n");
+            if (blockEnd === -1) break;
+
+            const block = buffer.slice(0, blockEnd);
+            buffer = buffer.slice(blockEnd + 2);
+
+            // Parse event and data from SSE block
+            const lines = block.split("\n");
+            let eventType = "";
+            let data = "";
+
+            for (const line of lines) {
+              if (line.startsWith("event: ")) {
+                eventType = line.slice(7).trim();
+              } else if (line.startsWith("data: ")) {
+                data = line.slice(6);
+              }
+            }
+
+            if (!data) continue;
+
+            try {
+              const payload = JSON.parse(data);
+              console.log(`SSE Event: ${eventType}`);
+
+              // Handle text deltas
+              if (eventType === "response.output_text.delta") {
+                const text = payload.text || "";
+                if (text) {
+                  sendChunk({
+                    id: "codex",
+                    object: "chat.completion.chunk",
+                    created: Date.now(),
+                    model: "gpt-5-codex",
+                    choices: [{
+                      index: 0,
+                      delta: { content: text },
+                      finish_reason: null,
+                    }],
+                  });
+                }
+              }
+
+              // Handle function call start
+              else if (eventType === "response.function_call.delta") {
+                const { id, name, call_id } = payload;
+                const toolCallId = call_id || id;
+                console.log("=== TOOL CALL START ===");
+                console.log("Event payload:", JSON.stringify(payload, null, 2));
+                console.log("Extracted ID:", toolCallId);
+                if (toolCallId && name) {
+                  toolCallsMap.set(toolCallId, { id: toolCallId, name, args: "" });
+                  sendChunk({
+                    id: "codex",
+                    object: "chat.completion.chunk",
+                    created: Date.now(),
+                    model: "gpt-5-codex",
+                    choices: [{
+                      index: 0,
+                      delta: {
+                        tool_calls: [{
+                          index: 0,
+                          id: toolCallId,
+                          type: "function",
+                          function: { name, arguments: "" },
+                        }],
+                      },
+                      finish_reason: null,
+                    }],
+                  });
+                }
+              }
+
+              // Handle function call arguments delta
+              else if (eventType === "response.function_call.arguments.delta") {
+                const { call_id, arguments: argsDelta } = payload;
+                if (call_id && argsDelta) {
+                  const toolCall = toolCallsMap.get(call_id);
+                  if (toolCall) {
+                    toolCall.args += argsDelta;
+                    sendChunk({
+                      id: "codex",
+                      object: "chat.completion.chunk",
+                      created: Date.now(),
+                      model: "gpt-5-codex",
+                      choices: [{
+                        index: 0,
+                        delta: {
+                          tool_calls: [{
+                            index: 0,
+                            id: call_id,
+                            type: "function",
+                            function: { arguments: argsDelta },
+                          }],
+                        },
+                        finish_reason: null,
+                      }],
+                    });
+                  }
+                }
+              }
+
+              // Handle completion
+              else if (
+                eventType === "response.done" ||
+                eventType === "response.completed"
+              ) {
+                sendChunk({
+                  id: "codex",
+                  object: "chat.completion.chunk",
+                  created: Date.now(),
+                  model: "gpt-5-codex",
+                  choices: [{
+                    index: 0,
+                    delta: {},
+                    finish_reason: "stop",
+                  }],
+                });
+              }
+
+              // Log other event types for debugging
+              else if (eventType && !eventType.includes("in_progress") && !eventType.includes("created")) {
+                logger.debug("Unhandled Codex SSE event:", eventType, payload);
+              }
+            } catch (parseError) {
+              logger.error("Failed to parse SSE data:", data, parseError);
+            }
+          }
+        }
+      } catch (error) {
+        logger.error("SSE stream error:", error);
+        controller.error(error);
+      } finally {
+        controller.close();
+      }
+    },
+  });
+
+  return new Response(stream, {
+    headers: {
+      "content-type": "text/event-stream; charset=utf-8",
+      "cache-control": "no-cache",
+      "connection": "keep-alive",
+    },
+  });
+}
+
+/**
  * Create custom fetch function for OpenAI Codex API
  * Handles token refresh, header injection, and URL rewriting
  */
@@ -340,11 +519,21 @@ export function createOpenAIFetch(config: Config) {
         const parsed = JSON.parse(body) as Record<string, any>;
         logger.debug("OpenAI fetch - original body:", parsed);
 
+        // Log full request for debugging tool calling
+        console.error("\n=== FULL REQUEST BODY ===");
+        console.error(JSON.stringify(parsed, null, 2));
+
         // The OpenAI-compatible SDK sends standard OpenAI format with "messages"
         // Codex expects "input" array format instead
         if (parsed.messages && Array.isArray(parsed.messages)) {
+          // Filter out system messages (Codex doesn't support them)
+          // System prompt goes in the instructions field instead
+          const filteredMessages = parsed.messages.filter(
+            (msg: any) => msg.role !== "system"
+          );
+
           // Convert messages to input format
-          parsed.input = parsed.messages.map((msg: any) => ({
+          parsed.input = filteredMessages.map((msg: any) => ({
             type: "message",
             role: msg.role,
             content: Array.isArray(msg.content)
@@ -371,67 +560,139 @@ export function createOpenAIFetch(config: Config) {
         parsed.stream = true;
 
         // Codex requires instructions (system prompt)
-        // Extract system message if present and use it as instructions
+        // Fetch official Codex instructions from GitHub (cached)
         if (!parsed.instructions) {
-          let systemMessage = "";
-          if (parsed.input && Array.isArray(parsed.input)) {
-            const systemMsg = parsed.input.find(
-              (item: any) => item.type === "message" && item.role === "system"
+          try {
+            parsed.instructions = await getCodexInstructions();
+          } catch (error) {
+            logger.error("Failed to fetch Codex instructions", { error });
+            throw new Error(
+              "Cannot make Codex API request without instructions. Please check network connection.",
             );
-            if (systemMsg) {
-              // Extract text from system message content
-              if (Array.isArray(systemMsg.content)) {
-                systemMessage = systemMsg.content
-                  .filter((c: any) => c.type === "input_text")
-                  .map((c: any) => c.text)
-                  .join("\n");
-              }
-              // Remove system message from input array
-              parsed.input = parsed.input.filter((item: any) => item !== systemMsg);
-            }
           }
-          // Use system message or provide basic Codex-style instructions
-          parsed.instructions = systemMessage || `You are Codex, based on GPT-5. You are an AI assistant helping a user.
-
-## General Behavior
-
-- Be concise and helpful
-- Use tools when appropriate
-- Think step by step when solving problems
-- Default to plain text responses
-
-## Response Style
-
-- Use clear, friendly language
-- Be collaborative and factual
-- Present information in an easy-to-scan format
-
-When the user asks questions or makes requests, help them accomplish their goals effectively.`;
         }
 
-        // Handle max_tokens -> max_output_tokens for Codex
-        if (parsed.max_tokens) {
-          parsed.max_output_tokens = parsed.max_tokens;
-          delete parsed.max_tokens;
+        // Remove unsupported parameters
+        delete parsed.max_tokens;
+        delete parsed.max_output_tokens;
+        delete parsed.max_completion_tokens;
+        delete parsed.temperature;
+        delete parsed.top_p;
+        delete parsed.frequency_penalty;
+        delete parsed.presence_penalty;
+        delete parsed.stop;
+        delete parsed.seed;
+        delete parsed.tool_choice;
+
+        // Fix tool schemas - AI SDK doesn't include type: "object" in parameters
+        // Codex requires this field for valid JSON Schema
+        if (Array.isArray(parsed.tools)) {
+          parsed.tools = parsed.tools.map((tool: any) => {
+            if (tool.parameters && !tool.parameters.type) {
+              tool.parameters.type = "object";
+            }
+            return tool;
+          });
         }
 
-        // Set default max_output_tokens if not present
-        if (!parsed.max_output_tokens && !parsed.max_completion_tokens) {
-          parsed.max_output_tokens = 4096;
-        }
-
-        // Filter input to remove AI SDK constructs
+        // Transform input for stateless Codex API (store: false)
+        // This is the critical fix for tool calling:
+        // 1. Filter out item_reference (AI SDK creates these but they don't work with store:false)
+        // 2. Inject real function_call objects before function_call_output items
+        // 3. Ensure arguments and output are JSON strings
         if (Array.isArray(parsed.input)) {
-          parsed.input = parsed.input
-            .filter((item: any) => item.type !== "item_reference")
-            .map((item: any) => {
-              if (item.id) {
-                const { id, ...itemWithoutId } = item;
-                return itemWithoutId;
+          // Log BEFORE transformation
+          console.error("\n=== INPUT ARRAY BEFORE TRANSFORMATION ===");
+          console.error("Total items:", parsed.input.length);
+          parsed.input.forEach((item: any, index: number) => {
+            console.error(`Item ${index}:`, JSON.stringify({
+              type: item.type,
+              role: item.role,
+              id: item.id,
+              hasCallId: !!item.call_id,
+              keys: Object.keys(item)
+            }, null, 2));
+          });
+
+          // Helper to strip ID from an item
+          const stripId = (item: any) => {
+            if ('id' in item) {
+              const { id, ...rest } = item;
+              return rest;
+            }
+            return item;
+          };
+
+          // Step 1: Filter out item_reference and strip all IDs
+          const filtered = parsed.input
+            .filter((item: any) => item?.type !== 'item_reference')
+            .map(stripId);
+
+          // Step 2: Check which function_call objects already exist
+          const existingFunctionCalls = new Set(
+            filtered
+              .filter((item: any) => item?.type === 'function_call' && typeof item.call_id === 'string')
+              .map((item: any) => item.call_id)
+          );
+
+          // Step 3: Inject missing function_call objects before function_call_output
+          const finalInput: any[] = [];
+          for (const item of filtered) {
+            // If this is a function_call_output, inject the corresponding function_call first (if missing)
+            if (item?.type === 'function_call_output') {
+              const callId = item.call_id;
+              if (callId && !existingFunctionCalls.has(callId)) {
+                // Look up the cached tool call
+                const cached = getToolCallByCallId(callId);
+                if (cached) {
+                  console.error(`\n=== INJECTING FUNCTION_CALL for ${callId} ===`);
+                  console.error("Cached call:", JSON.stringify(cached, null, 2));
+
+                  finalInput.push({
+                    type: 'function_call',
+                    name: cached.name,
+                    call_id: cached.call_id,
+                    arguments: typeof cached.arguments === 'string'
+                      ? cached.arguments
+                      : JSON.stringify(cached.arguments),
+                  });
+                  existingFunctionCalls.add(callId);
+                } else {
+                  console.error(`\n⚠️ WARNING: No cached function_call found for call_id ${callId}`);
+                }
               }
-              return item;
-            });
+
+              // Normalize output to JSON string
+              if (typeof item.output !== 'string') {
+                item.output = JSON.stringify(item.output ?? {});
+              }
+            }
+
+            finalInput.push(item);
+          }
+
+          parsed.input = finalInput;
+
+          console.error("\n=== INPUT ARRAY AFTER TRANSFORMATION ===");
+          console.error(`Transformed ${parsed.input.length} items`);
+          parsed.input.forEach((item: any, index: number) => {
+            console.error(`Item ${index}:`, JSON.stringify({
+              type: item.type,
+              role: item.role,
+              name: item.name,
+              hasOutput: !!item.output,
+              hasCallId: !!item.call_id,
+              hasArguments: !!item.arguments,
+            }, null, 2));
+          });
         }
+
+        // Add reasoning.encrypted_content for context continuity without server storage
+        // This is critical for maintaining conversation context with store: false
+        if (!parsed.include) {
+          parsed.include = ["reasoning.encrypted_content"];
+        }
+
 
         logger.debug("OpenAI fetch - transformed body:", parsed);
         body = JSON.stringify(parsed);
@@ -442,10 +703,14 @@ When the user asks questions or makes requests, help them accomplish their goals
 
     logger.debug("OpenAI Codex request", { url, hasBody: !!body });
 
-    return fetch(url, {
+    // Make the request
+    const response = await fetch(url, {
       ...init,
       headers,
       body,
     });
+
+    // Don't convert - @ai-sdk/openai expects Responses API format
+    return response;
   };
 }

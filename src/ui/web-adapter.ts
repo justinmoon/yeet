@@ -172,7 +172,7 @@ export class WebAdapter implements UIAdapter {
   }
 
   addMessagePart(part: import("./interface").MessagePart): void {
-    // Legacy web adapter doesn't use message parts yet
+    // Web adapter doesn't use message parts yet
     // Just append as text for now
     this.appendOutput(part.content);
   }

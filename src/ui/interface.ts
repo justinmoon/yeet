@@ -15,6 +15,17 @@ export interface MessagePart {
 }
 
 /**
+ * Represents a rendered message part (text, tool call, etc.)
+ * Text-type parts get markdown rendering via tree-sitter
+ */
+export interface MessagePart {
+  id: string;
+  type: "text" | "tool";
+  content: string;
+  metadata?: any;
+}
+
+/**
  * UI abstraction interface for Yeet.
  * Allows different frontend implementations (TUI, Web, etc.) while sharing the same backend logic.
  */
