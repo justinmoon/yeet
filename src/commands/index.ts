@@ -662,6 +662,12 @@ async function handleLoginOpenAICommand(
   ui.appendOutput("🔐 Starting OpenAI OAuth (ChatGPT Pro)...\n\n");
 
   try {
+    const { startCallbackServer } = await import("../openai-callback-server");
+
+    // Start local callback server
+    ui.appendOutput("Starting local callback server on port 1455...\n");
+    const callbackServer = await startCallbackServer();
+
     const { url, verifier, state } = await startOpenAIOAuth();
 
     // Automatically open browser
@@ -687,13 +693,31 @@ async function handleLoginOpenAICommand(
       ui.appendOutput(`   ${url}\n\n`);
     }
 
-    ui.appendOutput("After authorizing:\n");
-    ui.appendOutput("1. Copy the authorization code or full URL\n");
-    ui.appendOutput("2. Paste it here: ");
+    ui.appendOutput("Waiting for authorization...\n");
+    ui.appendOutput("(The browser will redirect automatically, or you can paste the code manually)\n\n");
 
-    // Set up state for receiving the code
-    ui.pendingOAuthSetup = { verifier, state, provider: "openai" };
-    ui.setStatus("Waiting for OpenAI OAuth code...");
+    // Wait for callback or timeout
+    const result = await callbackServer.waitForCallback(state);
+    callbackServer.close();
+
+    if (result) {
+      // Got callback automatically
+      ui.appendOutput("✓ Received authorization callback\n");
+      await handleOAuthCodeInput(
+        result.code,
+        verifier,
+        ui,
+        config,
+        "openai",
+        state,
+      );
+    } else {
+      // Timeout - fall back to manual paste
+      ui.appendOutput("\n⚠️  Automatic callback timed out.\n");
+      ui.appendOutput("Please paste the authorization code or full URL here: ");
+      ui.pendingOAuthSetup = { verifier, state, provider: "openai" };
+      ui.setStatus("Waiting for OpenAI OAuth code...");
+    }
   } catch (error: any) {
     ui.appendOutput(`\n❌ Failed to start OAuth: ${error.message}\n`);
   }
