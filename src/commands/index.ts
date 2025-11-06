@@ -703,8 +703,9 @@ async function handleLoginOpenAICommand(
     if (result) {
       // Got callback automatically
       ui.appendOutput("✓ Received authorization callback\n");
+      // Pass code and state in the format parseAuthorizationInput expects (code#state)
       await handleOAuthCodeInput(
-        result.code,
+        `${result.code}#${result.state}`,
         verifier,
         ui,
         config,
