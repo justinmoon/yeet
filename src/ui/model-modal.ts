@@ -31,18 +31,22 @@ export class ModelSelectorModal {
     const currentModel =
       config.activeProvider === "anthropic"
         ? config.anthropic?.model
-        : config.activeProvider === "maple"
-          ? config.maple?.model
-          : config.opencode.model;
+        : config.activeProvider === "openai"
+          ? config.openai?.model
+          : config.activeProvider === "maple"
+            ? config.maple?.model
+            : config.opencode.model;
 
     for (const group of groupedModels) {
       // Add provider header
       const providerName =
         group.provider === "anthropic"
           ? "Anthropic"
-          : group.provider === "maple"
-            ? "Maple AI"
-            : "OpenCode";
+          : group.provider === "openai"
+            ? "OpenAI (ChatGPT Pro)"
+            : group.provider === "maple"
+              ? "Maple AI"
+              : "OpenCode";
 
       items.push({
         id: `header-${group.provider}`,

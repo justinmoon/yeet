@@ -26,9 +26,8 @@ import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import { cycleTheme, getCurrentTheme, setTheme, themes } from "./colors";
-import type { UIAdapter } from "./interface";
-import type { MessagePart } from "./interface";
 import { createSyntaxStyle } from "./syntax-theme";
+import type { MessagePart, UIAdapter } from "./interface";
 
 // Set up tree-sitter worker path for Bun
 const __filename = fileURLToPath(import.meta.url);
@@ -51,7 +50,11 @@ export class TUISolidAdapter implements UIAdapter {
   currentTokens = 0;
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
-  pendingOAuthSetup?: { verifier: string };
+  pendingOAuthSetup?: {
+    verifier: string;
+    provider?: "anthropic" | "openai";
+    state?: string;
+  };
   isGenerating = false;
   abortController: AbortController | null = null;
 
@@ -102,9 +105,11 @@ export class TUISolidAdapter implements UIAdapter {
     const currentModelId =
       this.config.activeProvider === "anthropic"
         ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "maple"
-          ? this.config.maple?.model || ""
-          : this.config.opencode.model;
+        : this.config.activeProvider === "openai"
+          ? this.config.openai?.model || ""
+          : this.config.activeProvider === "maple"
+            ? this.config.maple?.model || ""
+            : this.config.opencode.model;
     const modelInfo = getModelInfo(currentModelId);
     const initialStatus = modelInfo
       ? `Paused | ${modelInfo.name} | 0/${modelInfo.contextWindow} (0%)`
@@ -123,10 +128,15 @@ export class TUISolidAdapter implements UIAdapter {
           "Type your message...",
         );
         const [imageCount, setImageCount] = createSignal(0);
+        const [explainVisible, setExplainVisible] = createSignal(false);
+        const [explainResult, setExplainResult] = createSignal<
+          ExplainResult | null
+        >(null);
+        const [explainIndex, setExplainIndex] = createSignal(0);
         let textareaRef: any = null;
         const scrollBoxRef: any = null;
 
-        // Initialize theme and create reactive syntax style
+        // Initialize theme and syntax style for markdown rendering
         const themeName = this.config.theme || "tokyonight";
         const theme = setTheme(themeName);
         const syntaxStyle = createSyntaxStyle(theme);
@@ -201,16 +211,14 @@ export class TUISolidAdapter implements UIAdapter {
               }}
               style={{ flexGrow: 1 }}
             >
-              {/* Legacy text chunks (for backwards compatibility during transition) */}
+              {/* Legacy text chunks (for backwards compatibility) */}
               <For each={outputContent()}>
                 {(content) => renderStyledText(content)}
               </For>
 
-              {/* New message parts with proper markdown rendering */}
+              {/* New message parts with markdown rendering */}
               <For each={messageParts()}>
                 {(part) => {
-                  // Only render "text" parts (assistant responses) with markdown
-                  // User messages and separators use the legacy appendOutput path
                   if (part.type === "text") {
                     return (
                       <box paddingLeft={3} marginTop={1} flexShrink={0}>
@@ -271,6 +279,9 @@ export class TUISolidAdapter implements UIAdapter {
                       if (this.pendingOAuthSetup) {
                         const code = message;
                         const verifier = this.pendingOAuthSetup.verifier;
+                        const provider =
+                          this.pendingOAuthSetup.provider || "anthropic";
+                        const state = this.pendingOAuthSetup.state;
                         this.pendingOAuthSetup = undefined;
                         this.clearInput();
                         const { handleOAuthCodeInput } = await import(
@@ -281,6 +292,8 @@ export class TUISolidAdapter implements UIAdapter {
                           verifier,
                           this,
                           this.config,
+                          provider,
+                          state,
                         );
                       } else if (this.pendingMapleSetup) {
                         const apiKey = message;

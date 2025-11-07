@@ -1,4 +1,4 @@
-import { cyan, dim, green, magenta, red, t, yellow } from "@opentui/core";
+import { dim, t } from "@opentui/core";
 import type { MessageContent } from "../agent";
 import { runAgent } from "../agent";
 import type { Config } from "../config";
@@ -10,6 +10,7 @@ import {
   formatTokenCount,
   truncateMessages,
 } from "../tokens";
+import { createBox, createBoxTop, createBoxTopEnd, semantic } from "./colors";
 import type { UIAdapter } from "./interface";
 
 /**
@@ -28,7 +29,7 @@ export async function handleMessage(
 
   // Add subtle separator between turns
   if (ui.conversationHistory.length > 0) {
-    ui.appendOutput(t`${dim("─")}\n`);
+    ui.appendOutput(t`${dim("─".repeat(60))}\n\n`);
   }
 
   // Build message content (text + images if any)
@@ -48,13 +49,13 @@ export async function handleMessage(
     ];
   }
 
-  // Display user message with [you] prefix
+  // Display user message with › prefix
   if (hasImages) {
     ui.appendOutput(
-      t`${cyan("[you]")} ${message} ${dim(`[${ui.imageAttachments.length} image(s)]`)}\n`,
+      t`${semantic.userPrefix("›")} ${message} ${dim(`[${ui.imageAttachments.length} image(s)]`)}\n\n`,
     );
   } else {
-    ui.appendOutput(t`${cyan("[you]")} ${message}\n`);
+    ui.appendOutput(t`${semantic.userPrefix("›")} ${message}\n\n`);
   }
 
   ui.clearInput();
@@ -95,7 +96,7 @@ export async function handleMessage(
       if (messages.length < originalLength) {
         const removed = originalLength - messages.length;
         ui.appendOutput(
-          t`\n${yellow(`⚠️  Truncated ${removed} old message(s) to fit context window`)}\n\n`,
+          t`\n${semantic.warning(`⚠️  Truncated ${removed} old message(s) to fit context window`)}\n\n`,
         );
         logger.info("Truncated conversation history", {
           removed,
@@ -108,6 +109,7 @@ export async function handleMessage(
     let textChunks = 0;
     let lastToolName = "";
     let lastToolArgs: any = {};
+    let hasOutputText = false; // Track if we've output any text
 
     for await (const event of runAgent(
       messages,
@@ -129,62 +131,97 @@ export async function handleMessage(
         });
         const text = event.content || "";
         assistantResponse += text;
-        updateTokenCount(ui, config, "Responding");
+
+        // Update status but don't output text yet - we'll use addMessagePart() at the end
+        if (!hasOutputText) {
+          hasOutputText = true;
+          updateTokenCount(ui, config, "Responding");
+        }
       } else if (event.type === "tool") {
         lastToolName = event.name || "";
         lastToolArgs = event.args || {};
 
         if (event.name === "bash") {
-          ui.appendOutput(t`\n${magenta("[bash]")} ${event.args?.command}\n`);
-        } else if (event.name === "read") {
-          ui.appendOutput(t`\n${magenta("[read]")} ${event.args?.path}\n`);
-        } else if (event.name === "write") {
-          ui.appendOutput(t`\n${magenta("[write]")} ${event.args?.path}\n`);
-        } else if (event.name === "edit") {
-          ui.appendOutput(t`\n${magenta("[edit]")} ${event.args?.path}\n`);
-        } else if (event.name === "search") {
+          const boxContent = createBox(event.args?.command || "");
           ui.appendOutput(
-            t`\n${magenta("[search]")} "${event.args?.pattern}"${event.args?.path ? ` in ${event.args.path}` : ""}\n`,
+            t`\n${createBoxTop()}${semantic.tool("$ bash")}${createBoxTopEnd()}\n${boxContent}\n`,
+          );
+        } else if (event.name === "read") {
+          const boxContent = createBox(event.args?.path || "");
+          ui.appendOutput(
+            t`\n${createBoxTop()}${semantic.tool("📖 read")}${createBoxTopEnd()}\n${boxContent}\n`,
+          );
+        } else if (event.name === "write") {
+          const boxContent = createBox(event.args?.path || "");
+          ui.appendOutput(
+            t`\n${createBoxTop()}${semantic.tool("📝 write")}${createBoxTopEnd()}\n${boxContent}\n`,
+          );
+        } else if (event.name === "edit") {
+          const boxContent = createBox(event.args?.path || "");
+          ui.appendOutput(
+            t`\n${createBoxTop()}${semantic.tool("✏️  edit")}${createBoxTopEnd()}\n${boxContent}\n`,
+          );
+        } else if (event.name === "search") {
+          const searchInfo = `"${event.args?.pattern}"${event.args?.path ? ` in ${event.args.path}` : ""}`;
+          const boxContent = createBox(searchInfo);
+          ui.appendOutput(
+            t`\n${createBoxTop()}${semantic.tool("🔍 search")}${createBoxTopEnd()}\n${boxContent}\n`,
           );
         } else if (event.name === "complete") {
           ui.appendOutput(
-            t`\n${green("✓ Task complete:")} ${event.args?.summary || ""}\n`,
+            t`\n${semantic.success("✓ Task complete:")} ${event.args?.summary || ""}\n`,
           );
         } else if (event.name === "clarify") {
-          ui.appendOutput(t`\n${yellow(`❓ ${event.args?.question || ""}`)}\n`);
+          ui.appendOutput(
+            t`\n${semantic.warning(`❓ ${event.args?.question || ""}`)}\n`,
+          );
         } else if (event.name === "pause") {
           ui.appendOutput(
-            t`\n${yellow(`⏸️  Paused: ${event.args?.reason || ""}`)}\n`,
+            t`\n${semantic.warning(`⏸️  Paused: ${event.args?.reason || ""}`)}\n`,
           );
         }
       } else if (event.type === "tool-result") {
         if (lastToolName === "read") {
           if (event.result?.error) {
-            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
+            ui.appendOutput(
+              t`  ${semantic.error(`❌ ${event.result.error}`)}\n`,
+            );
           } else {
-            ui.appendOutput(t`  ${green(`✓ Read ${lastToolArgs.path}`)}\n`);
+            ui.appendOutput(
+              t`  ${semantic.success(`✓ Read ${lastToolArgs.path}`)}\n`,
+            );
           }
         } else if (lastToolName === "write") {
           if (event.result?.error) {
-            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
+            ui.appendOutput(
+              t`  ${semantic.error(`❌ ${event.result.error}`)}\n`,
+            );
           } else {
-            ui.appendOutput(t`  ${green(`✓ Created ${lastToolArgs.path}`)}\n`);
+            ui.appendOutput(
+              t`  ${semantic.success(`✓ Created ${lastToolArgs.path}`)}\n`,
+            );
           }
         } else if (lastToolName === "edit") {
           if (event.result?.error) {
-            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
+            ui.appendOutput(
+              t`  ${semantic.error(`❌ ${event.result.error}`)}\n`,
+            );
           } else {
-            ui.appendOutput(t`  ${green(`✓ Updated ${lastToolArgs.path}`)}\n`);
+            ui.appendOutput(
+              t`  ${semantic.success(`✓ Updated ${lastToolArgs.path}`)}\n`,
+            );
           }
         } else if (lastToolName === "search") {
           if (event.result?.error) {
-            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
+            ui.appendOutput(
+              t`  ${semantic.error(`❌ ${event.result.error}`)}\n`,
+            );
           } else if (event.result?.message) {
-            ui.appendOutput(`  ${event.result.message}\n`);
+            ui.appendOutput(t`  ${event.result.message}\n`);
           } else if (event.result?.matches) {
             const count = event.result.total || 0;
             ui.appendOutput(
-              t`  ${green(`✓ Found ${count} match${count !== 1 ? "es" : ""}`)}\n`,
+              t`  ${semantic.success(`✓ Found ${count} match${count !== 1 ? "es" : ""}`)}\n`,
             );
             const displayMatches = event.result.matches.slice(0, 10);
             for (const match of displayMatches) {
@@ -200,7 +237,9 @@ export async function handleMessage(
           }
         } else if (lastToolName === "bash") {
           if (event.result?.error) {
-            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
+            ui.appendOutput(
+              t`  ${semantic.error(`❌ ${event.result.error}`)}\n`,
+            );
           } else if (event.result?.stdout) {
             // Indent bash output
             const indentedOutput = event.result.stdout
@@ -213,17 +252,17 @@ export async function handleMessage(
             }
             if (event.result.exitCode !== 0) {
               ui.appendOutput(
-                t`  ${red(`(exit code: ${event.result.exitCode})`)}\n`,
+                t`  ${semantic.error(`(exit code: ${event.result.exitCode})`)}\n`,
               );
             }
           }
         }
       } else if (event.type === "error") {
-        ui.appendOutput(t`\n${red(`❌ Error: ${event.error}`)}\n`);
+        ui.appendOutput(t`\n${semantic.error(`❌ Error: ${event.error}`)}\n`);
       }
     }
 
-    // Add assistant response as a message part for markdown rendering
+    // Output accumulated assistant response with markdown rendering
     if (assistantResponse.trim()) {
       ui.addMessagePart({
         id: `assistant-${Date.now()}`,
@@ -231,6 +270,8 @@ export async function handleMessage(
         content: assistantResponse.trim(),
       });
     }
+
+    ui.appendOutput("\n");
 
     // Save conversation to history
     ui.conversationHistory.push({ role: "user", content: messageContent });
@@ -266,7 +307,7 @@ export async function handleMessage(
         error: error.message,
         stack: error.stack,
       });
-      ui.appendOutput(t`\n${red(`❌ Error: ${error.message}`)}\n`);
+      ui.appendOutput(t`\n${semantic.error(`❌ Error: ${error.message}`)}\n`);
       updateTokenCount(ui, config, "Error");
     }
   } finally {
@@ -284,9 +325,11 @@ export function updateTokenCount(
   const modelId =
     config.activeProvider === "anthropic"
       ? config.anthropic?.model || ""
-      : config.activeProvider === "maple"
-        ? config.maple!.model
-        : config.opencode.model;
+      : config.activeProvider === "openai"
+        ? config.openai?.model || ""
+        : config.activeProvider === "maple"
+          ? config.maple!.model
+          : config.opencode.model;
   const modelInfo = getModelInfo(modelId);
 
   if (!modelInfo) {
@@ -313,9 +356,13 @@ export function updateTokenCount(
 
 export function saveCurrentSession(ui: UIAdapter, config: Config): void {
   const modelId =
-    config.activeProvider === "maple"
-      ? config.maple!.model
-      : config.opencode.model;
+    config.activeProvider === "anthropic"
+      ? config.anthropic?.model || ""
+      : config.activeProvider === "openai"
+        ? config.openai?.model || ""
+        : config.activeProvider === "maple"
+          ? config.maple!.model
+          : config.opencode.model;
 
   const { createSession, saveSession, loadSession } = require("../sessions");
 
