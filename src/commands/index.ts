@@ -668,56 +668,61 @@ async function handleLoginOpenAICommand(
     ui.appendOutput("Starting local callback server on port 1455...\n");
     const callbackServer = await startCallbackServer();
 
-    const { url, verifier, state } = await startOpenAIOAuth();
-
-    // Automatically open browser
-    ui.appendOutput("Opening browser for authentication...\n\n");
-
     try {
-      const platform = process.platform;
-      const openCmd =
-        platform === "darwin"
-          ? "open"
-          : platform === "win32"
-            ? "start"
-            : "xdg-open";
+      const { url, verifier, state } = await startOpenAIOAuth();
 
-      await Bun.spawn([openCmd, url], {
-        stdout: "ignore",
-        stderr: "ignore",
-      }).exited;
-    } catch (e) {
-      // If auto-open fails, show the URL
-      ui.appendOutput("⚠️  Could not open browser automatically.\n");
-      ui.appendOutput("Please open this URL manually:\n");
-      ui.appendOutput(`   ${url}\n\n`);
-    }
+      // Automatically open browser
+      ui.appendOutput("Opening browser for authentication...\n\n");
 
-    ui.appendOutput("Waiting for authorization...\n");
-    ui.appendOutput("(The browser will redirect automatically, or you can paste the code manually)\n\n");
+      try {
+        const platform = process.platform;
+        const openCmd =
+          platform === "darwin"
+            ? "open"
+            : platform === "win32"
+              ? "start"
+              : "xdg-open";
 
-    // Wait for callback or timeout
-    const result = await callbackServer.waitForCallback(state);
-    callbackServer.close();
+        await Bun.spawn([openCmd, url], {
+          stdout: "ignore",
+          stderr: "ignore",
+        }).exited;
+      } catch (e) {
+        // If auto-open fails, show the URL
+        ui.appendOutput("⚠️  Could not open browser automatically.\n");
+        ui.appendOutput("Please open this URL manually:\n");
+        ui.appendOutput(`   ${url}\n\n`);
+      }
 
-    if (result) {
-      // Got callback automatically
-      ui.appendOutput("✓ Received authorization callback\n");
-      // Pass code and state in the format parseAuthorizationInput expects (code#state)
-      await handleOAuthCodeInput(
-        `${result.code}#${result.state}`,
-        verifier,
-        ui,
-        config,
-        "openai",
-        state,
-      );
-    } else {
-      // Timeout - fall back to manual paste
-      ui.appendOutput("\n⚠️  Automatic callback timed out.\n");
-      ui.appendOutput("Please paste the authorization code or full URL here: ");
-      ui.pendingOAuthSetup = { verifier, state, provider: "openai" };
-      ui.setStatus("Waiting for OpenAI OAuth code...");
+      ui.appendOutput("Waiting for authorization...\n");
+      ui.appendOutput("(The browser will redirect automatically)\n\n");
+
+      // Wait for callback or timeout
+      const result = await callbackServer.waitForCallback(state);
+
+      if (result) {
+        // Got callback automatically
+        ui.appendOutput("✓ Received authorization callback\n");
+        // Pass code and state in the format parseAuthorizationInput expects (code#state)
+        await handleOAuthCodeInput(
+          `${result.code}#${result.state}`,
+          verifier,
+          ui,
+          config,
+          "openai",
+          state,
+        );
+      } else {
+        // Timeout - fail and require retry
+        ui.appendOutput("\n❌ Authorization callback timed out.\n");
+        ui.appendOutput("The browser redirect did not complete in time.\n");
+        ui.appendOutput("Please run /login-openai again to retry.\n");
+        // Clear any pending state so the CLI doesn't wait for input
+        ui.pendingOAuthSetup = undefined;
+      }
+    } finally {
+      // Always close the server to free port 1455, even if OAuth fails
+      callbackServer.close();
     }
   } catch (error: any) {
     ui.appendOutput(`\n❌ Failed to start OAuth: ${error.message}\n`);

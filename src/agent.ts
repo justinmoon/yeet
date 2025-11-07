@@ -13,7 +13,7 @@ import type { Config } from "./config";
 import { logger } from "./logger";
 import { createMapleFetch } from "./maple";
 import * as tools from "./tools";
-import { upsertToolCall } from "./call-cache";
+import { clearSession, upsertToolCall } from "./call-cache";
 
 // NOTE: Claude Code spoofing copied from opencode
 // When using Anthropic, we pretend to be "Claude Code" to get better results
@@ -91,10 +91,11 @@ export async function* runAgent(
   maxSteps?: number,
   abortSignal?: AbortSignal,
 ): AsyncGenerator<AgentEvent> {
+  // Generate session ID for tool call cache (Codex stateless mode)
+  const sessionId = crypto.randomUUID();
+  logger.debug("Agent session started", { sessionId });
+
   try {
-    // Generate session ID for tool call cache (Codex stateless mode)
-    const sessionId = crypto.randomUUID();
-    logger.debug("Agent session started", { sessionId });
 
     // Choose provider based on config
     let provider;
@@ -212,6 +213,7 @@ export async function* runAgent(
           upsertToolCall(sessionId, {
             call_id: tc.toolCallId,
             name: tc.toolName,
+            // @ts-expect-error AI SDK v5 types are complex but runtime works correctly
             arguments: JSON.stringify(tc.args ?? {}),
           });
         }
@@ -278,5 +280,9 @@ export async function* runAgent(
     yield { type: "done" };
   } catch (error: any) {
     yield { type: "error", error: error.message };
+  } finally {
+    // Clean up session cache to prevent memory leaks and cross-conversation data leakage
+    clearSession(sessionId);
+    logger.debug("Cleared session cache", { sessionId });
   }
 }

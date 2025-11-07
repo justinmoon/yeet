@@ -396,15 +396,15 @@ async function codexSseToChatCompletionsStream(
 
               // Log other event types for debugging
               else if (eventType && !eventType.includes("in_progress") && !eventType.includes("created")) {
-                logger.debug("Unhandled Codex SSE event:", eventType, payload);
+                logger.debug("Unhandled Codex SSE event", { eventType, payload });
               }
             } catch (parseError) {
-              logger.error("Failed to parse SSE data:", data, parseError);
+              logger.error("Failed to parse SSE data", { data, parseError });
             }
           }
         }
       } catch (error) {
-        logger.error("SSE stream error:", error);
+        logger.error("SSE stream error", { error });
         controller.error(error);
       } finally {
         controller.close();
@@ -480,7 +480,7 @@ export function createOpenAIFetch(config: Config) {
       url = String(input);
     }
 
-    logger.debug("OpenAI fetch - original URL:", url);
+    logger.debug("OpenAI fetch - original URL", { url });
 
     // Rewrite URL to Codex backend
     // The AI SDK may use standard OpenAI paths, we need to rewrite to Codex
@@ -495,7 +495,7 @@ export function createOpenAIFetch(config: Config) {
       url = url.replace("/responses", "/codex/responses");
     }
 
-    logger.debug("OpenAI fetch - rewritten URL:", url);
+    logger.debug("OpenAI fetch - rewritten URL", { url });
 
     // Create headers with OAuth token and Codex-specific headers
     const headers = new Headers(init?.headers ?? {});
@@ -518,10 +518,6 @@ export function createOpenAIFetch(config: Config) {
       try {
         const parsed = JSON.parse(body) as Record<string, any>;
         logger.debug("OpenAI fetch - original body:", parsed);
-
-        // Log full request for debugging tool calling
-        console.error("\n=== FULL REQUEST BODY ===");
-        console.error(JSON.stringify(parsed, null, 2));
 
         // The OpenAI-compatible SDK sends standard OpenAI format with "messages"
         // Codex expects "input" array format instead
@@ -601,17 +597,14 @@ export function createOpenAIFetch(config: Config) {
         // 2. Inject real function_call objects before function_call_output items
         // 3. Ensure arguments and output are JSON strings
         if (Array.isArray(parsed.input)) {
-          // Log BEFORE transformation
-          console.error("\n=== INPUT ARRAY BEFORE TRANSFORMATION ===");
-          console.error("Total items:", parsed.input.length);
-          parsed.input.forEach((item: any, index: number) => {
-            console.error(`Item ${index}:`, JSON.stringify({
+          logger.debug("Input array before transformation", {
+            totalItems: parsed.input.length,
+            items: parsed.input.map((item: any, index: number) => ({
+              index,
               type: item.type,
               role: item.role,
-              id: item.id,
               hasCallId: !!item.call_id,
-              keys: Object.keys(item)
-            }, null, 2));
+            }))
           });
 
           // Helper to strip ID from an item
@@ -645,8 +638,10 @@ export function createOpenAIFetch(config: Config) {
                 // Look up the cached tool call
                 const cached = getToolCallByCallId(callId);
                 if (cached) {
-                  console.error(`\n=== INJECTING FUNCTION_CALL for ${callId} ===`);
-                  console.error("Cached call:", JSON.stringify(cached, null, 2));
+                  logger.debug("Injecting missing function_call", {
+                    callId,
+                    name: cached.name,
+                  });
 
                   finalInput.push({
                     type: 'function_call',
@@ -658,7 +653,7 @@ export function createOpenAIFetch(config: Config) {
                   });
                   existingFunctionCalls.add(callId);
                 } else {
-                  console.error(`\n⚠️ WARNING: No cached function_call found for call_id ${callId}`);
+                  logger.warn("No cached function_call found", { callId });
                 }
               }
 
@@ -673,17 +668,17 @@ export function createOpenAIFetch(config: Config) {
 
           parsed.input = finalInput;
 
-          console.error("\n=== INPUT ARRAY AFTER TRANSFORMATION ===");
-          console.error(`Transformed ${parsed.input.length} items`);
-          parsed.input.forEach((item: any, index: number) => {
-            console.error(`Item ${index}:`, JSON.stringify({
+          logger.debug("Input array after transformation", {
+            totalItems: parsed.input.length,
+            items: parsed.input.map((item: any, index: number) => ({
+              index,
               type: item.type,
               role: item.role,
               name: item.name,
               hasOutput: !!item.output,
               hasCallId: !!item.call_id,
               hasArguments: !!item.arguments,
-            }, null, 2));
+            }))
           });
         }
 
