@@ -2,6 +2,7 @@ import {
   BoxRenderable,
   type CliRenderer,
   type KeyEvent,
+  type PasteEvent,
   RGBA,
   ScrollBoxRenderable,
   type StyledText,
@@ -20,6 +21,7 @@ import { handleMapleSetup } from "../commands";
 import type { Config } from "../config";
 import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
+import { normalizePastedPath, readImageFromPath } from "../utils/paste";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import type { UIAdapter } from "./interface";
 import { ModelSelectorModal } from "./model-modal";
@@ -30,7 +32,8 @@ export class TUIAdapter implements UIAdapter {
     role: "user" | "assistant";
     content: MessageContent;
   }> = [];
-  imageAttachments: Array<{ mimeType: string; data: string }> = [];
+  imageAttachments: Array<{ mimeType: string; data: string; name?: string }> =
+    [];
   currentTokens = 0;
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
@@ -55,6 +58,8 @@ export class TUIAdapter implements UIAdapter {
   private config: Config;
   private userInputCallback?: (message: string) => Promise<void>;
   private commandCallback?: (command: string, args: string[]) => Promise<void>;
+  private collapsedPastes = new Map<string, string>();
+  private collapsedPasteCounter = 0;
 
   constructor(config: Config) {
     this.config = config;
@@ -99,45 +104,25 @@ export class TUIAdapter implements UIAdapter {
   }
 
   appendOutput(text: string | StyledText): void {
-    // Add to chunks array
     this.contentChunks.push(text);
-
-    // Combine all chunks into a single StyledText
-    const combined = this.contentChunks.map((chunk) =>
-      typeof chunk === "string" ? stringToStyledText(chunk) : chunk,
-    );
-
-    // Merge all StyledText chunks by concatenating their chunks arrays
-    const allChunks = combined.flatMap((st) => st.chunks);
-    const StyledTextClass = stringToStyledText("").constructor as any;
-    const mergedContent = new StyledTextClass(allChunks);
-
-    this.output.content = mergedContent;
-
-    // Force layout recalculation and scroll to bottom
-    // @ts-ignore
-    this.scrollBox.recalculateBarProps?.();
-
-    // @ts-ignore
-    const maxScroll = Math.max(
-      0,
-      this.scrollBox.scrollHeight - this.scrollBox.viewport.height,
-    );
-    this.scrollBox.scrollTop = maxScroll;
-
-    // @ts-ignore
-    this.renderer.requestAnimationFrame?.(() => {});
+    this.renderOutput();
   }
 
   addMessagePart(part: import("./interface").MessagePart): void {
-    // Legacy TUI adapter doesn't use message parts yet
-    // Just append as text for now
-    this.appendOutput(part.content);
+    if (part.type === "text") {
+      this.appendOutput(t`${green("[yeet]")} ${part.content}`);
+    } else if (part.type === "tool") {
+      const toolName =
+        part.metadata?.tool ?? part.metadata?.name ?? part.metadata ?? "tool";
+      this.appendOutput(`[${toolName}] ${part.content}`);
+    } else {
+      this.appendOutput(`${part.content}`);
+    }
   }
 
   clearOutput(): void {
     this.contentChunks = [];
-    this.output.content = "";
+    this.renderOutput();
   }
 
   setStatus(text: string): void {
@@ -146,6 +131,8 @@ export class TUIAdapter implements UIAdapter {
 
   clearInput(): void {
     this.input.editBuffer.setText("", { history: false });
+    this.collapsedPastes.clear();
+    this.collapsedPasteCounter = 0;
     this.inputBox.height = 1; // Reset to minimum height
   }
 
@@ -160,6 +147,119 @@ export class TUIAdapter implements UIAdapter {
 
   saveCurrentSession(): void {
     saveCurrentSession(this, this.config);
+  }
+
+  private async handlePasteEvent(event: PasteEvent): Promise<void> {
+    if (this.modalActive) {
+      event.preventDefault();
+      return;
+    }
+
+    const pastedText = event.text ?? "";
+
+    if (await this.tryAttachImageFromPathCandidate(pastedText)) {
+      event.preventDefault();
+      return;
+    }
+
+    const trimmed = pastedText.trim();
+    if (!trimmed) {
+      const image = await readImageFromClipboard();
+      if (image) {
+        event.preventDefault();
+        this.addImageAttachment(image, "clipboard-paste");
+      }
+      return;
+    }
+
+    if (this.collapsePastedTextIfNeeded(pastedText)) {
+      event.preventDefault();
+    }
+  }
+
+  private collapsePastedTextIfNeeded(text: string): boolean {
+    const normalized = text.replace(/\r/g, "");
+    const lineCount = Math.max(
+      1,
+      normalized.length === 0 ? 0 : normalized.split("\n").length,
+    );
+    const charCount = normalized.length;
+    const shouldCollapse = lineCount >= 3 || charCount > 150;
+
+    if (!shouldCollapse) {
+      return false;
+    }
+
+    const id = ++this.collapsedPasteCounter;
+    const placeholder = `[Pasted ~${lineCount} lines #${id}]`;
+    this.collapsedPastes.set(placeholder, text);
+    this.input.insertText(`${placeholder} `);
+    logger.info("Collapsed large paste", {
+      placeholder,
+      lineCount,
+      charCount,
+    });
+    return true;
+  }
+
+  private pruneCollapsedPastes(): void {
+    const currentText = this.input?.editBuffer.getText() ?? "";
+    for (const placeholder of Array.from(this.collapsedPastes.keys())) {
+      if (!currentText.includes(placeholder)) {
+        this.collapsedPastes.delete(placeholder);
+      }
+    }
+  }
+
+  private expandCollapsedPastes(text: string): string {
+    if (this.collapsedPastes.size === 0) {
+      return text;
+    }
+
+    let expanded = text;
+    for (const [placeholder, original] of this.collapsedPastes.entries()) {
+      if (expanded.includes(placeholder)) {
+        expanded = expanded.split(placeholder).join(original);
+      }
+    }
+
+    return expanded;
+  }
+
+  private async tryAttachImageFromPathCandidate(
+    rawText: string,
+  ): Promise<boolean> {
+    const normalized = normalizePastedPath(rawText);
+    if (!normalized) {
+      return false;
+    }
+
+    const image = await readImageFromPath(normalized);
+    if (!image) {
+      logger.debug("Pasted path is not an image or failed to load", {
+        path: normalized,
+      });
+      return false;
+    }
+
+    this.addImageAttachment(image, normalized);
+    return true;
+  }
+
+  private addImageAttachment(
+    image: { mimeType: string; data: string; name?: string },
+    source: string,
+  ): void {
+    this.imageAttachments.push(image);
+    this.updateAttachmentIndicator();
+    const label = image.name || image.mimeType || "image";
+    this.appendOutput(t`${dim(`📎 Attached ${label}`)}\n`);
+    logger.info("Image attachment added", {
+      source,
+      name: image.name,
+      mimeType: image.mimeType,
+      count: this.imageAttachments.length,
+    });
   }
 
   private setupComponents(): void {
@@ -230,9 +330,13 @@ export class TUIAdapter implements UIAdapter {
       cursorColor: "blue",
       flexGrow: 1,
       flexShrink: 0,
+      onContentChange: () => this.pruneCollapsedPastes(),
     });
     this.inputBox.add(this.input);
     this.input.focus();
+    this.input.onPaste = (event: PasteEvent) => {
+      void this.handlePasteEvent(event);
+    };
   }
 
   private adjustInputHeight(): void {
@@ -495,24 +599,27 @@ export class TUIAdapter implements UIAdapter {
         return;
       }
 
-      if (key.name === "v" && key.ctrl) {
-        key.preventDefault();
+      if (key.name === "v" && key.ctrl && !key.shift && !key.meta) {
         const image = await readImageFromClipboard();
         if (image) {
-          this.imageAttachments.push(image);
-          this.updateAttachmentIndicator();
-          logger.info("Image pasted from clipboard", {
-            count: this.imageAttachments.length,
-            mimeType: image.mimeType,
-          });
+          key.preventDefault();
+          this.addImageAttachment(image, "clipboard-shortcut");
+          return;
         }
-        return;
       }
 
       if (key.name === "return" && !key.shift) {
         key.preventDefault();
-        const message = this.input.editBuffer.getText();
+        const rawMessage = this.input.editBuffer.getText();
+        const message = this.expandCollapsedPastes(rawMessage);
         if (message.trim()) {
+          if (this.isGenerating) {
+            this.appendOutput(
+              t`${dim("⚠️  Still working on the previous request (press Esc to cancel).")}\n`,
+            );
+            return;
+          }
+
           if (this.pendingOAuthSetup) {
             const code = message;
             const verifier = this.pendingOAuthSetup.verifier;
@@ -555,6 +662,32 @@ export class TUIAdapter implements UIAdapter {
     } else {
       this.updateTokenCount();
     }
+  }
+
+  private renderOutput(): void {
+    const combined = this.contentChunks.map((chunk) =>
+      typeof chunk === "string" ? stringToStyledText(chunk) : chunk,
+    );
+
+    const allChunks = combined.flatMap((st) => st.chunks);
+    const StyledTextClass = stringToStyledText("").constructor as any;
+    const mergedContent = new StyledTextClass(allChunks);
+
+    this.output.content = mergedContent;
+
+    // Force layout recalculation and scroll to bottom
+    // @ts-ignore
+    this.scrollBox.recalculateBarProps?.();
+
+    // @ts-ignore
+    const maxScroll = Math.max(
+      0,
+      this.scrollBox.scrollHeight - this.scrollBox.viewport.height,
+    );
+    this.scrollBox.scrollTop = maxScroll;
+
+    // @ts-ignore
+    this.renderer.requestAnimationFrame?.(() => {});
   }
 }
 

@@ -38,6 +38,7 @@ export interface UIAdapter {
   imageAttachments: Array<{
     mimeType: string;
     data: string;
+    name?: string;
   }>;
   currentTokens: number;
   currentSessionId: string | null;

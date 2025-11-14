@@ -1,5 +1,5 @@
 import type { MessageContent } from "../agent";
-import { handleMapleSetup, handleOAuthCodeInput } from "../commands";
+import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
 import type { Config } from "../config";
 import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
@@ -17,15 +17,12 @@ export class WebAdapter implements UIAdapter {
     role: "user" | "assistant";
     content: MessageContent;
   }> = [];
-  imageAttachments: Array<{ mimeType: string; data: string }> = [];
+  imageAttachments: Array<{ mimeType: string; data: string; name?: string }> =
+    [];
   currentTokens = 0;
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
-  pendingOAuthSetup?: {
-    verifier: string;
-    provider?: "anthropic" | "openai";
-    state?: string;
-  };
+  pendingOAuthSetup?: { verifier: string };
   isGenerating = false;
   abortController: AbortController | null = null;
 
@@ -72,13 +69,9 @@ export class WebAdapter implements UIAdapter {
 
           // Send initial status
           const modelId =
-            self.config.activeProvider === "anthropic"
-              ? self.config.anthropic?.model || ""
-              : self.config.activeProvider === "openai"
-                ? self.config.openai?.model || ""
-                : self.config.activeProvider === "maple"
-                  ? self.config.maple?.model || ""
-                  : self.config.opencode.model;
+            self.config.activeProvider === "opencode"
+              ? self.config.opencode.model
+              : self.config.maple?.model || "";
           const modelInfo = getModelInfo(modelId);
           const modelDisplay = modelInfo
             ? `${modelInfo.name} (${self.config.activeProvider})`
@@ -115,25 +108,30 @@ export class WebAdapter implements UIAdapter {
               const text = msg.data.trim();
               if (!text) return;
 
-              if (self.pendingOAuthSetup) {
-                const { verifier, provider = "anthropic", state } =
-                  self.pendingOAuthSetup;
-                self.pendingOAuthSetup = undefined;
-                await handleOAuthCodeInput(
-                  text,
-                  verifier,
-                  self,
-                  self.config,
-                  provider,
-                  state,
+              if (self.isGenerating) {
+                self.appendOutput(
+                  "⚠️  Still working on the previous request (press Esc to cancel).\n",
                 );
-              } else if (self.pendingMapleSetup) {
+                return;
+              }
+
+              if (self.pendingMapleSetup) {
                 const apiKey = text;
                 const modelId = self.pendingMapleSetup.modelId;
                 self.pendingMapleSetup = undefined;
                 await handleMapleSetup(apiKey, modelId, self, self.config);
               } else {
-                await handleMessage(text, self, self.config);
+                const parsed = parseCommand(text);
+                if (parsed.isCommand && parsed.command) {
+                  await executeCommand(
+                    parsed.command,
+                    parsed.args,
+                    self,
+                    self.config,
+                  );
+                } else {
+                  await handleMessage(text, self, self.config);
+                }
               }
             }
           } catch (error: any) {
@@ -174,9 +172,15 @@ export class WebAdapter implements UIAdapter {
   }
 
   addMessagePart(part: import("./interface").MessagePart): void {
-    // Web adapter doesn't use message parts yet
-    // Just append as text for now
-    this.appendOutput(part.content);
+    if (part.type === "text") {
+      this.appendOutput(`[yeet] ${part.content}`);
+    } else if (part.type === "tool") {
+      const toolName =
+        part.metadata?.tool ?? part.metadata?.name ?? part.metadata ?? "tool";
+      this.appendOutput(`[${toolName}] ${part.content}`);
+    } else {
+      this.appendOutput(`${part.content}`);
+    }
   }
 
   clearOutput(): void {
@@ -212,13 +216,9 @@ export class WebAdapter implements UIAdapter {
 
   private updateAttachmentIndicator(): void {
     const modelId =
-      this.config.activeProvider === "anthropic"
-        ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "openai"
-          ? this.config.openai?.model || ""
-          : this.config.activeProvider === "maple"
-            ? this.config.maple!.model
-            : this.config.opencode.model;
+      this.config.activeProvider === "maple"
+        ? this.config.maple!.model
+        : this.config.opencode.model;
     const modelInfo = getModelInfo(modelId);
     const modelName = modelInfo?.name || modelId;
 
