@@ -128,6 +128,7 @@ export class TUISolidAdapter implements UIAdapter {
           "Type your message...",
         );
         const [imageCount, setImageCount] = createSignal(0);
+        const [inputHeight, setInputHeight] = createSignal(1);
         const [explainVisible, setExplainVisible] = createSignal(false);
         const [explainResult, setExplainResult] = createSignal<
           ExplainResult | null
@@ -140,6 +141,43 @@ export class TUISolidAdapter implements UIAdapter {
         const themeName = this.config.theme || "tokyonight";
         const theme = setTheme(themeName);
         const syntaxStyle = createSyntaxStyle(theme);
+
+        const updateInputHeight = (overrideText?: string) => {
+          const rendererInstance: any = this.renderer || renderer;
+          const availableWidth = Math.max(
+            1,
+            (rendererInstance?.width ?? 80) - 4,
+          );
+          const terminalHeight = rendererInstance?.height ?? 24;
+          // Grow up to roughly 40% of the viewport so long prompts stay visible
+          const maxVisibleRows = Math.max(2, Math.floor(terminalHeight * 0.4));
+          const text =
+            overrideText ??
+            textareaRef?.plainText ??
+            this.inputText ??
+            this.getInputValue?.() ??
+            "";
+
+          let lineCount = 1;
+          if (text.length > 0) {
+            const lines = text.split("\n");
+            lineCount = lines.reduce((total, line) => {
+              if (line.length === 0) {
+                return total + 1;
+              }
+              const wraps = Math.ceil(line.length / availableWidth);
+              return total + Math.max(wraps, 1);
+            }, 0);
+          }
+
+          const desiredHeight = Math.min(
+            Math.max(lineCount, 1),
+            maxVisibleRows,
+          );
+          if (inputHeight() !== desiredHeight) {
+            setInputHeight(desiredHeight);
+          }
+        };
 
         // Store signal setters for use by adapter methods
         this.setStatusText = setStatusText;
@@ -174,6 +212,7 @@ export class TUISolidAdapter implements UIAdapter {
           if (textareaRef) {
             textareaRef.focus();
           }
+          updateInputHeight(this.inputText);
           // Show welcome message
           if (this.contentChunks.length === 0) {
             this.contentChunks.push(
@@ -181,6 +220,11 @@ export class TUISolidAdapter implements UIAdapter {
             );
             setOutputContent([...this.contentChunks]);
           }
+        });
+
+        createEffect(() => {
+          const value = inputValue();
+          updateInputHeight(value);
         });
 
         // Helper to render styled text content
@@ -250,12 +294,19 @@ export class TUISolidAdapter implements UIAdapter {
 
             {/* Footer */}
             <box
-              style={{ backgroundColor: "#DCDCDC", height: 1, flexShrink: 0 }}
+              style={{
+                backgroundColor: "#DCDCDC",
+                height: inputHeight(),
+                flexShrink: 0,
+              }}
             >
               <textarea
                 ref={(el: any) => {
                   textareaRef = el;
                   this.inputEl = el;
+                  updateInputHeight(
+                    textareaRef?.plainText ?? this.inputText ?? "",
+                  );
                 }}
                 placeholder={inputPlaceholder()}
                 textColor="#000000"
@@ -264,11 +315,13 @@ export class TUISolidAdapter implements UIAdapter {
                 cursorColor="#000000"
                 wrapMode="word"
                 showCursor={true}
+                style={{ height: inputHeight(), flexGrow: 1 }}
                 onContentChange={() => {
                   if (textareaRef) {
                     const text = textareaRef.plainText;
                     this.inputText = text;
                     setInputValue(text);
+                    updateInputHeight(text);
                   }
                 }}
                 onKeyDown={async (e: any) => {
