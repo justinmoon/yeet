@@ -1,6 +1,7 @@
 // @ts-nocheck - AI SDK v5 types are complex, but runtime works correctly
 import { jsonSchema, tool } from "ai";
 import z from "zod/v4";
+import { ensureWorkspaceWriteAccess } from "../workspace/state";
 
 const editSchema = z.object({
   path: z.string().describe("Path to the file to edit"),
@@ -17,6 +18,7 @@ export const edit = tool({
     newText,
   }: { path: string; oldText: string; newText: string }) => {
     try {
+      ensureWorkspaceWriteAccess(`edit ${path}`);
       const file = Bun.file(path);
       const content = await file.text();
 

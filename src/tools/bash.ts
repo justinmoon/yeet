@@ -2,6 +2,7 @@
 import { jsonSchema, tool } from "ai";
 import { $ } from "bun";
 import z from "zod/v4";
+import { getActiveWorkspaceBinding } from "../workspace/state";
 
 const bashSchema = z.object({
   command: z.string().describe("The bash command to execute"),
@@ -16,6 +17,14 @@ export const bash = tool({
     if (!command) {
       return {
         error: "No command provided. Received: " + JSON.stringify(args),
+        exitCode: 1,
+      };
+    }
+
+    const binding = getActiveWorkspaceBinding();
+    if (!binding.allowWrites) {
+      return {
+        error: `Workspace "${binding.label || binding.cwd}" is read-only; bash tool is disabled.`,
         exitCode: 1,
       };
     }

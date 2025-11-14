@@ -11,6 +11,8 @@ import {
   truncateMessages,
 } from "../tokens";
 import type { UIAdapter } from "./interface";
+import { createDefaultWorkspaceBinding } from "../workspace/binding";
+import { setActiveWorkspaceBinding } from "../workspace/state";
 
 /**
  * Backend logic for handling messages, agent interactions, and session management.
@@ -332,19 +334,36 @@ export function saveCurrentSession(ui: UIAdapter, config: Config): void {
       ? config.maple!.model
       : config.opencode.model;
 
-  const { createSession, saveSession, loadSession } = require("../sessions");
+  const {
+    createSession,
+    saveSession,
+    loadSession,
+    ensureSessionWorkspace,
+  } = require("../sessions");
 
   if (!ui.currentSessionId) {
-    const session = createSession(modelId, config.activeProvider);
+    const session = createSession(modelId, config.activeProvider, {
+      agentCapability: "primary",
+      workspace: createDefaultWorkspaceBinding(process.cwd()),
+    });
     ui.currentSessionId = session.id;
+    if (session.workspace) {
+      setActiveWorkspaceBinding(session.workspace);
+    }
     logger.info("Created new session", { id: session.id });
   }
 
   let session = loadSession(ui.currentSessionId);
   if (!session) {
-    session = createSession(modelId, config.activeProvider);
+    session = createSession(modelId, config.activeProvider, {
+      agentCapability: "primary",
+      workspace: createDefaultWorkspaceBinding(process.cwd()),
+    });
     session.id = ui.currentSessionId;
   }
+
+  const workspace = ensureSessionWorkspace(session, process.cwd(), true);
+  setActiveWorkspaceBinding(workspace);
 
   session.conversationHistory = ui.conversationHistory;
   session.currentTokens = ui.currentTokens;

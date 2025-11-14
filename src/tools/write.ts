@@ -1,6 +1,7 @@
 // @ts-nocheck - AI SDK v5 types are complex, but runtime works correctly
 import { jsonSchema, tool } from "ai";
 import z from "zod/v4";
+import { ensureWorkspaceWriteAccess } from "../workspace/state";
 
 const writeSchema = z.object({
   path: z.string().describe("Path for the new file"),
@@ -12,6 +13,7 @@ export const write = tool({
   inputSchema: jsonSchema(z.toJSONSchema(writeSchema)),
   execute: async ({ path, content }: { path: string; content: string }) => {
     try {
+      ensureWorkspaceWriteAccess(`write to ${path}`);
       await Bun.write(path, content);
       return { success: true, message: `Created ${path}` };
     } catch (error: any) {
