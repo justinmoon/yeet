@@ -53,7 +53,7 @@ start_service() {
 }
 
 # Start API server
-start_service "API Server" "$API_PORT" "bun gui/server.ts" "/tmp/xstate-api-server.log"
+start_service "API Server" "$API_PORT" "bun demos/workflows/server.ts" "/tmp/xstate-api-server.log"
 
 # Start Vite dev server
 start_service "Vite Dev Server" "$VITE_PORT" "bun vite" "/tmp/xstate-vite.log"

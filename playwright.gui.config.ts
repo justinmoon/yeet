@@ -29,7 +29,7 @@ export default defineConfig({
   // Auto-start both servers
   webServer: [
     {
-      command: "bun gui/server.ts",
+      command: "bun demos/workflows/server.ts",
       url: "http://localhost:3457/api/execute?task=test",
       timeout: 60000,
       reuseExistingServer: true,
