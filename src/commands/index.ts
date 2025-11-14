@@ -17,6 +17,7 @@ import type { ExplainResult } from "../explain";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
 import type { UIAdapter } from "../ui/interface";
 import { setActiveWorkspaceBinding } from "../workspace/state";
+import { getAgentSpawner, getAgentInbox } from "../agents/service";
 
 export interface ParsedCommand {
   isCommand: boolean;
@@ -72,6 +73,12 @@ export async function executeCommand(
     case "workspace":
       await handleWorkspaceCommand(args, ui);
       break;
+    case "spawnagent":
+      await handleSpawnAgentCommand(args, ui);
+      break;
+    case "inbox":
+      await handleInboxCommand(ui);
+      break;
     case "help":
       await handleHelpCommand(ui);
       break;
@@ -120,6 +127,8 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("  /clear              - Clear current session\n");
   ui.appendOutput("  /toggle             - Cycle through color themes\n");
   ui.appendOutput("  /workspace <mode>   - Set workspace to readonly or writable\n");
+  ui.appendOutput("  /spawnagent <id>    - Launch a configured subagent with prompt\n");
+  ui.appendOutput("  /inbox              - Show pending subagent status updates\n");
   ui.appendOutput(
     "  /explain [prompt]   - Generate tutorial for current diff\n",
   );
@@ -749,6 +758,83 @@ async function handleWorkspaceCommand(
       ? "📝 Workspace is now writable.\n"
       : "🔒 Workspace set to read-only. write/edit/bash will be blocked.\n",
   );
+}
+
+async function handleSpawnAgentCommand(
+  args: string[],
+  ui: UIAdapter,
+): Promise<void> {
+  const [agentId, ...promptParts] = args;
+  if (!agentId || promptParts.length === 0) {
+    ui.appendOutput("Usage: /spawnagent <agent-id> <prompt>\n");
+    return;
+  }
+  if (!ui.currentSessionId) {
+    ui.appendOutput("⚠️  Start a session before spawning subagents.\n");
+    return;
+  }
+
+  const prompt = promptParts.join(" ");
+  try {
+    const spawner = await getAgentSpawner();
+    const handle = await spawner.spawn({
+      agentId,
+      capability: "subtask",
+      prompt,
+      parentSessionId: ui.currentSessionId,
+      trigger: { type: "slash", value: "spawnagent" },
+    });
+
+    ui.appendOutput(
+      `🚀 Spawned ${agentId} in session ${handle.sessionId}. Use /inbox to monitor progress.\n`,
+    );
+
+    const unsubscribe = handle.onStatusChange((status) => {
+      ui.appendOutput(`  ↳ ${agentId} status: ${status}\n`);
+    });
+
+    handle
+      .awaitResult()
+      .then((result) => {
+        if (result.status === "complete") {
+          ui.appendOutput(`✅ ${agentId} finished: ${result.summary}\n`);
+        } else if (result.error) {
+          ui.appendOutput(`❌ ${agentId} failed: ${result.error}\n`);
+        } else {
+          ui.appendOutput(`⚠️ ${agentId} status: ${result.status}\n`);
+        }
+      })
+      .catch((error: any) => {
+        ui.appendOutput(
+          `❌ ${agentId} encountered an error: ${error?.message || error}\n`,
+        );
+      })
+      .finally(() => {
+        unsubscribe();
+      });
+  } catch (error: any) {
+    ui.appendOutput(`❌ Failed to spawn agent: ${error.message}\n`);
+  }
+}
+
+async function handleInboxCommand(ui: UIAdapter): Promise<void> {
+  const inbox = getAgentInbox();
+  const updates = inbox.poll();
+  if (updates.length === 0) {
+    ui.appendOutput("📭 Inbox empty.\n");
+    return;
+  }
+  ui.appendOutput("📬 Subagent Updates:\n");
+  for (const update of updates) {
+    const statusLine = `  • ${update.agentId} (${update.sessionId}) → ${update.status}`;
+    ui.appendOutput(`${statusLine}\n`);
+    if (update.summary) {
+      ui.appendOutput(`     Summary: ${update.summary}\n`);
+    }
+    if (update.error) {
+      ui.appendOutput(`     Error: ${update.error}\n`);
+    }
+  }
 }
 
 async function handleAuthCommand(

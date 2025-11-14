@@ -30,7 +30,7 @@
 - `AgentSpawner.spawn` launches agents with isolated context and honors permissions.
 - Returned handles expose `status`, `cancel()`, and `awaitSummary()` (or equivalent).
 - Inbox entries include session ID, status, and optional summaries for UI consumption.
-- **Manual Verification:** Use `/oracle <prompt>` (or equivalent tool) to spawn a subagent; observe status transitions in logs/UI, cancel a run mid-flight, and confirm summaries land in the inbox after completion.
+- **Manual Verification:** Use `/spawnagent <agent-id> "<prompt>"` (e.g., `oracle`) to launch a subagent. Keep working in the main session while it runs, periodically execute `/inbox` to view updates, optionally cancel the run, and verify the inbox shows the final summary/error with breadcrumbs saved to the parent session.
 
 ## 4. Wire Tooling and Invocation Surfaces
 1. Add a `spawn_subagent` tool for agent-to-agent delegation; the tool payload includes `agentId`, `prompt`, and `returnMode` (blocking summary vs background).
@@ -60,7 +60,7 @@
 - Oracle profile present by default with correct permissions.
 - Invocations produce separate session files and concise parent summaries.
 - Metrics/logs capture invocation count, duration, and failures.
-- **Manual Verification:** Run `/oracle why is test failing` and confirm: (1) a new session file named `oracle-...` appears, (2) parent conversation shows only an oracle breadcrumb, (3) `~/.config/yeet/sessions` contains telemetry in the log or summary fields.
+- **Manual Verification:** Run `/spawnagent oracle "why is test failing"` and confirm: (1) a new session file for the oracle subagent appears, (2) the parent conversation only records a breadcrumb, (3) `/inbox` shows the completion summary and the child transcript lives in its own session file.
 
 ## 7. Phase 2: Reviewer Workflow
 1. Create a `reviewer` profile (read-only, subtask) that can be spawned via a `request_review` tool or `/review` command.
@@ -121,3 +121,9 @@
 - Docs include config snippets and workflow guides verified against the implementation.
 - Feature flag toggles entire subsystem; defaults to off until signed off, then on by default with migration instructions.
 - **Manual Verification:** Flip the feature flag off/on, run the documented smoke tests (oracle/reviewer spawn scripts), and confirm behavior matches the documentation before enabling by default.
+- **TODO Sentinel Subagent**
+  - Automatically trigger a “Did you cheat/reward-hack?” audit whenever the main agent declares completion (either via a `done()` tool or conversation end). This subagent replays the final turn, highlights shortcuts, and only surfaces a warning if it detects concerning behavior.
+  - **Acceptance Criteria:** every completion path (tool or manual) spawns the sentinel; warnings appear inline if the sentinel flags issues; add a manual toggle to disable for trusted sessions.
+- **Continuation Guardian / Completion Guards**
+  - Introduce mandatory terminating tool calls (`done()`, `need_help()`, `handoff_review()`, etc.) so agents can’t silently stop. A guardian watcher enforces that the agent either keeps working or uses one of the allowed tools; if `done()` is called, it also spawns the sentinel or reviewer to confirm they truly finished.
+  - **Acceptance Criteria:** agents that try to stop without a terminating tool are nudged (or automatically continued); `/set_guardian on/off` lets users control the behavior; reviewer/sentinel agents integrate with the completion flow.
