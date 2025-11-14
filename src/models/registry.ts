@@ -1,6 +1,6 @@
 export interface ModelInfo {
   id: string;
-  provider: "opencode" | "maple" | "anthropic";
+  provider: "opencode" | "maple" | "anthropic" | "openai";
   name: string;
   pricing: string;
   contextWindow: number; // Maximum tokens in context window
@@ -128,6 +128,21 @@ export const MODELS: ModelInfo[] = [
     pricing: "$3/$9",
     contextWindow: 128000,
   },
+  // OpenAI models (ChatGPT Pro/Codex)
+  {
+    id: "gpt-5",
+    provider: "openai",
+    name: "GPT-5",
+    pricing: "ChatGPT Pro",
+    contextWindow: 128000,
+  },
+  {
+    id: "gpt-5-codex",
+    provider: "openai",
+    name: "GPT-5 Codex",
+    pricing: "ChatGPT Pro",
+    contextWindow: 128000,
+  },
 ];
 
 export function getModelInfo(id: string): ModelInfo | undefined {
@@ -135,7 +150,7 @@ export function getModelInfo(id: string): ModelInfo | undefined {
 }
 
 export function getModelsByProvider(
-  provider: "opencode" | "maple" | "anthropic",
+  provider: "opencode" | "maple" | "anthropic" | "openai",
 ): ModelInfo[] {
   return MODELS.filter((m) => m.provider === provider);
 }

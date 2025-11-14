@@ -1,4 +1,5 @@
 import { createAnthropic } from "@ai-sdk/anthropic";
+import { createOpenAI } from "@ai-sdk/openai";
 // @ts-nocheck - AI SDK v5 types are complex, but runtime works correctly
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { stepCountIs, streamText } from "ai";
@@ -7,10 +8,12 @@ import {
   CLAUDE_CODE_BETA,
   createAnthropicFetch,
 } from "./auth";
+import { createOpenAIFetch } from "./openai-auth";
 import type { Config } from "./config";
 import { logger } from "./logger";
 import { createMapleFetch } from "./maple";
 import * as tools from "./tools";
+import { clearSession, upsertToolCall } from "./call-cache";
 
 // NOTE: Claude Code spoofing copied from opencode
 // When using Anthropic, we pretend to be "Claude Code" to get better results
@@ -88,7 +91,12 @@ export async function* runAgent(
   maxSteps?: number,
   abortSignal?: AbortSignal,
 ): AsyncGenerator<AgentEvent> {
+  // Generate session ID for tool call cache (Codex stateless mode)
+  const sessionId = crypto.randomUUID();
+  logger.debug("Agent session started", { sessionId });
+
   try {
+
     // Choose provider based on config
     let provider;
     let modelName: string;
@@ -119,6 +127,18 @@ export async function* runAgent(
       }
 
       modelName = anthropicConfig.model || "claude-sonnet-4-5-20250929";
+    } else if (config.activeProvider === "openai") {
+      logger.info("Using OpenAI (ChatGPT Pro via Codex)");
+      const customFetch = createOpenAIFetch(config);
+
+      provider = createOpenAI({
+        name: "openai",
+        apiKey: "chatgpt-oauth", // Dummy key - actual auth via custom fetch
+        baseURL: "https://chatgpt.com/backend-api",
+        fetch: customFetch as any,
+      });
+
+      modelName = config.openai!.model || "gpt-5-codex";
     } else if (config.activeProvider === "maple") {
       logger.info("Using Maple AI with encrypted inference");
       const mapleFetch = await createMapleFetch({
@@ -179,15 +199,54 @@ export async function* runAgent(
       ...(effectiveSteps > 1 ? { stopWhen: stepCountIs(effectiveSteps) } : {}),
       temperature: config.temperature || 0.3,
       abortSignal,
+      // Capture tool calls for Codex stateless mode (store: false)
+      // This allows us to inject real function_call objects in subsequent requests
+      onStepFinish(step) {
+        // Step may contain multiple tool calls
+        for (const tc of step.toolCalls ?? []) {
+          logger.debug("Capturing tool call for cache", {
+            sessionId,
+            callId: tc.toolCallId,
+            toolName: tc.toolName,
+          });
+          // Store tool call with call_id, name, and arguments (as JSON string)
+          upsertToolCall(sessionId, {
+            call_id: tc.toolCallId,
+            name: tc.toolName,
+            // @ts-expect-error AI SDK v5 types are complex but runtime works correctly
+            arguments: JSON.stringify(tc.args ?? {}),
+          });
+        }
+      },
     });
+
+    // Buffer text deltas and emit on completion
+    // Codex sends very fine-grained deltas (token-level), we need to buffer them
+    let textBuffer = "";
 
     for await (const chunk of result.fullStream) {
       logger.debug("Stream chunk received", { type: chunk.type });
 
       if (chunk.type === "text-delta") {
-        logger.debug("Text delta", { text: chunk.text?.substring(0, 50) });
-        yield { type: "text", content: chunk.text };
+        const text = chunk.text || "";
+        logger.debug("Text delta", {
+          text: text.substring(0, 50),
+          length: text.length,
+        });
+        // Append to buffer instead of yielding immediately
+        textBuffer += text;
+      } else {
+        // Flush text buffer before any non-text event (tool-call, tool-result, finish, etc.)
+        if (textBuffer) {
+          logger.debug("Flushing text buffer before event", {
+            eventType: chunk.type,
+            bufferLength: textBuffer.length
+          });
+          yield { type: "text", content: textBuffer };
+          textBuffer = "";
+        }
       }
+
       if (chunk.type === "tool-call") {
         logger.debug("Tool call", { toolName: chunk.toolName });
         onToolCall?.(chunk.toolName);
@@ -221,5 +280,9 @@ export async function* runAgent(
     yield { type: "done" };
   } catch (error: any) {
     yield { type: "error", error: error.message };
+  } finally {
+    // Clean up session cache to prevent memory leaks and cross-conversation data leakage
+    clearSession(sessionId);
+    logger.debug("Cleared session cache", { sessionId });
   }
 }
