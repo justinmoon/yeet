@@ -1,5 +1,5 @@
 import type { MessageContent } from "../agent";
-import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
+import { handleMapleSetup, handleOAuthCodeInput } from "../commands";
 import type { Config } from "../config";
 import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
@@ -115,23 +115,25 @@ export class WebAdapter implements UIAdapter {
               const text = msg.data.trim();
               if (!text) return;
 
-              if (self.pendingMapleSetup) {
+              if (self.pendingOAuthSetup) {
+                const { verifier, provider = "anthropic", state } =
+                  self.pendingOAuthSetup;
+                self.pendingOAuthSetup = undefined;
+                await handleOAuthCodeInput(
+                  text,
+                  verifier,
+                  self,
+                  self.config,
+                  provider,
+                  state,
+                );
+              } else if (self.pendingMapleSetup) {
                 const apiKey = text;
                 const modelId = self.pendingMapleSetup.modelId;
                 self.pendingMapleSetup = undefined;
                 await handleMapleSetup(apiKey, modelId, self, self.config);
               } else {
-                const parsed = parseCommand(text);
-                if (parsed.isCommand && parsed.command) {
-                  await executeCommand(
-                    parsed.command,
-                    parsed.args,
-                    self,
-                    self.config,
-                  );
-                } else {
-                  await handleMessage(text, self, self.config);
-                }
+                await handleMessage(text, self, self.config);
               }
             }
           } catch (error: any) {
