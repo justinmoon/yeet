@@ -1,3 +1,4 @@
+/** @jsxImportSource react */
 import {
   Background,
   Controls,
@@ -5,23 +6,54 @@ import {
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import "@xyflow/react/dist/style.css";
-import { agentMachine } from "../src/agent-machine";
 import { machineToFlow } from "./machineToFlow";
 
-// Convert XState machine to React Flow
-const { nodes: initialNodes, edges: initialEdges } = machineToFlow(
-  agentMachine.config,
-);
-
 export function App() {
-  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
-  const [edges, , onEdgesChange] = useEdgesState(initialEdges);
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [task, setTask] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [activeState, setActiveState] = useState<string | null>(null);
   const [logs, setLogs] = useState<string[]>([]);
+  const [isLoadingMachine, setIsLoadingMachine] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadMachineConfig = async () => {
+      try {
+        const response = await fetch("/api/machine");
+        if (!response.ok) {
+          throw new Error(`Failed to load machine config (${response.status})`);
+        }
+
+        const data = await response.json();
+        const { nodes, edges } = machineToFlow(data.config);
+
+        if (!cancelled) {
+          setNodes(nodes);
+          setEdges(edges);
+        }
+      } catch (error: any) {
+        if (!cancelled) {
+          setLoadError(error.message || "Unable to load machine");
+        }
+      } finally {
+        if (!cancelled) {
+          setIsLoadingMachine(false);
+        }
+      }
+    };
+
+    loadMachineConfig();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [setEdges, setNodes]);
 
   const handleStart = async () => {
     if (!task.trim() || isRunning) return;
@@ -175,7 +207,9 @@ export function App() {
         <button
           type="button"
           onClick={handleStart}
-          disabled={!task.trim() || isRunning}
+          disabled={
+            !task.trim() || isRunning || isLoadingMachine || !!loadError
+          }
           style={{
             padding: "0.5rem 1rem",
             background: isRunning ? "#6b7280" : "#007acc",
@@ -187,13 +221,13 @@ export function App() {
             fontWeight: 500,
           }}
         >
-          {isRunning ? "Running..." : "Start"}
+          {isRunning ? "Running..." : loadError ? "Unavailable" : "Start"}
         </button>
       </div>
 
       <div style={{ flex: 1, display: "flex" }}>
         {/* Canvas */}
-        <div style={{ flex: 1, background: "#1e1e1e" }}>
+        <div style={{ flex: 1, background: "#1e1e1e", position: "relative" }}>
           <ReactFlow
             nodes={nodes}
             edges={edges}
@@ -215,6 +249,23 @@ export function App() {
             <Background color="#3e3e42" gap={16} />
             <Controls />
           </ReactFlow>
+          {(isLoadingMachine || loadError) && (
+            <div
+              style={{
+                position: "absolute",
+                inset: 0,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                background: "rgba(30, 30, 30, 0.9)",
+                color: "#e0e0e0",
+                fontSize: "0.9rem",
+                fontWeight: 500,
+              }}
+            >
+              {isLoadingMachine ? "Loading state machine…" : loadError}
+            </div>
+          )}
         </div>
 
         {/* Logs Panel */}

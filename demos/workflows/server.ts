@@ -3,14 +3,24 @@
  * Provides SSE endpoint for real-time state updates
  */
 
-import { file } from "bun";
-
 const PORT = 3457; // Different port from vite dev server
 
 const server = Bun.serve({
   port: PORT,
   async fetch(req) {
     const url = new URL(req.url);
+
+    if (url.pathname === "/api/machine") {
+      const { agentMachine } = await import("../../src/agent-machine.ts");
+      return new Response(
+        JSON.stringify({ config: agentMachine.config }),
+        {
+          headers: {
+            "Content-Type": "application/json",
+          },
+        },
+      );
+    }
 
     // SSE endpoint for executing workflows
     if (url.pathname === "/api/execute") {
@@ -32,7 +42,9 @@ const server = Bun.serve({
 
           try {
             // Import agent machine and run workflow
-            const { agentMachine } = await import("../src/agent-machine.ts");
+            const { agentMachine } = await import(
+              "../../src/agent-machine.ts"
+            );
             const { createActor } = await import("xstate");
 
             console.log(

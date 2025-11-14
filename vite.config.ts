@@ -3,7 +3,7 @@ import { defineConfig } from "vite";
 
 export default defineConfig({
   plugins: [react()],
-  root: "gui",
+  root: "demos/workflows",
   server: {
     port: 3456,
     proxy: {
@@ -14,6 +14,6 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: "../dist/gui",
+    outDir: "../../dist/workflows",
   },
 });
