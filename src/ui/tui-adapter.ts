@@ -16,7 +16,7 @@ import {
 } from "@opentui/core";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
-import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
+import { handleMapleSetup } from "../commands";
 import type { Config } from "../config";
 import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
@@ -529,18 +529,7 @@ export class TUIAdapter implements UIAdapter {
             this.clearInput();
             await handleMapleSetup(apiKey, modelId, this, this.config);
           } else {
-            const parsed = parseCommand(message);
-            if (parsed.isCommand && parsed.command) {
-              this.clearInput();
-              await executeCommand(
-                parsed.command,
-                parsed.args,
-                this,
-                this.config,
-              );
-            } else {
-              await handleMessage(message, this, this.config);
-            }
+            await handleMessage(message, this, this.config);
           }
         }
       }
