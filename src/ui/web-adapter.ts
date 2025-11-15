@@ -17,7 +17,8 @@ export class WebAdapter implements UIAdapter {
     role: "user" | "assistant";
     content: MessageContent;
   }> = [];
-  imageAttachments: Array<{ mimeType: string; data: string }> = [];
+  imageAttachments: Array<{ mimeType: string; data: string; name?: string }> =
+    [];
   currentTokens = 0;
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
