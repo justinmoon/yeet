@@ -374,6 +374,16 @@ export class TUISolidAdapter implements UIAdapter {
           }
         });
 
+        createEffect(() => {
+          const mode = commandPaletteMode();
+          if (mode === "explain" && paletteInputRef) {
+            setTimeout(() => {
+              paletteInputRef.editBuffer?.setText("", { history: false });
+              paletteInputRef.focus?.();
+            }, 0);
+          }
+        });
+
         const scrollPaletteToIndex = (index: number) => {
           if (!paletteScrollRef) return;
           const viewportHeight = paletteScrollRef.viewport?.height || 1;
