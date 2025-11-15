@@ -4,7 +4,7 @@
  */
 
 import { createOpenAI } from "@ai-sdk/openai";
-import { generateText } from "ai";
+import { streamText } from "ai";
 import { loadConfig } from "./src/config";
 import { createOpenAIFetch } from "./src/openai-auth";
 
@@ -36,20 +36,28 @@ async function test() {
 
   const model = provider(config.openai.model || "gpt-5-codex");
 
-  console.log("Making test request...");
+  console.log("Making test streaming request...");
   console.log("Prompt: Count the r's in 'strawberry'");
   console.log();
 
   try {
-    const result = await generateText({
+    const result = await streamText({
       model,
-      prompt: "Count the number of r's in the word 'strawberry'. Just give me the number.",
+      prompt:
+        "Count the number of r's in the word 'strawberry'. Just give me the number.",
       maxTokens: 50,
     });
 
+    let responseText = "";
+    for await (const delta of result.textStream) {
+      responseText += delta;
+    }
+
+    const usage = await result.usage;
+
     console.log("\n✅ SUCCESS!");
-    console.log("Response:", result.text);
-    console.log("Usage:", result.usage);
+    console.log("Response:", responseText.trim());
+    console.log("Usage:", usage);
     console.log("\nCodex API is working! 🎉");
     process.exit(0);
   } catch (error: any) {
