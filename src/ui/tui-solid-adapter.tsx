@@ -2,13 +2,10 @@ import path from "path";
 import { fileURLToPath } from "url";
 import {
   type KeyEvent,
-  type PasteEvent,
   type StyledText,
   addDefaultParsers,
-  dim,
   getTreeSitterClient,
   stringToStyledText,
-  t,
 } from "@opentui/core";
 import { render, useRenderer } from "@opentui/solid";
 import {
@@ -83,8 +80,7 @@ export class TUISolidAdapter implements UIAdapter {
     role: "user" | "assistant";
     content: MessageContent;
   }> = [];
-  imageAttachments: Array<{ mimeType: string; data: string; name?: string }> =
-    [];
+  imageAttachments: Array<{ mimeType: string; data: string }> = [];
   currentTokens = 0;
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
@@ -502,9 +498,6 @@ export class TUISolidAdapter implements UIAdapter {
                     updateInputHeight(text);
                   }
                 }}
-                onPaste={(event: PasteEvent) => {
-                  void this.handlePasteEvent(event);
-                }}
                 onKeyDown={async (e: any) => {
                   if (e.name === "return" && !e.shift) {
                     e.preventDefault();
@@ -538,17 +531,6 @@ export class TUISolidAdapter implements UIAdapter {
                       } else {
                         await handleMessage(message, this, this.config);
                       }
-                    }
-                  } else if (
-                    e.name === "v" &&
-                    (e.ctrl || e.meta) &&
-                    !e.shift
-                  ) {
-                    const attached = await this.tryAttachClipboardImage(
-                      "clipboard-shortcut",
-                    );
-                    if (attached) {
-                      e.preventDefault();
                     }
                   } else if (e.name === "escape") {
                     if (this.isGenerating && this.abortController) {
@@ -792,22 +774,6 @@ export class TUISolidAdapter implements UIAdapter {
     this.updateAttachmentIndicator();
   }
 
-  private addImageAttachment(
-    image: { mimeType: string; data: string; name?: string },
-    source: string,
-  ): void {
-    this.imageAttachments.push(image);
-    this.updateAttachmentIndicator();
-    const label = image.name || image.mimeType || "image";
-    this.appendOutput(t`${dim(`📎 Attached ${label}`)}\n`);
-    logger.info("Image attachment added", {
-      source,
-      name: image.name,
-      mimeType: image.mimeType,
-      count: this.imageAttachments.length,
-    });
-  }
-
   updateTokenCount(): void {
     updateTokenCount(this, this.config, "Paused");
   }
@@ -851,7 +817,17 @@ export class TUISolidAdapter implements UIAdapter {
         id: "switch-model",
         label: "Switch Model",
         description: "Choose a different provider/model pair",
-        keywords: ["model", "switch", "provider", "anthropic", "maple"],
+        keywords: [
+          "model",
+          "switch",
+          "provider",
+          "anthropic",
+          "openai",
+          "gpt",
+          "codex",
+          "maple",
+          "opencode",
+        ],
         run: () => this.openModelPalette(),
       },
       {
@@ -1545,16 +1521,15 @@ export class TUISolidAdapter implements UIAdapter {
     const entries: CommandPaletteEntry[] = [this.createBackEntry()];
     let hasOptions = false;
 
-    const providers: Array<"anthropic" | "maple" | "opencode"> = [
+    const providers: Array<"anthropic" | "openai" | "maple" | "opencode"> = [
       "anthropic",
+      "openai",
       "maple",
       "opencode",
     ];
 
     for (const provider of providers) {
-      if (!this.isProviderConfigured(provider)) {
-        continue;
-      }
+      const providerConfigured = this.isProviderConfigured(provider);
 
       const providerModels = MODELS.filter((model) => model.provider === provider);
       if (providerModels.length === 0) {
@@ -1565,19 +1540,29 @@ export class TUISolidAdapter implements UIAdapter {
       entries.push(
         this.createInfoEntry(
           `header-${provider}`,
-          `━━━ ${this.getProviderLabel(provider)} ━━━`,
+          `━━━ ${this.getProviderLabel(provider)}${providerConfigured ? "" : " (link account)" } ━━━`,
         ),
       );
 
       for (const model of providerModels) {
         const isCurrent = this.isCurrentModel(model.id);
+        const detailLines =
+          isCurrent || !providerConfigured
+            ? [
+                ...(isCurrent ? ["(current model)"] : []),
+                ...(!providerConfigured
+                  ? ["Link account to activate this provider"]
+                  : []),
+              ]
+            : undefined;
+
         entries.push({
           id: model.id,
           label: `${isCurrent ? "★ " : ""}${model.name}`,
           description: `${model.id} • ${model.pricing} • ${model.contextWindow.toLocaleString()} tokens`,
           keywords: [model.id, model.name, provider, model.pricing],
           run: () => this.switchModelFromPalette(model.id),
-          detailLines: isCurrent ? ["(current model)"] : undefined,
+          detailLines,
         });
       }
     }
@@ -1596,12 +1581,15 @@ export class TUISolidAdapter implements UIAdapter {
   }
 
   private isProviderConfigured(
-    provider: "anthropic" | "maple" | "opencode",
+    provider: "anthropic" | "openai" | "maple" | "opencode",
   ): boolean {
     if (provider === "anthropic") {
       return Boolean(
         this.config.anthropic?.apiKey || this.config.anthropic?.refresh,
       );
+    }
+    if (provider === "openai") {
+      return Boolean(this.config.openai?.access && this.config.openai?.refresh);
     }
     if (provider === "maple") {
       return Boolean(this.config.maple?.apiKey);
@@ -1609,10 +1597,14 @@ export class TUISolidAdapter implements UIAdapter {
     return Boolean(this.config.opencode.apiKey);
   }
 
-  private getProviderLabel(provider: "anthropic" | "maple" | "opencode"): string {
+  private getProviderLabel(
+    provider: "anthropic" | "openai" | "maple" | "opencode",
+  ): string {
     switch (provider) {
       case "anthropic":
         return "Anthropic";
+      case "openai":
+        return "OpenAI (Codex)";
       case "maple":
         return "Maple AI";
       default:
@@ -1624,9 +1616,11 @@ export class TUISolidAdapter implements UIAdapter {
     const currentModelId =
       this.config.activeProvider === "anthropic"
         ? this.config.anthropic?.model
-        : this.config.activeProvider === "maple"
-          ? this.config.maple?.model
-          : this.config.opencode.model;
+        : this.config.activeProvider === "openai"
+          ? this.config.openai?.model
+          : this.config.activeProvider === "maple"
+            ? this.config.maple?.model
+            : this.config.opencode.model;
     return currentModelId === modelId;
   }
 
@@ -1638,6 +1632,22 @@ export class TUISolidAdapter implements UIAdapter {
         this.createInfoEntry("unknown-model", "Unknown model", modelId),
       ]);
       return;
+    }
+
+    if (modelInfo.provider === "openai") {
+      if (!this.config.openai?.access || !this.config.openai?.refresh) {
+        this.applyPaletteEntries([
+          this.createBackEntry("← Back to models", () =>
+            this.openModelPalette(),
+          ),
+          this.createInfoEntry(
+            "openai-missing",
+            "OpenAI not linked",
+            "Run /login-openai (or Command Palette → Link OpenAI Account).",
+          ),
+        ]);
+        return;
+      }
     }
 
     if (modelInfo.provider === "maple" && !this.config.maple?.apiKey) {
@@ -1689,6 +1699,10 @@ export class TUISolidAdapter implements UIAdapter {
       } else {
         this.config.anthropic.model = modelId;
       }
+    } else if (modelInfo.provider === "openai") {
+      if (this.config.openai) {
+        this.config.openai.model = modelId;
+      }
     } else if (modelInfo.provider === "maple") {
       if (this.config.maple) {
         this.config.maple.model = modelId;
@@ -1727,7 +1741,7 @@ export class TUISolidAdapter implements UIAdapter {
       this.createInfoEntry(
         "help-models",
         "Switch Model",
-        "Pick a Claude / Maple / OpenCode model",
+        "Pick an Anthropic / OpenAI / Maple / OpenCode model",
       ),
       this.createInfoEntry(
         "help-theme",
@@ -1862,76 +1876,7 @@ export class TUISolidAdapter implements UIAdapter {
     }
   }
 
-  private async handlePasteEvent(event: PasteEvent): Promise<void> {
-    const pastedText = event.text ?? "";
-
-    if (await this.tryAttachImageFromPathCandidate(pastedText)) {
-      event.preventDefault();
-      return;
-    }
-
-    if (!pastedText.trim()) {
-      const attached = await this.tryAttachClipboardImage("clipboard-paste");
-      if (attached) {
-        event.preventDefault();
-      }
-    }
-  }
-
-  private async tryAttachImageFromPathCandidate(
-    rawText: string,
-  ): Promise<boolean> {
-    const normalized = normalizePastedPath(rawText);
-    if (!normalized) {
-      return false;
-    }
-
-    const image = await readImageFromPath(normalized);
-    if (!image) {
-      logger.debug("Pasted path is not an image or failed to load", {
-        path: normalized,
-      });
-      return false;
-    }
-
-    this.addImageAttachment(image, normalized);
-    return true;
-  }
-
-  private async tryAttachClipboardImage(source: string): Promise<boolean> {
-    const image = await readImageFromClipboard();
-    if (!image) {
-      return false;
-    }
-
-    this.addImageAttachment(image, source);
-    return true;
-  }
-
   private updateAttachmentIndicator(): void {
-    const modelId =
-      this.config.activeProvider === "anthropic"
-        ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "openai"
-          ? this.config.openai?.model || ""
-          : this.config.activeProvider === "maple"
-            ? this.config.maple?.model || ""
-            : this.config.opencode.model;
-    const modelInfo = getModelInfo(modelId);
-    const modelName = modelInfo?.name || modelId;
-
-    if (this.imageAttachments.length > 0) {
-      const tokenPortion =
-        this.currentTokens > 0
-          ? `${this.currentTokens}/${modelInfo?.contextWindow || "?"}`
-          : "0/?";
-      this.setStatus(
-        `${modelName} | ${tokenPortion} | 📎 ${this.imageAttachments.length} image(s)`,
-      );
-    } else {
-      this.updateTokenCount();
-    }
-
     this.setImageCount(this.imageAttachments.length);
   }
 }
