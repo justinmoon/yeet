@@ -2,7 +2,6 @@ import {
   BoxRenderable,
   type CliRenderer,
   type KeyEvent,
-  type PasteEvent,
   RGBA,
   ScrollBoxRenderable,
   type StyledText,
@@ -15,33 +14,33 @@ import {
   stringToStyledText,
   t,
 } from "@opentui/core";
+import { getAgentHotkeyTriggers } from "../agents/triggers";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
-import { handleMapleSetup } from "../commands";
+import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
 import type { Config } from "../config";
 import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
-import { normalizePastedPath, readImageFromPath } from "../utils/paste";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import type { UIAdapter } from "./interface";
 import { ModelSelectorModal } from "./model-modal";
 import { SessionSelectorModal } from "./session-modal";
+import {
+  matchHotkeyEvent,
+  parseHotkeyCombo,
+  type HotkeyDescriptor,
+} from "../utils/hotkeys";
 
 export class TUIAdapter implements UIAdapter {
   conversationHistory: Array<{
     role: "user" | "assistant";
     content: MessageContent;
   }> = [];
-  imageAttachments: Array<{ mimeType: string; data: string; name?: string }> =
-    [];
+  imageAttachments: Array<{ mimeType: string; data: string }> = [];
   currentTokens = 0;
   currentSessionId: string | null = null;
   pendingMapleSetup?: { modelId: string };
-  pendingOAuthSetup?: {
-    verifier: string;
-    provider?: "anthropic" | "openai";
-    state?: string;
-  };
+  pendingOAuthSetup?: { verifier: string };
   isGenerating = false;
   abortController: AbortController | null = null;
   private sessionModal?: SessionSelectorModal;
@@ -58,11 +57,25 @@ export class TUIAdapter implements UIAdapter {
   private config: Config;
   private userInputCallback?: (message: string) => Promise<void>;
   private commandCallback?: (command: string, args: string[]) => Promise<void>;
-  private collapsedPastes = new Map<string, string>();
-  private collapsedPasteCounter = 0;
+  private agentHotkeys: Array<{
+    descriptor: HotkeyDescriptor;
+    command: string;
+  }> = [];
 
   constructor(config: Config) {
     this.config = config;
+    this.agentHotkeys = getAgentHotkeyTriggers(config)
+      .map((binding) => {
+        const descriptor = parseHotkeyCombo(binding.combo);
+        if (!descriptor) return null;
+        return { descriptor, command: binding.command };
+      })
+      .filter(
+        (
+          value,
+        ): value is { descriptor: HotkeyDescriptor; command: string } =>
+          value !== null,
+      );
   }
 
   async start(): Promise<void> {
@@ -104,25 +117,45 @@ export class TUIAdapter implements UIAdapter {
   }
 
   appendOutput(text: string | StyledText): void {
+    // Add to chunks array
     this.contentChunks.push(text);
-    this.renderOutput();
+
+    // Combine all chunks into a single StyledText
+    const combined = this.contentChunks.map((chunk) =>
+      typeof chunk === "string" ? stringToStyledText(chunk) : chunk,
+    );
+
+    // Merge all StyledText chunks by concatenating their chunks arrays
+    const allChunks = combined.flatMap((st) => st.chunks);
+    const StyledTextClass = stringToStyledText("").constructor as any;
+    const mergedContent = new StyledTextClass(allChunks);
+
+    this.output.content = mergedContent;
+
+    // Force layout recalculation and scroll to bottom
+    // @ts-ignore
+    this.scrollBox.recalculateBarProps?.();
+
+    // @ts-ignore
+    const maxScroll = Math.max(
+      0,
+      this.scrollBox.scrollHeight - this.scrollBox.viewport.height,
+    );
+    this.scrollBox.scrollTop = maxScroll;
+
+    // @ts-ignore
+    this.renderer.requestAnimationFrame?.(() => {});
   }
 
   addMessagePart(part: import("./interface").MessagePart): void {
-    if (part.type === "text") {
-      this.appendOutput(t`${green("[yeet]")} ${part.content}`);
-    } else if (part.type === "tool") {
-      const toolName =
-        part.metadata?.tool ?? part.metadata?.name ?? part.metadata ?? "tool";
-      this.appendOutput(`[${toolName}] ${part.content}`);
-    } else {
-      this.appendOutput(`${part.content}`);
-    }
+    // Legacy TUI adapter doesn't use message parts yet
+    // Just append as text for now
+    this.appendOutput(part.content);
   }
 
   clearOutput(): void {
     this.contentChunks = [];
-    this.renderOutput();
+    this.output.content = "";
   }
 
   setStatus(text: string): void {
@@ -131,8 +164,6 @@ export class TUIAdapter implements UIAdapter {
 
   clearInput(): void {
     this.input.editBuffer.setText("", { history: false });
-    this.collapsedPastes.clear();
-    this.collapsedPasteCounter = 0;
     this.inputBox.height = 1; // Reset to minimum height
   }
 
@@ -149,119 +180,6 @@ export class TUIAdapter implements UIAdapter {
     saveCurrentSession(this, this.config);
   }
 
-  private async handlePasteEvent(event: PasteEvent): Promise<void> {
-    if (this.modalActive) {
-      event.preventDefault();
-      return;
-    }
-
-    const pastedText = event.text ?? "";
-
-    if (await this.tryAttachImageFromPathCandidate(pastedText)) {
-      event.preventDefault();
-      return;
-    }
-
-    const trimmed = pastedText.trim();
-    if (!trimmed) {
-      const image = await readImageFromClipboard();
-      if (image) {
-        event.preventDefault();
-        this.addImageAttachment(image, "clipboard-paste");
-      }
-      return;
-    }
-
-    if (this.collapsePastedTextIfNeeded(pastedText)) {
-      event.preventDefault();
-    }
-  }
-
-  private collapsePastedTextIfNeeded(text: string): boolean {
-    const normalized = text.replace(/\r/g, "");
-    const lineCount = Math.max(
-      1,
-      normalized.length === 0 ? 0 : normalized.split("\n").length,
-    );
-    const charCount = normalized.length;
-    const shouldCollapse = lineCount >= 3 || charCount > 150;
-
-    if (!shouldCollapse) {
-      return false;
-    }
-
-    const id = ++this.collapsedPasteCounter;
-    const placeholder = `[Pasted ~${lineCount} lines #${id}]`;
-    this.collapsedPastes.set(placeholder, text);
-    this.input.insertText(`${placeholder} `);
-    logger.info("Collapsed large paste", {
-      placeholder,
-      lineCount,
-      charCount,
-    });
-    return true;
-  }
-
-  private pruneCollapsedPastes(): void {
-    const currentText = this.input?.editBuffer.getText() ?? "";
-    for (const placeholder of Array.from(this.collapsedPastes.keys())) {
-      if (!currentText.includes(placeholder)) {
-        this.collapsedPastes.delete(placeholder);
-      }
-    }
-  }
-
-  private expandCollapsedPastes(text: string): string {
-    if (this.collapsedPastes.size === 0) {
-      return text;
-    }
-
-    let expanded = text;
-    for (const [placeholder, original] of this.collapsedPastes.entries()) {
-      if (expanded.includes(placeholder)) {
-        expanded = expanded.split(placeholder).join(original);
-      }
-    }
-
-    return expanded;
-  }
-
-  private async tryAttachImageFromPathCandidate(
-    rawText: string,
-  ): Promise<boolean> {
-    const normalized = normalizePastedPath(rawText);
-    if (!normalized) {
-      return false;
-    }
-
-    const image = await readImageFromPath(normalized);
-    if (!image) {
-      logger.debug("Pasted path is not an image or failed to load", {
-        path: normalized,
-      });
-      return false;
-    }
-
-    this.addImageAttachment(image, normalized);
-    return true;
-  }
-
-  private addImageAttachment(
-    image: { mimeType: string; data: string; name?: string },
-    source: string,
-  ): void {
-    this.imageAttachments.push(image);
-    this.updateAttachmentIndicator();
-    const label = image.name || image.mimeType || "image";
-    this.appendOutput(t`${dim(`📎 Attached ${label}`)}\n`);
-    logger.info("Image attachment added", {
-      source,
-      name: image.name,
-      mimeType: image.mimeType,
-      count: this.imageAttachments.length,
-    });
-  }
-
   private setupComponents(): void {
     const container = new BoxRenderable(this.renderer, {
       id: "main",
@@ -272,11 +190,9 @@ export class TUIAdapter implements UIAdapter {
     const currentModelId =
       this.config.activeProvider === "anthropic"
         ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "openai"
-          ? this.config.openai?.model || ""
-          : this.config.activeProvider === "maple"
-            ? this.config.maple?.model || ""
-            : this.config.opencode.model;
+        : this.config.activeProvider === "maple"
+          ? this.config.maple?.model || ""
+          : this.config.opencode.model;
     const modelInfo = getModelInfo(currentModelId);
     const modelDisplay = modelInfo
       ? `${modelInfo.name} (${modelInfo.provider})`
@@ -330,13 +246,9 @@ export class TUIAdapter implements UIAdapter {
       cursorColor: "blue",
       flexGrow: 1,
       flexShrink: 0,
-      onContentChange: () => this.pruneCollapsedPastes(),
     });
     this.inputBox.add(this.input);
     this.input.focus();
-    this.input.onPaste = (event: PasteEvent) => {
-      void this.handlePasteEvent(event);
-    };
   }
 
   private adjustInputHeight(): void {
@@ -378,9 +290,6 @@ export class TUIAdapter implements UIAdapter {
           !!this.config.anthropic?.apiKey || !!this.config.anthropic?.refresh
         );
       }
-      if (model.provider === "openai") {
-        return !!this.config.openai?.refresh;
-      }
       if (model.provider === "opencode") {
         return !!this.config.opencode.apiKey;
       }
@@ -394,7 +303,7 @@ export class TUIAdapter implements UIAdapter {
       this.appendOutput(
         "No models available. Please configure authentication first.\n",
       );
-      this.appendOutput("Run /login-anthropic or /login-openai to authenticate\n");
+      this.appendOutput("Run /auth login for Anthropic OAuth\n");
       return;
     }
 
@@ -420,10 +329,6 @@ export class TUIAdapter implements UIAdapter {
           this.config.anthropic = { type: "api", apiKey: "" };
         }
         this.config.anthropic.model = modelId;
-      } else if (modelInfo.provider === "openai") {
-        if (this.config.openai) {
-          this.config.openai.model = modelId;
-        }
       } else if (modelInfo.provider === "opencode") {
         this.config.opencode.model = modelId;
       } else if (modelInfo.provider === "maple") {
@@ -558,6 +463,15 @@ export class TUIAdapter implements UIAdapter {
 
   private setupInputHandlers(): void {
     this.renderer.keyInput.on("keypress", async (key: KeyEvent) => {
+      const hotkey = this.agentHotkeys.find(({ descriptor }) =>
+        matchHotkeyEvent(descriptor, key),
+      );
+      if (hotkey) {
+        key.preventDefault?.();
+        this.applyAgentCommandShortcut(hotkey.command);
+        return;
+      }
+
       // Adjust input height on every keypress
       this.adjustInputHeight();
 
@@ -599,36 +513,31 @@ export class TUIAdapter implements UIAdapter {
         return;
       }
 
-      if (key.name === "v" && key.ctrl && !key.shift && !key.meta) {
+      if (key.name === "v" && key.ctrl) {
+        key.preventDefault();
         const image = await readImageFromClipboard();
         if (image) {
-          key.preventDefault();
-          this.addImageAttachment(image, "clipboard-shortcut");
-          return;
+          this.imageAttachments.push(image);
+          this.updateAttachmentIndicator();
+          logger.info("Image pasted from clipboard", {
+            count: this.imageAttachments.length,
+            mimeType: image.mimeType,
+          });
         }
+        return;
       }
 
       if (key.name === "return" && !key.shift) {
         key.preventDefault();
-        const rawMessage = this.input.editBuffer.getText();
-        const message = this.expandCollapsedPastes(rawMessage);
+        const message = this.input.editBuffer.getText();
         if (message.trim()) {
-          if (this.isGenerating) {
-            this.appendOutput(
-              t`${dim("⚠️  Still working on the previous request (press Esc to cancel).")}\n`,
-            );
-            return;
-          }
-
           if (this.pendingOAuthSetup) {
             const code = message;
             const verifier = this.pendingOAuthSetup.verifier;
-            const provider = this.pendingOAuthSetup.provider || "anthropic";
-            const state = this.pendingOAuthSetup.state;
             this.pendingOAuthSetup = undefined;
             this.clearInput();
             const { handleOAuthCodeInput } = await import("../commands");
-            await handleOAuthCodeInput(code, verifier, this, this.config, provider, state);
+            await handleOAuthCodeInput(code, verifier, this, this.config);
           } else if (this.pendingMapleSetup) {
             const apiKey = message;
             const modelId = this.pendingMapleSetup.modelId;
@@ -636,22 +545,37 @@ export class TUIAdapter implements UIAdapter {
             this.clearInput();
             await handleMapleSetup(apiKey, modelId, this, this.config);
           } else {
-            await handleMessage(message, this, this.config);
+            const parsed = parseCommand(message);
+            if (parsed.isCommand && parsed.command) {
+              this.clearInput();
+              await executeCommand(
+                parsed.command,
+                parsed.args,
+                this,
+                this.config,
+              );
+            } else {
+              await handleMessage(message, this, this.config);
+            }
           }
         }
       }
     });
   }
 
+  private applyAgentCommandShortcut(command: string): void {
+    const text = `/${command} `;
+    this.input.editBuffer.setText(text, { history: false });
+    this.inputBox.height = Math.max(this.inputBox.height, 1);
+  }
+
   private updateAttachmentIndicator(): void {
     const modelId =
       this.config.activeProvider === "anthropic"
         ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "openai"
-          ? this.config.openai?.model || ""
-          : this.config.activeProvider === "maple"
-            ? this.config.maple!.model
-            : this.config.opencode.model;
+        : this.config.activeProvider === "maple"
+          ? this.config.maple!.model
+          : this.config.opencode.model;
     const modelInfo = getModelInfo(modelId);
     const modelName = modelInfo?.name || modelId;
 
@@ -662,32 +586,6 @@ export class TUIAdapter implements UIAdapter {
     } else {
       this.updateTokenCount();
     }
-  }
-
-  private renderOutput(): void {
-    const combined = this.contentChunks.map((chunk) =>
-      typeof chunk === "string" ? stringToStyledText(chunk) : chunk,
-    );
-
-    const allChunks = combined.flatMap((st) => st.chunks);
-    const StyledTextClass = stringToStyledText("").constructor as any;
-    const mergedContent = new StyledTextClass(allChunks);
-
-    this.output.content = mergedContent;
-
-    // Force layout recalculation and scroll to bottom
-    // @ts-ignore
-    this.scrollBox.recalculateBarProps?.();
-
-    // @ts-ignore
-    const maxScroll = Math.max(
-      0,
-      this.scrollBox.scrollHeight - this.scrollBox.viewport.height,
-    );
-    this.scrollBox.scrollTop = maxScroll;
-
-    // @ts-ignore
-    this.renderer.requestAnimationFrame?.(() => {});
   }
 }
 

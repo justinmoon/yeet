@@ -1,11 +1,7 @@
 import { runAgent } from "../agent";
 import type { Config } from "../config";
-import type {
-  AgentCapability,
-  AgentProfileConfig,
-  AgentSessionStatus,
-  SessionTrigger,
-} from "./types";
+import type { AgentCapability, AgentProfileConfig } from "../config";
+import type { AgentSessionStatus, SessionTrigger } from "./types";
 import { createSession, saveSession } from "../sessions";
 import { resolveWorkspaceBinding } from "../workspace/binding";
 import type { MessageContent } from "../agent";
@@ -17,6 +13,10 @@ import {
 } from "./context-store";
 import type { WorkspacePolicy } from "../config";
 import { pushWorkspaceBinding, popWorkspaceBinding } from "../workspace/state";
+import {
+  popActiveAgentContext,
+  pushActiveAgentContext,
+} from "./runtime-context";
 
 export interface SpawnRequest {
   agentId: string;
@@ -164,6 +164,12 @@ export class AgentSpawner {
       saveSession(session, { skipParentUpdate: true });
     }
     pushWorkspaceBinding(binding);
+    const runtimeContext = {
+      sessionId,
+      agentId: profile.id,
+      capability: (session.agentCapability ?? "subtask") as AgentCapability,
+    };
+    pushActiveAgentContext(runtimeContext);
 
     updateAgentSessionStatus(sessionId, "running");
     onStatusChange("running");
@@ -225,6 +231,7 @@ export class AgentSpawner {
         error: error?.message || "Agent execution failed",
       };
     } finally {
+      popActiveAgentContext(runtimeContext);
       popWorkspaceBinding();
     }
   }

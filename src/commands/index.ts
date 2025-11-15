@@ -1,10 +1,9 @@
 import { exchangeOAuthCode, startAnthropicOAuth } from "../auth";
-import {
-  exchangeAuthorizationCode,
-  parseAuthorizationInput,
-  startOpenAIOAuth,
-} from "../openai-auth";
-import type { Config } from "../config";
+import type {
+  AgentCapability,
+  AgentReturnMode,
+  Config,
+} from "../config";
 import { saveConfig } from "../config";
 import {
   createStubExplainResult,
@@ -18,6 +17,12 @@ import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
 import type { UIAdapter } from "../ui/interface";
 import { setActiveWorkspaceBinding } from "../workspace/state";
 import { getAgentSpawner, getAgentInbox } from "../agents/service";
+import type { SessionTrigger } from "../agents/types";
+import {
+  findAgentSlashCommandTrigger,
+  getAgentHotkeyTriggers,
+  getAgentSlashCommandTriggers,
+} from "../agents/triggers";
 
 export interface ParsedCommand {
   isCommand: boolean;
@@ -80,12 +85,17 @@ export async function executeCommand(
       await handleInboxCommand(ui);
       break;
     case "help":
-      await handleHelpCommand(ui);
+      await handleHelpCommand(ui, config);
       break;
     case "explain":
       await handleExplainCommand(args, ui);
       break;
     default:
+      if (
+        await tryHandleAgentSlashCommand(command, args, ui, config)
+      ) {
+        break;
+      }
       ui.appendOutput(`❌ Unknown command: /${command}\n`);
       ui.appendOutput(`Type /help for available commands\n`);
   }
@@ -114,7 +124,10 @@ async function handleToggleCommand(
   ui.appendOutput(`🎨 Switched to ${newTheme.name} theme\n`);
 }
 
-async function handleHelpCommand(ui: UIAdapter): Promise<void> {
+async function handleHelpCommand(
+  ui: UIAdapter,
+  config: Config,
+): Promise<void> {
   ui.appendOutput("Available commands:\n");
   ui.appendOutput("  /auth login         - Login with Anthropic OAuth\n");
   ui.appendOutput("  /auth status        - Show current authentication\n");
@@ -146,6 +159,27 @@ async function handleHelpCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput(
     "  ✗ mistral-small-3-1-24b, llama-3.3-70b (no tool calling)\n",
   );
+
+  const agentCommands = getAgentSlashCommandTriggers(config);
+  if (agentCommands.length > 0) {
+    ui.appendOutput("\nAgent Commands:\n");
+    for (const entry of agentCommands) {
+      const note = entry.description ? ` - ${entry.description}` : "";
+      ui.appendOutput(
+        `  /${entry.command} (${entry.agentId})${note}\n`,
+      );
+    }
+  }
+
+  const agentHotkeys = getAgentHotkeyTriggers(config);
+  if (agentHotkeys.length > 0) {
+    ui.appendOutput("\nAgent Hotkeys:\n");
+    for (const hotkey of agentHotkeys) {
+      ui.appendOutput(
+        `  ${hotkey.combo} → /${hotkey.command} (${hotkey.agentId})\n`,
+      );
+    }
+  }
 }
 
 async function handleExplainCommand(
@@ -596,113 +630,6 @@ export async function handleMapleSetup(
   ui.setStatus(`Ready • ${modelInfo.name} • Press Enter to send`);
 }
 
-export async function startAnthropicOAuthFlow(
-  ui: UIAdapter,
-  _config: Config,
-): Promise<void> {
-  ui.appendOutput("🔐 Starting Anthropic OAuth (Claude Pro/Max)...\n\n");
-
-  try {
-    const { url, verifier } = await startAnthropicOAuth();
-    ui.appendOutput("Opening browser for authentication...\n\n");
-
-    try {
-      const platform = process.platform;
-      const openCmd =
-        platform === "darwin"
-          ? "open"
-          : platform === "win32"
-            ? "start"
-            : "xdg-open";
-
-      await Bun.spawn([openCmd, url], {
-        stdout: "ignore",
-        stderr: "ignore",
-      }).exited;
-    } catch {
-      ui.appendOutput("⚠️  Could not open browser automatically.\n");
-      ui.appendOutput("Please open this URL manually:\n");
-      ui.appendOutput(`   ${url}\n\n`);
-    }
-
-    ui.appendOutput("After authorizing:\n");
-    ui.appendOutput("1. Copy the authorization code\n");
-    ui.appendOutput("2. Paste it back into Yeet\n");
-
-    ui.pendingOAuthSetup = { verifier, provider: "anthropic" };
-    ui.setStatus("Waiting for Anthropic OAuth code...");
-  } catch (error: any) {
-    ui.appendOutput(`\n❌ Failed to start OAuth: ${error.message}\n`);
-  }
-}
-
-export async function startOpenAIOAuthFlow(
-  ui: UIAdapter,
-  config: Config,
-): Promise<void> {
-  ui.appendOutput("🔐 Starting OpenAI OAuth (ChatGPT Pro)...\n\n");
-
-  try {
-    const { startCallbackServer } = await import("../openai-callback-server");
-
-    ui.appendOutput("Starting local callback server on port 1455...\n");
-    const callbackServer = await startCallbackServer();
-
-    try {
-      const { url, verifier, state } = await startOpenAIOAuth();
-
-      ui.appendOutput("Opening browser for authentication...\n\n");
-      try {
-        const platform = process.platform;
-        const openCmd =
-          platform === "darwin"
-            ? "open"
-            : platform === "win32"
-              ? "start"
-              : "xdg-open";
-
-        await Bun.spawn([openCmd, url], {
-          stdout: "ignore",
-          stderr: "ignore",
-        }).exited;
-      } catch {
-        ui.appendOutput("⚠️  Could not open browser automatically.\n");
-        ui.appendOutput("Please open this URL manually:\n");
-        ui.appendOutput(`   ${url}\n\n`);
-      }
-
-      ui.appendOutput("Waiting for authorization...\n");
-      ui.appendOutput("(The browser will redirect automatically)\n\n");
-
-      ui.pendingOAuthSetup = { verifier, provider: "openai", state };
-      ui.setStatus("Waiting for OpenAI OAuth callback...");
-
-      const result = await callbackServer.waitForCallback(state);
-
-      if (result) {
-        ui.appendOutput("✓ Received authorization callback\n");
-        ui.pendingOAuthSetup = undefined;
-        await handleOAuthCodeInput(
-          `${result.code}#${result.state}`,
-          verifier,
-          ui,
-          config,
-          "openai",
-          state,
-        );
-      } else {
-        ui.pendingOAuthSetup = undefined;
-        ui.appendOutput("\n❌ Authorization callback timed out.\n");
-        ui.appendOutput("Please restart the OpenAI login flow.\n");
-      }
-    } finally {
-      callbackServer.close();
-    }
-  } catch (error: any) {
-    ui.appendOutput(`\n❌ Failed to start OpenAI OAuth: ${error.message}\n`);
-  }
-}
-
 async function handleWorkspaceCommand(
   args: string[],
   ui: UIAdapter,
@@ -776,42 +703,14 @@ async function handleSpawnAgentCommand(
 
   const prompt = promptParts.join(" ");
   try {
-    const spawner = await getAgentSpawner();
-    const handle = await spawner.spawn({
+    await spawnAgentWithPrompt({
       agentId,
       capability: "subtask",
       prompt,
-      parentSessionId: ui.currentSessionId,
+      ui,
       trigger: { type: "slash", value: "spawnagent" },
+      returnMode: "background",
     });
-
-    ui.appendOutput(
-      `🚀 Spawned ${agentId} in session ${handle.sessionId}. Use /inbox to monitor progress.\n`,
-    );
-
-    const unsubscribe = handle.onStatusChange((status) => {
-      ui.appendOutput(`  ↳ ${agentId} status: ${status}\n`);
-    });
-
-    handle
-      .awaitResult()
-      .then((result) => {
-        if (result.status === "complete") {
-          ui.appendOutput(`✅ ${agentId} finished: ${result.summary}\n`);
-        } else if (result.error) {
-          ui.appendOutput(`❌ ${agentId} failed: ${result.error}\n`);
-        } else {
-          ui.appendOutput(`⚠️ ${agentId} status: ${result.status}\n`);
-        }
-      })
-      .catch((error: any) => {
-        ui.appendOutput(
-          `❌ ${agentId} encountered an error: ${error?.message || error}\n`,
-        );
-      })
-      .finally(() => {
-        unsubscribe();
-      });
   } catch (error: any) {
     ui.appendOutput(`❌ Failed to spawn agent: ${error.message}\n`);
   }
@@ -835,6 +734,132 @@ async function handleInboxCommand(ui: UIAdapter): Promise<void> {
       ui.appendOutput(`     Error: ${update.error}\n`);
     }
   }
+}
+
+interface SpawnAgentOptions {
+  agentId: string;
+  capability: AgentCapability;
+  prompt: string;
+  ui: UIAdapter;
+  trigger: SessionTrigger;
+  returnMode?: AgentReturnMode;
+}
+
+async function spawnAgentWithPrompt(
+  options: SpawnAgentOptions,
+): Promise<void> {
+  if (!options.prompt || !options.prompt.trim()) {
+    throw new Error("Prompt required");
+  }
+
+  if (!options.ui.currentSessionId) {
+    options.ui.saveCurrentSession();
+  }
+
+  const spawner = await getAgentSpawner();
+  const handle = await spawner.spawn({
+    agentId: options.agentId,
+    capability: options.capability,
+    prompt: options.prompt,
+    parentSessionId: options.ui.currentSessionId ?? undefined,
+    trigger: options.trigger,
+  });
+
+  if (options.returnMode === "blocking") {
+    options.ui.appendOutput(
+      `🚀 Running ${options.agentId} (waiting for summary)...\n`,
+    );
+    try {
+      const result = await handle.awaitResult();
+      if (result.status === "complete") {
+        options.ui.appendOutput(
+          `✅ ${options.agentId} finished: ${result.summary}\n`,
+        );
+      } else if (result.error) {
+        options.ui.appendOutput(
+          `❌ ${options.agentId} failed: ${result.error}\n`,
+        );
+      } else {
+        options.ui.appendOutput(
+          `⚠️ ${options.agentId} status: ${result.status}\n`,
+        );
+      }
+    } catch (error: any) {
+      options.ui.appendOutput(
+        `❌ ${options.agentId} encountered an error: ${error?.message || error}\n`,
+      );
+    }
+    return;
+  }
+
+  options.ui.appendOutput(
+    `🚀 Spawned ${options.agentId} in session ${handle.sessionId}. Use /inbox to monitor progress.\n`,
+  );
+
+  const unsubscribe = handle.onStatusChange((status) => {
+    options.ui.appendOutput(`  ↳ ${options.agentId} status: ${status}\n`);
+  });
+
+  handle
+    .awaitResult()
+    .then((result) => {
+      if (result.status === "complete") {
+        options.ui.appendOutput(
+          `✅ ${options.agentId} finished: ${result.summary}\n`,
+        );
+      } else if (result.error) {
+        options.ui.appendOutput(
+          `❌ ${options.agentId} failed: ${result.error}\n`,
+        );
+      } else {
+        options.ui.appendOutput(
+          `⚠️ ${options.agentId} status: ${result.status}\n`,
+        );
+      }
+    })
+    .catch((error: any) => {
+      options.ui.appendOutput(
+        `❌ ${options.agentId} encountered an error: ${error?.message || error}\n`,
+      );
+    })
+    .finally(() => {
+      unsubscribe();
+    });
+}
+
+async function tryHandleAgentSlashCommand(
+  command: string,
+  args: string[],
+  ui: UIAdapter,
+  config: Config,
+): Promise<boolean> {
+  const trigger = findAgentSlashCommandTrigger(config, command);
+  if (!trigger) {
+    return false;
+  }
+
+  const prompt = args.join(" ").trim();
+  if (!prompt) {
+    ui.appendOutput(`Usage: /${command} <prompt>\n`);
+    return true;
+  }
+
+  try {
+    await spawnAgentWithPrompt({
+      agentId: trigger.agentId,
+      capability: trigger.capability,
+      prompt,
+      ui,
+      trigger: { type: "slash", value: command },
+      returnMode: trigger.returnMode,
+    });
+  } catch (error: any) {
+    ui.appendOutput(
+      `❌ Failed to spawn ${trigger.agentId}: ${error?.message || error}\n`,
+    );
+  }
+
+  return true;
 }
 
 async function handleAuthCommand(
@@ -924,76 +949,19 @@ export async function handleOAuthCodeInput(
   verifier: string,
   ui: UIAdapter,
   config: Config,
-  provider: "anthropic" | "openai" = "anthropic",
-  expectedState?: string,
-  options?: {
-    suppressOutput?: boolean;
-    onStatus?: (message: string) => void;
-  },
-): Promise<{ status: "success" | "failed"; provider: "anthropic" | "openai" }> {
-  const write = (message: string): void => {
-    if (options?.suppressOutput) {
-      options.onStatus?.(message);
-    } else {
-      ui.appendOutput(message);
-    }
-  };
-
-  write("\n\n🔄 Exchanging code for tokens...\n");
+): Promise<void> {
+  ui.appendOutput("\n\n🔄 Exchanging code for tokens...\n");
 
   try {
-    if (provider === "openai") {
-      const parsed = parseAuthorizationInput(code.trim());
-      const authCode = parsed.code || code.trim();
-      const receivedState = parsed.state;
-
-      if (expectedState) {
-        if (!receivedState) {
-          write("❌ Missing OAuth state parameter.\n");
-          write("Please restart the OpenAI login flow.\n");
-          return { status: "failed", provider };
-        }
-        if (receivedState !== expectedState) {
-          write("❌ Invalid OAuth state parameter.\n");
-          write("Please restart the OpenAI login flow.\n");
-          return { status: "failed", provider };
-        }
-      }
-
-      const result = await exchangeAuthorizationCode(authCode, verifier);
-
-      if (result.type === "failed") {
-        write("❌ Failed to exchange OpenAI OAuth code\n");
-        write("Please restart the OpenAI login flow.\n");
-        return { status: "failed", provider };
-      }
-
-      config.openai = {
-        type: "oauth",
-        refresh: result.refresh!,
-        access: result.access!,
-        expires: result.expires!,
-        model: "gpt-5-codex",
-      };
-      config.activeProvider = "openai";
-
-      await saveConfig(config);
-
-      write("✓ Successfully authenticated with OpenAI!\n");
-      write("✓ Using ChatGPT Pro subscription\n");
-      write(`✓ Active model: ${config.openai.model}\n\n`);
-      ui.setStatus(`Ready • ${config.openai.model} • Press Enter to send`);
-      return { status: "success", provider };
-    }
-
     const result = await exchangeOAuthCode(code.trim(), verifier);
 
     if (result.type === "failed") {
-      write("❌ Failed to exchange Anthropic OAuth code\n");
-      write("Please restart the Anthropic login flow.\n");
-      return { status: "failed", provider };
+      ui.appendOutput("❌ Failed to exchange OAuth code\n");
+      ui.appendOutput("Please try /auth login again\n");
+      return;
     }
 
+    // Save OAuth credentials
     config.anthropic = {
       type: "oauth",
       refresh: result.refresh!,
@@ -1005,13 +973,11 @@ export async function handleOAuthCodeInput(
 
     await saveConfig(config);
 
-    write("✓ Successfully authenticated with Anthropic!\n");
-    write("✓ Using Claude Pro/Max subscription\n");
-    write(`✓ Active model: ${config.anthropic.model}\n\n`);
+    ui.appendOutput("✓ Successfully authenticated with Anthropic!\n");
+    ui.appendOutput("✓ Using Claude Pro/Max subscription\n");
+    ui.appendOutput(`✓ Active model: ${config.anthropic.model}\n\n`);
     ui.setStatus(`Ready • ${config.anthropic.model} • Press Enter to send`);
-    return { status: "success", provider };
   } catch (error: any) {
-    write(`❌ Error: ${error.message}\n`);
-    return { status: "failed", provider };
+    ui.appendOutput(`❌ Error: ${error.message}\n`);
   }
 }

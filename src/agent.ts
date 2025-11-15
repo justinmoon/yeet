@@ -169,6 +169,7 @@ export async function* runAgent(
       edit: tools.edit,
       write: tools.write,
       search: tools.search,
+      spawn_subagent: tools.spawnSubagent,
       // Control flow tools
       complete: tools.complete,
       clarify: tools.clarify,

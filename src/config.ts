@@ -1,6 +1,7 @@
 import os from "os";
 import path from "path";
 import { chmod, mkdir, readdir, readFile } from "fs/promises";
+import { normalizeHotkeyCombo } from "./utils/hotkeys";
 
 // Centralized config directory - follows XDG Base Directory spec
 export const YEET_CONFIG_DIR = path.join(os.homedir(), ".config", "yeet");
@@ -45,6 +46,28 @@ export interface PermissionPreset {
   notes?: string;
 }
 
+export type AgentReturnMode = "blocking" | "background";
+
+export interface AgentSlashTriggerConfig {
+  command: string;
+  description?: string;
+  capability: AgentCapability;
+  returnMode: AgentReturnMode;
+}
+
+export interface AgentHotkeyTriggerConfig {
+  combo: string;
+  command: string;
+  description?: string;
+  capability: AgentCapability;
+  returnMode: AgentReturnMode;
+}
+
+export interface AgentTriggerConfig {
+  slash?: AgentSlashTriggerConfig[];
+  hotkeys?: AgentHotkeyTriggerConfig[];
+}
+
 export interface AgentProfileConfig {
   id: string;
   description?: string;
@@ -55,6 +78,7 @@ export interface AgentProfileConfig {
   capabilities: AgentCapability[];
   defaultWorkspace?: WorkspacePolicy;
   permissionOverrides?: PermissionPreset;
+  triggers?: AgentTriggerConfig;
 }
 
 export type AgentProfileMap = Record<string, AgentProfileConfig>;
@@ -446,6 +470,7 @@ function normalizeAgentProfile(
     permissionOverrides:
       normalizePermissionPreset(profile.permissionOverrides) ??
       base?.permissionOverrides,
+    triggers: normalizeAgentTriggers(profile.triggers, base?.triggers),
   };
 
   if (normalized.capabilities.includes("watcher")) {
@@ -458,6 +483,171 @@ function normalizeAgentProfile(
   }
 
   return normalized;
+}
+
+const CAPABILITY_LIST: AgentCapability[] = [
+  "primary",
+  "subtask",
+  "watcher",
+];
+
+function normalizeCommandName(value: any): string | null {
+  if (typeof value !== "string") {
+    return null;
+  }
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const withoutSlash = trimmed.startsWith("/")
+    ? trimmed.slice(1)
+    : trimmed;
+  return withoutSlash.toLowerCase();
+}
+
+function normalizeReturnMode(value: any): AgentReturnMode {
+  return value === "blocking" ? "blocking" : "background";
+}
+
+function normalizeSlashTriggerEntry(
+  raw: any,
+  fallbackCapability: AgentCapability,
+): AgentSlashTriggerConfig | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const command = normalizeCommandName(raw.command);
+  if (!command) {
+    return null;
+  }
+
+  const capability = CAPABILITY_LIST.includes(raw.capability)
+    ? (raw.capability as AgentCapability)
+    : fallbackCapability;
+
+  const description =
+    typeof raw.description === "string" && raw.description.trim().length > 0
+      ? raw.description.trim()
+      : undefined;
+
+  return {
+    command,
+    description,
+    capability,
+    returnMode: normalizeReturnMode(raw.returnMode),
+  };
+}
+
+function firstSlashCommand(
+  slashEntries: Map<string, AgentSlashTriggerConfig>,
+): AgentSlashTriggerConfig | undefined {
+  const iterator = slashEntries.values().next();
+  return iterator.done ? undefined : iterator.value;
+}
+
+function normalizeHotkeyTriggerEntry(
+  raw: any,
+  slashEntries: Map<string, AgentSlashTriggerConfig>,
+  fallbackCapability: AgentCapability,
+): AgentHotkeyTriggerConfig | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+
+  const combo =
+    typeof raw.combo === "string" ? normalizeHotkeyCombo(raw.combo) : "";
+  if (!combo) {
+    return null;
+  }
+
+  const preferredCommand = normalizeCommandName(raw.command);
+  const inheritedSlash = preferredCommand
+    ? slashEntries.get(preferredCommand)
+    : firstSlashCommand(slashEntries);
+
+  const command = preferredCommand || inheritedSlash?.command;
+  if (!command) {
+    console.warn(
+      `[config] Hotkey "${combo}" ignored because no slash command was found for agent`,
+    );
+    return null;
+  }
+
+  const capability = CAPABILITY_LIST.includes(raw.capability)
+    ? (raw.capability as AgentCapability)
+    : inheritedSlash?.capability || fallbackCapability;
+
+  const description =
+    typeof raw.description === "string" && raw.description.trim().length > 0
+      ? raw.description.trim()
+      : inheritedSlash?.description;
+
+  const returnMode =
+    raw.returnMode === "blocking"
+      ? "blocking"
+      : inheritedSlash?.returnMode || "background";
+
+  return {
+    combo,
+    command,
+    description,
+    capability,
+    returnMode,
+  };
+}
+
+function normalizeAgentTriggers(
+  raw: any,
+  base?: AgentTriggerConfig,
+): AgentTriggerConfig | undefined {
+  const fallbackCapability: AgentCapability = "subtask";
+  const slashEntries = new Map<string, AgentSlashTriggerConfig>(
+    base?.slash?.map((entry) => [entry.command, entry]) ?? [],
+  );
+
+  if (raw?.slash && Array.isArray(raw.slash)) {
+    for (const entry of raw.slash) {
+      const normalized = normalizeSlashTriggerEntry(
+        entry,
+        fallbackCapability,
+      );
+      if (normalized) {
+        slashEntries.set(normalized.command, normalized);
+      }
+    }
+  }
+
+  const hotkeyEntries = new Map<string, AgentHotkeyTriggerConfig>(
+    base?.hotkeys?.map((entry) => [entry.combo, entry]) ?? [],
+  );
+
+  if (raw?.hotkeys && Array.isArray(raw.hotkeys)) {
+    for (const entry of raw.hotkeys) {
+      const normalized = normalizeHotkeyTriggerEntry(
+        entry,
+        slashEntries,
+        fallbackCapability,
+      );
+      if (normalized) {
+        hotkeyEntries.set(normalized.combo, normalized);
+      }
+    }
+  }
+
+  if (slashEntries.size === 0 && hotkeyEntries.size === 0) {
+    return base;
+  }
+
+  const triggers: AgentTriggerConfig = {};
+  if (slashEntries.size > 0) {
+    triggers.slash = Array.from(slashEntries.values());
+  }
+  if (hotkeyEntries.size > 0) {
+    triggers.hotkeys = Array.from(hotkeyEntries.values());
+  }
+
+  return triggers;
 }
 
 async function loadAgentProfiles(

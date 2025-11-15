@@ -46,6 +46,9 @@ export async function executeTool(
       case "search":
         result = await tools.search.execute?.(args, toolCallOptions);
         break;
+      case "spawn_subagent":
+        result = await tools.spawnSubagent.execute?.(args, toolCallOptions);
+        break;
       case "complete":
         result = await tools.complete.execute?.(args, toolCallOptions);
         break;

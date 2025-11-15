@@ -3,10 +3,12 @@ import type { Config } from "../config";
 import { AgentInbox } from "./inbox";
 import { AgentRegistry } from "./registry";
 import { AgentSpawner } from "./spawner";
+import { WatcherBridge } from "./watchers";
 
 const inbox = new AgentInbox();
 let registryPromise: Promise<AgentRegistry> | null = null;
 let spawnerPromise: Promise<AgentSpawner> | null = null;
+let watcherBridge: WatcherBridge | null = null;
 
 async function ensureRegistry(): Promise<AgentRegistry> {
   if (!registryPromise) {
@@ -36,7 +38,19 @@ export function getAgentInbox(): AgentInbox {
   return inbox;
 }
 
+export function getWatcherBridge(): WatcherBridge {
+  if (!watcherBridge) {
+    watcherBridge = new WatcherBridge(async (agentId) => {
+      const registry = await ensureRegistry();
+      return registry.get(agentId);
+    });
+  }
+  return watcherBridge;
+}
+
 export function resetAgentServicesForTesting(): void {
   registryPromise = null;
   spawnerPromise = null;
+  watcherBridge?.clear();
+  watcherBridge = null;
 }

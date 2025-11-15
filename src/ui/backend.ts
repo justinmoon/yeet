@@ -1,6 +1,11 @@
-import { cyan, dim, red, t, yellow } from "@opentui/core";
+import { cyan, dim, green, magenta, red, t, yellow } from "@opentui/core";
 import type { MessageContent } from "../agent";
 import { runAgent } from "../agent";
+import { getWatcherBridge } from "../agents/service";
+import {
+  popActiveAgentContext,
+  pushActiveAgentContext,
+} from "../agents/runtime-context";
 import type { Config } from "../config";
 import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
@@ -14,6 +19,8 @@ import type { UIAdapter } from "./interface";
 import { createDefaultWorkspaceBinding } from "../workspace/binding";
 import { setActiveWorkspaceBinding } from "../workspace/state";
 
+const watcherBridge = getWatcherBridge();
+
 /**
  * Backend logic for handling messages, agent interactions, and session management.
  * This is UI-agnostic and can be used by any frontend implementation.
@@ -23,32 +30,31 @@ export async function handleMessage(
   ui: UIAdapter,
   config: Config,
 ): Promise<void> {
-  if (ui.isGenerating) {
-    ui.appendOutput(
-      t`${yellow("⚠️  Please wait for the current response to finish (press Esc to cancel).")}\n`,
-    );
-    return;
+  if (!ui.currentSessionId) {
+    ui.saveCurrentSession();
   }
+  const activeSessionId = ui.currentSessionId;
 
   logger.info("Handling user message", {
     messageLength: message.length,
     imageAttachments: ui.imageAttachments.length,
   });
 
-  // Trim trailing newlines for display to keep spacing predictable
-  const displayMessage =
-    message.replace(/[\r\n]+$/g, "") || message;
+  // Add subtle separator between turns
+  if (ui.conversationHistory.length > 0) {
+    ui.appendOutput(t`${dim("─")}\n`);
+  }
 
   // Build message content (text + images if any)
   const hasImages = ui.imageAttachments.length > 0;
   let messageContent:
     | string
     | Array<{ type: "text"; text: string } | { type: "image"; image: URL }> =
-    displayMessage;
+    message;
 
   if (hasImages) {
     messageContent = [
-      { type: "text", text: displayMessage },
+      { type: "text", text: message },
       ...ui.imageAttachments.map((img) => ({
         type: "image" as const,
         image: new URL(`data:${img.mimeType};base64,${img.data}`),
@@ -59,11 +65,24 @@ export async function handleMessage(
   // Display user message with [you] prefix
   if (hasImages) {
     ui.appendOutput(
-      t`${cyan("[you]")} ${displayMessage} ${dim(`[${ui.imageAttachments.length} image(s)]`)}\n\n`,
+      t`${cyan("[you]")} ${message} ${dim(`[${ui.imageAttachments.length} image(s)]`)}\n`,
     );
   } else {
-    ui.appendOutput(t`${cyan("[you]")} ${displayMessage}\n\n`);
+    ui.appendOutput(t`${cyan("[you]")} ${message}\n`);
   }
+
+  const activeOrigin = {
+    agentId: "primary",
+    capability: "primary" as const,
+  };
+  watcherBridge.emit({
+    type: "user_message",
+    sessionId: activeSessionId,
+    origin: activeOrigin,
+    content: messageContent,
+    text: message,
+    timestamp: new Date().toISOString(),
+  });
 
   ui.clearInput();
   updateTokenCount(ui, config, "Thinking");
@@ -72,6 +91,12 @@ export async function handleMessage(
   const abortController = new AbortController();
   ui.abortController = abortController;
   ui.isGenerating = true;
+  const runtimeContext = {
+    sessionId: activeSessionId ?? null,
+    agentId: "primary",
+    capability: "primary" as const,
+  };
+  pushActiveAgentContext(runtimeContext);
 
   try {
     // Don't print [yeet] prefix - we'll only show it if there's actual text output
@@ -116,18 +141,6 @@ export async function handleMessage(
     let textChunks = 0;
     let lastToolName = "";
     let lastToolArgs: any = {};
-    let toolMessageCounter = 0;
-
-    const emitToolLine = (toolName: string, text: string) => {
-      if (!text) return;
-      ui.addMessagePart({
-        id: `tool-${toolName}-${Date.now()}-${toolMessageCounter++}`,
-        type: "tool",
-        content: text,
-        metadata: { tool: toolName },
-      });
-      ui.appendOutput("\n");
-    };
 
     for await (const event of runAgent(
       messages,
@@ -153,86 +166,97 @@ export async function handleMessage(
       } else if (event.type === "tool") {
         lastToolName = event.name || "";
         lastToolArgs = event.args || {};
+        watcherBridge.emit({
+          type: "tool_call",
+          sessionId: activeSessionId,
+          origin: activeOrigin,
+          toolName: event.name,
+          toolArgs: event.args,
+          timestamp: new Date().toISOString(),
+        });
 
         if (event.name === "bash") {
-          emitToolLine("bash", event.args?.command || "");
+          ui.appendOutput(t`\n${magenta("[bash]")} ${event.args?.command}\n`);
         } else if (event.name === "read") {
-          emitToolLine("read", event.args?.path || "");
+          ui.appendOutput(t`\n${magenta("[read]")} ${event.args?.path}\n`);
         } else if (event.name === "write") {
-          emitToolLine("write", event.args?.path || "");
+          ui.appendOutput(t`\n${magenta("[write]")} ${event.args?.path}\n`);
         } else if (event.name === "edit") {
-          emitToolLine("edit", event.args?.path || "");
+          ui.appendOutput(t`\n${magenta("[edit]")} ${event.args?.path}\n`);
         } else if (event.name === "search") {
-          const pattern = event.args?.pattern || "";
-          const location = event.args?.path ? ` in ${event.args.path}` : "";
-          emitToolLine("search", `"${pattern}"${location}`);
+          ui.appendOutput(
+            t`\n${magenta("[search]")} "${event.args?.pattern}"${event.args?.path ? ` in ${event.args.path}` : ""}\n`,
+          );
         } else if (event.name === "complete") {
-          emitToolLine(
-            "complete",
-            `✓ Task complete${event.args?.summary ? `: ${event.args.summary}` : ""}`,
+          ui.appendOutput(
+            t`\n${green("✓ Task complete:")} ${event.args?.summary || ""}\n`,
           );
         } else if (event.name === "clarify") {
-          emitToolLine("clarify", `❓ ${event.args?.question || ""}`);
+          ui.appendOutput(t`\n${yellow(`❓ ${event.args?.question || ""}`)}\n`);
         } else if (event.name === "pause") {
-          emitToolLine("pause", `⏸️  ${event.args?.reason || ""}`);
+          ui.appendOutput(
+            t`\n${yellow(`⏸️  Paused: ${event.args?.reason || ""}`)}\n`,
+          );
         }
       } else if (event.type === "tool-result") {
-        if (!lastToolName) {
-          continue;
-        }
         if (lastToolName === "read") {
           if (event.result?.error) {
-            emitToolLine(lastToolName, `❌ ${event.result.error}`);
+            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
           } else {
-            emitToolLine(lastToolName, `✓ Read ${lastToolArgs.path}`);
+            ui.appendOutput(t`  ${green(`✓ Read ${lastToolArgs.path}`)}\n`);
           }
         } else if (lastToolName === "write") {
           if (event.result?.error) {
-            emitToolLine(lastToolName, `❌ ${event.result.error}`);
+            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
           } else {
-            emitToolLine(lastToolName, `✓ Created ${lastToolArgs.path}`);
+            ui.appendOutput(t`  ${green(`✓ Created ${lastToolArgs.path}`)}\n`);
           }
         } else if (lastToolName === "edit") {
           if (event.result?.error) {
-            emitToolLine(lastToolName, `❌ ${event.result.error}`);
+            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
           } else {
-            emitToolLine(lastToolName, `✓ Updated ${lastToolArgs.path}`);
+            ui.appendOutput(t`  ${green(`✓ Updated ${lastToolArgs.path}`)}\n`);
           }
         } else if (lastToolName === "search") {
           if (event.result?.error) {
-            emitToolLine(lastToolName, `❌ ${event.result.error}`);
+            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
           } else if (event.result?.message) {
-            emitToolLine(lastToolName, event.result.message);
+            ui.appendOutput(`  ${event.result.message}\n`);
           } else if (event.result?.matches) {
             const count = event.result.total || 0;
-            const lines = [
-              `✓ Found ${count} match${count !== 1 ? "es" : ""}`,
-              ...event.result.matches
-                .slice(0, 10)
-                .map(
-                  (match: any) =>
-                    `${match.file}:${match.line}: ${match.content}`,
-                ),
-            ];
-            if (event.result.matches.length > 10) {
-              lines.push(
-                `... and ${event.result.matches.length - 10} more`,
+            ui.appendOutput(
+              t`  ${green(`✓ Found ${count} match${count !== 1 ? "es" : ""}`)}\n`,
+            );
+            const displayMatches = event.result.matches.slice(0, 10);
+            for (const match of displayMatches) {
+              ui.appendOutput(
+                t`    ${dim(`${match.file}:${match.line}:`)} ${match.content}\n`,
               );
             }
-            emitToolLine(lastToolName, lines.join("\n"));
+            if (event.result.matches.length > 10) {
+              ui.appendOutput(
+                t`    ${dim(`... and ${event.result.matches.length - 10} more`)}\n`,
+              );
+            }
           }
         } else if (lastToolName === "bash") {
           if (event.result?.error) {
-            emitToolLine(lastToolName, `❌ ${event.result.error}`);
+            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
           } else if (event.result?.stdout) {
-            let text = event.result.stdout;
+            // Indent bash output
+            const indentedOutput = event.result.stdout
+              .split("\n")
+              .map((line: string) => `  ${line}`)
+              .join("\n");
+            ui.appendOutput(indentedOutput);
             if (event.result.stderr) {
-              text += `\nstderr: ${event.result.stderr}`;
+              ui.appendOutput(t`  ${dim(`stderr: ${event.result.stderr}`)}\n`);
             }
             if (event.result.exitCode !== 0) {
-              text += `\n(exit code: ${event.result.exitCode})`;
+              ui.appendOutput(
+                t`  ${red(`(exit code: ${event.result.exitCode})`)}\n`,
+              );
             }
-            emitToolLine(lastToolName, text);
           }
         }
       } else if (event.type === "error") {
@@ -246,6 +270,14 @@ export async function handleMessage(
         id: `assistant-${Date.now()}`,
         type: "text",
         content: assistantResponse.trim(),
+      });
+      watcherBridge.emit({
+        type: "assistant_message",
+        sessionId: activeSessionId,
+        origin: activeOrigin,
+        content: assistantResponse.trim(),
+        text: assistantResponse.trim(),
+        timestamp: new Date().toISOString(),
       });
     }
 
@@ -290,6 +322,7 @@ export async function handleMessage(
     // Clean up generation state
     ui.isGenerating = false;
     ui.abortController = null;
+    popActiveAgentContext(runtimeContext);
   }
 }
 
