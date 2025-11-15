@@ -75,10 +75,7 @@ export async function handleMessage(
     // Don't print [yeet] prefix - we'll only show it if there's actual text output
 
     // Get model info for context window limits
-    const modelId =
-      config.activeProvider === "maple"
-        ? config.maple!.model
-        : config.opencode.model;
+    const modelId = getActiveModelId(config);
     const modelInfo = getModelInfo(modelId);
 
     // Build conversation history with current message
@@ -296,12 +293,7 @@ export function updateTokenCount(
   config: Config,
   statusPrefix = "Paused",
 ): void {
-  const modelId =
-    config.activeProvider === "anthropic"
-      ? config.anthropic?.model || ""
-      : config.activeProvider === "maple"
-        ? config.maple!.model
-        : config.opencode.model;
+  const modelId = getActiveModelId(config);
   const modelInfo = getModelInfo(modelId);
 
   if (!modelInfo) {
@@ -327,10 +319,7 @@ export function updateTokenCount(
 }
 
 export function saveCurrentSession(ui: UIAdapter, config: Config): void {
-  const modelId =
-    config.activeProvider === "maple"
-      ? config.maple!.model
-      : config.opencode.model;
+  const modelId = getActiveModelId(config);
 
   const { createSession, saveSession, loadSession } = require("../sessions");
 
