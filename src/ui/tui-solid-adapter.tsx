@@ -44,7 +44,8 @@ type CommandPaletteMode =
   | "models"
   | "themes"
   | "help"
-  | "auth";
+  | "auth"
+  | "explain";
 
 interface CommandPaletteEntry {
   id: string;
@@ -625,6 +626,14 @@ export class TUISolidAdapter implements UIAdapter {
                       }
                       if (e.name === "return") {
                         e.preventDefault();
+                        // Special handling for explain mode
+                        if (commandPaletteMode() === "explain") {
+                          const prompt = paletteInputRef?.plainText || "";
+                          if (prompt.trim()) {
+                            await this.runExplain(prompt);
+                          }
+                          return;
+                        }
                         const selected =
                           filteredPaletteEntries()[commandPaletteIndex()];
                         await runPaletteEntry(selected);
@@ -689,6 +698,121 @@ export class TUISolidAdapter implements UIAdapter {
                       }}
                     </For>
                   </scrollbox>
+                </Show>
+              </box>
+            </Show>
+
+            <Show when={explainVisible()}>
+              <box
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  backgroundColor: "#171722",
+                  flexDirection: "column",
+                  zIndex: 200,
+                }}
+              >
+                {/* Header */}
+                <box style={{ backgroundColor: "#DCDCDC", height: 1 }}>
+                  <text style={{ fg: "#000000" }}>
+                    Tutorial Review · ←/→ Navigate · q/Esc to close
+                  </text>
+                </box>
+
+                {/* Content */}
+                <Show when={explainResult()}>
+                  {(result) => {
+                    const currentSection = () => {
+                      const idx = explainIndex();
+                      return result().sections[idx];
+                    };
+                    const currentDiff = () => {
+                      const section = currentSection();
+                      return result().diffs.find(
+                        (d) => d.id === section?.diffId,
+                      );
+                    };
+
+                    return (
+                      <scrollbox
+                        style={{
+                          flexGrow: 1,
+                          padding: 2,
+                        }}
+                      >
+                        <box style={{ flexDirection: "column" }}>
+                          {/* Section info */}
+                          <box marginBottom={1}>
+                            <text style={{ fg: "#7aa2f7", bold: true }}>
+                              Section {explainIndex() + 1} of{" "}
+                              {result().sections.length}
+                            </text>
+                          </box>
+
+                          {/* Title */}
+                          <box marginBottom={1}>
+                            <text style={{ fg: "#FFFFFF", bold: true }}>
+                              {currentSection()?.title}
+                            </text>
+                          </box>
+
+                          {/* Tags */}
+                          <Show when={currentSection()?.tags?.length}>
+                            <box marginBottom={1}>
+                              <text style={{ fg: "#7f7f91" }}>
+                                Tags: {currentSection()?.tags?.join(", ")}
+                              </text>
+                            </box>
+                          </Show>
+
+                          {/* Explanation */}
+                          <box marginBottom={2}>
+                            <text style={{ fg: "#FFFFFF" }}>
+                              {currentSection()?.explanation}
+                            </text>
+                          </box>
+
+                          {/* Diff */}
+                          <Show when={currentDiff()}>
+                            <box marginBottom={1}>
+                              <text style={{ fg: "#7aa2f7", bold: true }}>
+                                Diff: {currentDiff()?.filePath}
+                              </text>
+                            </box>
+                            <box style={{ flexDirection: "column" }}>
+                              <For each={currentDiff()?.lines || []}>
+                                {(line) => {
+                                  const color =
+                                    line.type === "add"
+                                      ? "#73daca"
+                                      : line.type === "remove"
+                                        ? "#f7768e"
+                                        : "#7f7f91";
+                                  const prefix =
+                                    line.type === "add"
+                                      ? "+"
+                                      : line.type === "remove"
+                                        ? "-"
+                                        : " ";
+                                  return (
+                                    <box>
+                                      <text style={{ fg: color }}>
+                                        {prefix}
+                                        {line.content}
+                                      </text>
+                                    </box>
+                                  );
+                                }}
+                              </For>
+                            </box>
+                          </Show>
+                        </box>
+                      </scrollbox>
+                    );
+                  }}
                 </Show>
               </box>
             </Show>
@@ -804,8 +928,58 @@ export class TUISolidAdapter implements UIAdapter {
     this.setExplainIndex?.(0);
   }
 
+  private openExplainPrompt(): void {
+    this.setCommandPaletteMode?.("explain");
+    this.setCommandPaletteTitle?.("Explain Changes · Enter your prompt · Esc to cancel");
+    this.setCommandPaletteQuery?.("");
+    this.applyPaletteEntries([
+      this.createInfoEntry(
+        "explain-info",
+        "What would you like to understand?",
+        "Type a prompt like 'explain what changed' or 'show me the diff against master'",
+      ),
+    ]);
+  }
+
+  private async runExplain(prompt: string): Promise<void> {
+    this.hideCommandPalette();
+
+    try {
+      const { explain } = await import("../explain");
+      const { inferGitParams } = await import("../explain/infer-params");
+
+      // Infer git parameters from prompt
+      const params = await inferGitParams({
+        prompt,
+        cwd: undefined,
+        base: undefined,
+        head: undefined,
+      });
+
+      // Run explain
+      const result = await explain({
+        prompt,
+        cwd: params.cwd,
+        base: params.base,
+        head: params.head,
+      });
+
+      // Show result in modal
+      this.showExplainReview(result);
+    } catch (error: any) {
+      this.appendOutput(`\n\n⚠️ Explain failed: ${error.message}\n`);
+    }
+  }
+
   private buildRootPaletteEntries(): CommandPaletteEntry[] {
     return [
+      {
+        id: "explain-changes",
+        label: "Explain Changes",
+        description: "Generate tutorial from git diff",
+        keywords: ["explain", "diff", "tutorial", "changes", "git"],
+        run: () => this.openExplainPrompt(),
+      },
       {
         id: "resume-session",
         label: "Resume Session",
