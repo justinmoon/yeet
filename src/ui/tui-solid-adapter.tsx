@@ -31,7 +31,10 @@ import { saveConfig } from "../config";
 import type { ExplainResult } from "../explain";
 import { interpretExplainKey } from "../explain/keymap";
 import { logger } from "../logger";
+<<<<<<< HEAD
 import { normalizePastedPath, readImageFromPath } from "../utils/paste";
+=======
+>>>>>>> openai-fix
 import { startOpenAIOAuth } from "../openai-auth";
 import type { CallbackServer } from "../openai-callback-server";
 import { startCallbackServer } from "../openai-callback-server";

@@ -501,7 +501,6 @@ export function createOpenAIFetch(config: Config) {
     const headers = new Headers(init?.headers ?? {});
     headers.delete("x-api-key");
     headers.set("Authorization", `Bearer ${openai.access}`);
-    headers.set("accept", "text/event-stream");
 
     if (openai.accountId) {
       headers.set(OPENAI_HEADERS.ACCOUNT_ID, openai.accountId);
@@ -553,7 +552,23 @@ export function createOpenAIFetch(config: Config) {
 
         // Set Codex required fields
         parsed.store = false;
-        parsed.stream = true;
+
+        const originalStreamValue =
+          typeof parsed.stream === "boolean" ? parsed.stream : undefined;
+        const originalAccept = headers.get("accept")?.toLowerCase() || "";
+        const wantsStream =
+          originalStreamValue === true ||
+          originalAccept.includes("text/event-stream");
+
+        if (wantsStream) {
+          parsed.stream = true;
+          headers.set("accept", "text/event-stream");
+        } else {
+          parsed.stream = false;
+          if (!originalAccept) {
+            headers.set("accept", "application/json");
+          }
+        }
 
         // Codex requires instructions (system prompt)
         // Fetch official Codex instructions from GitHub (cached)
