@@ -4,8 +4,7 @@
   "type": "module",
   "description": "Minimal TUI coding agent",
   "bin": {
-    "yeet": "./src/index.ts",
-    "yeet-explain": "./src/explain/cli.ts"
+    "yeet": "./src/index.ts"
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^2.0.40",
