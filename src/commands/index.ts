@@ -6,6 +6,12 @@ import type {
 } from "../config";
 import { saveConfig } from "../config";
 import {
+  formatMessageLine,
+  formatHistorySpacer,
+  type AttachmentRef,
+} from "../ui/history-renderer";
+import { getHistoryConfig } from "../ui/backend";
+import {
   createStubExplainResult,
   getGitDiff,
   normalizeRequest,
@@ -64,7 +70,7 @@ export async function executeCommand(
       await handleSessionsCommand(ui);
       break;
     case "load":
-      await handleLoadCommand(args, ui);
+      await handleLoadCommand(args, ui, config);
       break;
     case "save":
       await handleSaveCommand(args, ui);
@@ -400,7 +406,7 @@ async function handleSessionsCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("Usage: /load <id|number> to resume a session\n");
 }
 
-async function handleLoadCommand(args: string[], ui: UIAdapter): Promise<void> {
+async function handleLoadCommand(args: string[], ui: UIAdapter, config: Config): Promise<void> {
   if (args.length === 0) {
     ui.appendOutput("❌ Usage: /load <session-id|number>\n");
     return;
@@ -483,26 +489,47 @@ function loadSessionIntoUI(session: any, ui: UIAdapter): void {
     `  ${session.model} • ${session.totalMessages} messages • Workspace: ${binding.allowWrites ? "writable" : "read-only"}\n\n`,
   );
 
-  // Replay conversation
-  for (const message of session.conversationHistory) {
+  // Replay conversation using shared formatter
+  const historyConfig = getHistoryConfig(config);
+  for (let i = 0; i < session.conversationHistory.length; i++) {
+    const message = session.conversationHistory[i];
+
+    // Add spacer between messages (except before first)
+    if (i > 0) {
+      ui.appendOutput(formatHistorySpacer());
+    }
+
     if (message.role === "user") {
       const hasImages =
         Array.isArray(message.content) &&
         message.content.some((p: any) => p.type === "image");
+
+      let text = "";
+      let attachments: AttachmentRef[] = [];
+
       if (hasImages) {
         const imageCount = (message.content as any[]).filter(
           (p) => p.type === "image",
         ).length;
-        const text = (message.content as any[])
+        text = (message.content as any[])
           .filter((p) => p.type === "text")
           .map((p) => p.text)
           .join("");
-        ui.appendOutput(`You: ${text} [${imageCount} image(s)]\n\n`);
+        attachments = Array.from({ length: imageCount }, (_, idx) => ({
+          type: "image" as const,
+          index: idx + 1,
+        }));
       } else {
-        ui.appendOutput(`You: ${message.content}\n\n`);
+        text = message.content as string;
       }
+
+      ui.appendOutput(
+        formatMessageLine("user", text, undefined, attachments, historyConfig.showMetadata),
+      );
     } else {
-      ui.appendOutput(`Assistant: ${message.content}\n\n`);
+      ui.appendOutput(
+        formatMessageLine("assistant", message.content as string, undefined, undefined, historyConfig.showMetadata),
+      );
     }
   }
 
