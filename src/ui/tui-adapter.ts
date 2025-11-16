@@ -30,6 +30,10 @@ import {
   parseHotkeyCombo,
   type HotkeyDescriptor,
 } from "../utils/hotkeys";
+import {
+  formatMessageLine,
+  formatHistorySpacer,
+} from "./history-renderer";
 
 export class TUIAdapter implements UIAdapter {
   conversationHistory: Array<{
@@ -159,9 +163,19 @@ export class TUIAdapter implements UIAdapter {
   }
 
   addMessagePart(part: import("./interface").MessagePart): void {
-    // Legacy TUI adapter doesn't use message parts yet
-    // Just append as text for now
-    this.appendOutput(part.content);
+    // Add spacer before assistant response
+    this.appendOutput(formatHistorySpacer());
+
+    // Format assistant message using history formatter
+    this.appendOutput(
+      formatMessageLine(
+        "assistant",
+        part.content,
+        { timestamp: new Date() },
+        undefined,
+        this.historyConfig.showMetadata,
+      ),
+    );
   }
 
   clearOutput(): void {
@@ -442,35 +456,58 @@ export class TUIAdapter implements UIAdapter {
         `  ${session.model} • ${session.totalMessages} messages\n\n`,
       );
 
-      // Replay conversation
+      // Replay conversation using history formatter
       for (let i = 0; i < session.conversationHistory.length; i++) {
         const message = session.conversationHistory[i];
 
-        // Add subtle separator between turns (except before first message)
+        // Add spacer between turns (except before first message)
         if (i > 0) {
-          this.appendOutput(t`${dim("─")}\n`);
+          this.appendOutput(formatHistorySpacer());
         }
 
         if (message.role === "user") {
           const hasImages =
             Array.isArray(message.content) &&
             message.content.some((p: any) => p.type === "image");
+
+          let text = "";
+          let attachments: import("./history-renderer").AttachmentRef[] = [];
+
           if (hasImages) {
             const imageCount = (message.content as any[]).filter(
               (p) => p.type === "image",
             ).length;
-            const text = (message.content as any[])
+            text = (message.content as any[])
               .filter((p) => p.type === "text")
               .map((p) => p.text)
               .join("");
-            this.appendOutput(
-              t`${cyan("[you]")} ${text} ${dim(`[${imageCount} image(s)]`)}\n`,
-            );
+            attachments = Array.from({ length: imageCount }, (_, idx) => ({
+              type: "image" as const,
+              index: idx + 1,
+            }));
           } else {
-            this.appendOutput(t`${cyan("[you]")} ${message.content}\n`);
+            text = message.content as string;
           }
+
+          this.appendOutput(
+            formatMessageLine(
+              "user",
+              text,
+              undefined,
+              attachments,
+              this.historyConfig.showMetadata,
+            ),
+          );
         } else {
-          this.appendOutput(t`${green("[yeet]")} ${message.content}\n`);
+          this.appendOutput(
+            formatMessageLine(
+              "assistant",
+              message.content as string,
+              undefined,
+              undefined,
+              this.historyConfig.showMetadata,
+            ),
+          );
         }
       }
 

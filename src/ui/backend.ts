@@ -18,6 +18,11 @@ import {
 import type { UIAdapter } from "./interface";
 import { createDefaultWorkspaceBinding } from "../workspace/binding";
 import { setActiveWorkspaceBinding } from "../workspace/state";
+import {
+  formatMessageLine,
+  formatHistorySpacer,
+  type AttachmentRef,
+} from "./history-renderer";
 
 const watcherBridge = getWatcherBridge();
 
@@ -52,9 +57,9 @@ export async function handleMessage(
     imageAttachments: ui.imageAttachments.length,
   });
 
-  // Add subtle separator between turns
+  // Add spacer between turns
   if (ui.conversationHistory.length > 0) {
-    ui.appendOutput(t`${dim("─")}\n`);
+    ui.appendOutput(formatHistorySpacer());
   }
 
   // Build message content (text + images if any)
@@ -74,14 +79,24 @@ export async function handleMessage(
     ];
   }
 
-  // Display user message with [you] prefix
-  if (hasImages) {
-    ui.appendOutput(
-      t`${cyan("[you]")} ${message} ${dim(`[${ui.imageAttachments.length} image(s)]`)}\n`,
-    );
-  } else {
-    ui.appendOutput(t`${cyan("[you]")} ${message}\n`);
-  }
+  // Display user message using formatter
+  const historyConfig = getHistoryConfig(config);
+  const attachments: AttachmentRef[] = hasImages
+    ? ui.imageAttachments.map((_, index) => ({
+        type: "image" as const,
+        index: index + 1,
+      }))
+    : [];
+
+  ui.appendOutput(
+    formatMessageLine(
+      "user",
+      message,
+      { timestamp: new Date() },
+      attachments,
+      historyConfig.showMetadata,
+    ),
+  );
 
   const activeOrigin = {
     agentId: "primary",
