@@ -73,7 +73,7 @@ export async function executeCommand(
       await handleClearCommand(ui);
       break;
     case "toggle":
-      await handleToggleCommand(ui, config);
+      await handleToggleCommand(args, ui, config);
       break;
     case "workspace":
       await handleWorkspaceCommand(args, ui);
@@ -102,26 +102,107 @@ export async function executeCommand(
 }
 
 async function handleToggleCommand(
+  args: string[],
   ui: UIAdapter,
   config: Config,
 ): Promise<void> {
-  const { cycleTheme } = await import("../ui/colors");
-  const newTheme = cycleTheme();
+  const option = args[0]?.toLowerCase();
 
-  // Update background color if UI supports it
-  if (ui.setBackgroundColor) {
-    ui.setBackgroundColor(newTheme.background);
+  switch (option) {
+    case "metadata": {
+      // Toggle metadata display
+      if (!config.ui) config.ui = {};
+      if (!config.ui.history) config.ui.history = {};
+      const newValue = !config.ui.history.showMetadata;
+      config.ui.history.showMetadata = newValue;
+      await saveConfig(config);
+
+      // Update TUIAdapter config if available
+      if (ui.updateHistoryConfig) {
+        ui.updateHistoryConfig({ showMetadata: newValue });
+      }
+
+      ui.appendOutput(
+        newValue
+          ? "✓ Metadata display enabled (timestamps and token counts)\n"
+          : "✓ Metadata display disabled\n",
+      );
+      break;
+    }
+
+    case "diffs": {
+      // Toggle inline diffs for edit tool
+      if (!config.ui) config.ui = {};
+      if (!config.ui.history) config.ui.history = {};
+      const newValue = !config.ui.history.inlineDiffs;
+      config.ui.history.inlineDiffs = newValue;
+      await saveConfig(config);
+
+      // Update TUIAdapter config if available
+      if (ui.updateHistoryConfig) {
+        ui.updateHistoryConfig({ inlineDiffs: newValue });
+      }
+
+      ui.appendOutput(
+        newValue
+          ? "✓ Inline diffs enabled (edit tool will show diffs)\n"
+          : "✓ Inline diffs disabled (edit tool shows summary only)\n",
+      );
+      break;
+    }
+
+    case "verbose": {
+      // Toggle verbose tool output
+      if (!config.ui) config.ui = {};
+      if (!config.ui.history) config.ui.history = {};
+      const newValue = !config.ui.history.verboseTools;
+      config.ui.history.verboseTools = newValue;
+      await saveConfig(config);
+
+      // Update TUIAdapter config if available
+      if (ui.updateHistoryConfig) {
+        ui.updateHistoryConfig({ verboseTools: newValue });
+      }
+
+      ui.appendOutput(
+        newValue
+          ? "✓ Verbose tool output enabled (show full details)\n"
+          : "✓ Verbose tool output disabled (show summaries only)\n",
+      );
+      break;
+    }
+
+    case "theme":
+    case undefined: {
+      // Default behavior: toggle theme
+      const { cycleTheme } = await import("../ui/colors");
+      const newTheme = cycleTheme();
+
+      // Update background color if UI supports it
+      if (ui.setBackgroundColor) {
+        ui.setBackgroundColor(newTheme.background);
+      }
+
+      // Save theme to config
+      const { themes } = await import("../ui/colors");
+      const themeName = Object.keys(themes).find((k) => themes[k] === newTheme);
+      if (themeName) {
+        config.theme = themeName;
+        await saveConfig(config);
+      }
+
+      ui.appendOutput(`🎨 Switched to ${newTheme.name} theme\n`);
+      break;
+    }
+
+    default:
+      ui.appendOutput(`❌ Unknown toggle option: ${option}\n`);
+      ui.appendOutput("Available options:\n");
+      ui.appendOutput("  /toggle theme      - Cycle color theme\n");
+      ui.appendOutput("  /toggle metadata   - Toggle timestamps and token counts\n");
+      ui.appendOutput("  /toggle diffs      - Toggle inline diffs for edit tool\n");
+      ui.appendOutput("  /toggle verbose    - Toggle verbose tool output\n");
   }
-
-  // Save theme to config
-  const { themes } = await import("../ui/colors");
-  const themeName = Object.keys(themes).find((k) => themes[k] === newTheme);
-  if (themeName) {
-    config.theme = themeName;
-    await saveConfig(config);
-  }
-
-  ui.appendOutput(`🎨 Switched to ${newTheme.name} theme\n`);
 }
 
 async function handleHelpCommand(
@@ -138,7 +219,7 @@ async function handleHelpCommand(
   ui.appendOutput("  /load <id|number>   - Load a session by ID or number\n");
   ui.appendOutput("  /save <name>        - Name current session\n");
   ui.appendOutput("  /clear              - Clear current session\n");
-  ui.appendOutput("  /toggle             - Cycle through color themes\n");
+  ui.appendOutput("  /toggle [option]    - Toggle theme, metadata, diffs, or verbose output\n");
   ui.appendOutput("  /workspace <mode>   - Set workspace to readonly or writable\n");
   ui.appendOutput("  /spawnagent <id>    - Launch a configured subagent with prompt\n");
   ui.appendOutput("  /inbox              - Show pending subagent status updates\n");
