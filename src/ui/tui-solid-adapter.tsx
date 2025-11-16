@@ -18,6 +18,7 @@ import {
 } from "solid-js";
 import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
+import { normalizePastedPath, readImageFromPath } from "../utils/paste";
 import { startAnthropicOAuth } from "../auth";
 import {
   handleMapleSetup,
@@ -508,6 +509,9 @@ export class TUISolidAdapter implements UIAdapter {
                     updateInputHeight(text);
                   }
                 }}
+                onPaste={async (event: any) => {
+                  await this.handlePasteEvent(event);
+                }}
                 onKeyDown={async (e: any) => {
                   if (e.name === "return" && !e.shift) {
                     e.preventDefault();
@@ -541,6 +545,13 @@ export class TUISolidAdapter implements UIAdapter {
                       } else {
                         await handleMessage(message, this, this.config);
                       }
+                    }
+                  } else if ((e.name === "v" && e.ctrl) || (e.name === "v" && (e as any).meta)) {
+                    const attached = await this.tryAttachClipboardImage(
+                      "clipboard-shortcut",
+                    );
+                    if (attached) {
+                      e.preventDefault();
                     }
                   } else if (e.name === "escape") {
                     if (this.isGenerating && this.abortController) {
@@ -2078,7 +2089,92 @@ export class TUISolidAdapter implements UIAdapter {
   }
 
   private updateAttachmentIndicator(): void {
+    const modelId =
+      this.config.activeProvider === "anthropic"
+        ? this.config.anthropic?.model || ""
+        : this.config.activeProvider === "openai"
+          ? this.config.openai?.model || ""
+          : this.config.activeProvider === "maple"
+            ? this.config.maple?.model || ""
+            : this.config.opencode.model;
+    const modelInfo = getModelInfo(modelId);
+    const modelName = modelInfo?.name || modelId;
+
+    if (this.imageAttachments.length > 0) {
+      const tokenPortion =
+        this.currentTokens > 0
+          ? `${this.currentTokens}/${modelInfo?.contextWindow || "?"}`
+          : "0/?";
+      this.setStatus(
+        `${modelName} | ${tokenPortion} | 📎 ${this.imageAttachments.length} image(s)`,
+      );
+    } else {
+      this.updateTokenCount();
+    }
+
     this.setImageCount(this.imageAttachments.length);
+  }
+
+  private addImageAttachment(
+    image: { mimeType: string; data: string; name?: string },
+    source: string,
+  ): void {
+    this.imageAttachments.push(image);
+    this.updateAttachmentIndicator();
+    const label = image.name || image.mimeType || "image";
+    this.appendOutput(`📎 Attached ${label}\n`);
+    logger.info("Image attachment added", {
+      source,
+      name: image.name,
+      mimeType: image.mimeType,
+      count: this.imageAttachments.length,
+    });
+  }
+
+  private async handlePasteEvent(event: any): Promise<void> {
+    const pastedText = event.text ?? "";
+
+    if (await this.tryAttachImageFromPathCandidate(pastedText)) {
+      event.preventDefault();
+      return;
+    }
+
+    if (!pastedText.trim()) {
+      const attached = await this.tryAttachClipboardImage("clipboard-paste");
+      if (attached) {
+        event.preventDefault();
+      }
+    }
+  }
+
+  private async tryAttachImageFromPathCandidate(
+    rawText: string,
+  ): Promise<boolean> {
+    const normalized = normalizePastedPath(rawText);
+    if (!normalized) {
+      return false;
+    }
+
+    const image = await readImageFromPath(normalized);
+    if (!image) {
+      logger.debug("Pasted path is not an image or failed to load", {
+        path: normalized,
+      });
+      return false;
+    }
+
+    this.addImageAttachment(image, normalized);
+    return true;
+  }
+
+  private async tryAttachClipboardImage(source: string): Promise<boolean> {
+    const image = await readImageFromClipboard();
+    if (!image) {
+      return false;
+    }
+
+    this.addImageAttachment(image, source);
+    return true;
   }
 }
 
