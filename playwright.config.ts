@@ -2,7 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 
 export default defineConfig({
   testDir: "./test",
-  testMatch: ["**/web-pty.playwright.test.ts", "**/explain-tui.playwright.test.ts"], // web-pty and explain TUI tests
+  testMatch: "**/web-pty.playwright.test.ts", // Only web-pty tests, GUI tests use separate config
   fullyParallel: false, // Run tests serially to avoid port conflicts
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,

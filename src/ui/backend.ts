@@ -13,6 +13,24 @@ import {
 import type { UIAdapter } from "./interface";
 
 /**
+ * Get the active model ID based on the active provider
+ */
+function getActiveModelId(config: Config): string {
+  switch (config.activeProvider) {
+    case "anthropic":
+      return config.anthropic?.model || "";
+    case "openai":
+      return config.openai?.model || "";
+    case "maple":
+      return config.maple?.model || "";
+    case "opencode":
+      return config.opencode.model;
+    default:
+      return config.opencode.model;
+  }
+}
+
+/**
  * Backend logic for handling messages, agent interactions, and session management.
  * This is UI-agnostic and can be used by any frontend implementation.
  */
