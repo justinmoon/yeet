@@ -102,6 +102,17 @@ export class TUISolidAdapter implements UIAdapter {
     descriptor: HotkeyDescriptor;
     command: string;
   }> = [];
+  private commandPaletteHotkey?: HotkeyDescriptor;
+  private commandPaletteActive = false;
+  private setCommandPaletteActive?: (active: boolean) => void;
+  private getCommandPaletteActive?: () => boolean;
+  private commandPaletteEntries: Array<{
+    id: string;
+    command: string;
+    description: string;
+    autoRun?: boolean;
+  }> = [];
+  private selectedCommandIndex = 0;
 
   constructor(config: Config) {
     this.config = config;
@@ -119,6 +130,9 @@ export class TUISolidAdapter implements UIAdapter {
         ): entry is { descriptor: HotkeyDescriptor; command: string } =>
           entry !== null,
       );
+
+    // Initialize command palette hotkey
+    this.commandPaletteHotkey = parseHotkeyCombo("cmdorctrl+o") ?? undefined;
   }
 
   async start(): Promise<void> {
@@ -147,6 +161,8 @@ export class TUISolidAdapter implements UIAdapter {
           "Type your message...",
         );
         const [imageCount, setImageCount] = createSignal(0);
+        const [commandPaletteActive, setCommandPaletteActive] =
+          createSignal(false);
         let textareaRef: any = null;
         const scrollBoxRef: any = null;
 
@@ -162,6 +178,7 @@ export class TUISolidAdapter implements UIAdapter {
         this.setInputValue = setInputValue;
         this.setInputPlaceholder = setInputPlaceholder;
         this.setImageCount = setImageCount;
+        this.setCommandPaletteActive = setCommandPaletteActive;
 
         this.getStatusText = statusText;
         this.getOutputContent = outputContent;
@@ -169,18 +186,30 @@ export class TUISolidAdapter implements UIAdapter {
         this.getInputValue = inputValue;
         this.getInputPlaceholder = inputPlaceholder;
         this.getImageCount = imageCount;
+        this.getCommandPaletteActive = commandPaletteActive;
 
         onMount(() => {
           // Store renderer reference
           this.renderer = renderer;
 
-          const handleExplainKeys = (key: KeyEvent) => {
+          const handleGlobalKeys = (key: KeyEvent) => {
+            // Check for command palette hotkey (Cmd-O / Ctrl-O)
+            if (
+              this.commandPaletteHotkey &&
+              matchHotkeyEvent(this.commandPaletteHotkey, key)
+            ) {
+              key.preventDefault?.();
+              this.showCommandPalette();
+              return;
+            }
+
+            // Handle explain keys
             this.processExplainKeyEvent(key);
           };
 
-          this.renderer.keyInput?.on?.("keypress", handleExplainKeys);
-          this.renderer.keyInput?.on?.("keyrepeat", handleExplainKeys);
-          this.renderer.keyInput?.on?.("keyrelease", handleExplainKeys);
+          this.renderer.keyInput?.on?.("keypress", handleGlobalKeys);
+          this.renderer.keyInput?.on?.("keyrepeat", handleGlobalKeys);
+          this.renderer.keyInput?.on?.("keyrelease", handleGlobalKeys);
 
           // Set background color
           renderer.setBackgroundColor(theme.background);
@@ -288,6 +317,42 @@ export class TUISolidAdapter implements UIAdapter {
                   }
                 }}
                 onKeyDown={async (e: any) => {
+                  // Handle command palette navigation if active
+                  if (commandPaletteActive()) {
+                    if (e.name === "escape") {
+                      e.preventDefault();
+                      this.hideCommandPalette();
+                      return;
+                    }
+                    if (e.name === "up") {
+                      e.preventDefault();
+                      this.movePaletteSelection(-1);
+                      return;
+                    }
+                    if (e.name === "down") {
+                      e.preventDefault();
+                      this.movePaletteSelection(1);
+                      return;
+                    }
+                    if (e.name === "return") {
+                      e.preventDefault();
+                      await this.executeSelectedCommand();
+                      return;
+                    }
+                    // Block other keys when palette is active
+                    return;
+                  }
+
+                  // Check for command palette hotkey
+                  if (
+                    this.commandPaletteHotkey &&
+                    matchHotkeyEvent(this.commandPaletteHotkey, e)
+                  ) {
+                    e.preventDefault();
+                    this.showCommandPalette();
+                    return;
+                  }
+
                   const hotkey = this.agentHotkeys.find(({ descriptor }) =>
                     matchHotkeyEvent(descriptor, e),
                   );
@@ -353,6 +418,50 @@ export class TUISolidAdapter implements UIAdapter {
                 }}
               />
             </box>
+
+            {/* Command Palette Modal */}
+            <Show when={commandPaletteActive()}>
+              <box
+                style={{
+                  position: "absolute",
+                  top: 3,
+                  left: 5,
+                  right: 5,
+                  bottom: 5,
+                  backgroundColor: theme.background,
+                  border: true,
+                  borderStyle: "double",
+                  borderColor: "#7aa2f7",
+                  zIndex: 1000,
+                  padding: 1,
+                  flexDirection: "column",
+                }}
+              >
+                <text style={{ fg: "#7aa2f7", marginBottom: 1 }}>
+                  Command Palette (↑/↓ to navigate, Enter to select, Esc to
+                  close)
+                </text>
+                <box style={{ flexGrow: 1, overflow: "hidden" }}>
+                  <For each={this.commandPaletteEntries}>
+                    {(entry, index) => {
+                      const isSelected = index() === this.selectedCommandIndex;
+                      return (
+                        <text
+                          style={{
+                            fg: isSelected ? "#7aa2f7" : theme.foreground,
+                            bg: isSelected ? "#2d3f5f" : "transparent",
+                          }}
+                        >
+                          {isSelected ? "→ " : "  "}
+                          {entry.command} - {entry.description}
+                          {"\n"}
+                        </text>
+                      );
+                    }}
+                  </For>
+                </box>
+              </box>
+            </Show>
           </box>
         );
       },
@@ -542,6 +651,125 @@ export class TUISolidAdapter implements UIAdapter {
 
   private updateAttachmentIndicator(): void {
     this.setImageCount(this.imageAttachments.length);
+  }
+
+  private buildCommandPaletteEntries(): void {
+    const { getAgentSlashCommandTriggers } = require("../agents/triggers");
+
+    this.commandPaletteEntries = [
+      {
+        id: "builtin-clear",
+        command: "/clear",
+        description: "Reset conversation",
+        autoRun: true,
+      },
+      {
+        id: "builtin-sessions",
+        command: "/sessions",
+        description: "List saved sessions",
+        autoRun: true,
+      },
+      {
+        id: "builtin-models",
+        command: "/models",
+        description: "Switch active model",
+        autoRun: true,
+      },
+      {
+        id: "builtin-toggle",
+        command: "/toggle",
+        description: "Cycle color theme",
+        autoRun: false,
+      },
+      {
+        id: "builtin-toggle-metadata",
+        command: "/toggle metadata",
+        description: "Toggle timestamps and token counts",
+        autoRun: true,
+      },
+      {
+        id: "builtin-toggle-diffs",
+        command: "/toggle diffs",
+        description: "Toggle inline diffs for edit tool",
+        autoRun: true,
+      },
+      {
+        id: "builtin-toggle-verbose",
+        command: "/toggle verbose",
+        description: "Toggle verbose tool output",
+        autoRun: true,
+      },
+    ];
+
+    // Add agent slash commands
+    const agentCommands = getAgentSlashCommandTriggers(this.config);
+    for (const trigger of agentCommands) {
+      this.commandPaletteEntries.push({
+        id: `agent-${trigger.agentId}-${trigger.command}`,
+        command: `/${trigger.command}`,
+        description: trigger.description || `Agent: ${trigger.agentId}`,
+        autoRun: false,
+      });
+    }
+
+    this.selectedCommandIndex = 0;
+  }
+
+  private showCommandPalette(): void {
+    if (this.getCommandPaletteActive?.()) return;
+
+    this.buildCommandPaletteEntries();
+    this.setCommandPaletteActive?.(true);
+  }
+
+  private hideCommandPalette(): void {
+    this.setCommandPaletteActive?.(false);
+    this.selectedCommandIndex = 0;
+
+    // Refocus textarea
+    if (this.inputEl) {
+      setTimeout(() => {
+        this.inputEl.focus();
+      }, 0);
+    }
+  }
+
+  private movePaletteSelection(delta: number): void {
+    const newIndex = this.selectedCommandIndex + delta;
+    if (newIndex >= 0 && newIndex < this.commandPaletteEntries.length) {
+      this.selectedCommandIndex = newIndex;
+      // Trigger re-render by updating the signal
+      this.setCommandPaletteActive?.(true);
+    }
+  }
+
+  private async executeSelectedCommand(): Promise<void> {
+    const entry = this.commandPaletteEntries[this.selectedCommandIndex];
+    if (!entry) return;
+
+    this.hideCommandPalette();
+
+    if (entry.autoRun) {
+      // Execute the command directly
+      const commandText = entry.command.startsWith("/")
+        ? entry.command.slice(1)
+        : entry.command;
+      const parts = commandText.split(" ");
+      const command = parts[0];
+      const args = parts.slice(1);
+
+      await executeCommand(command, args, this, this.config);
+    } else {
+      // Insert command into input for user to complete
+      const commandText = entry.command;
+      this.inputEl.plainText = commandText;
+      this.inputText = commandText;
+      this.setInputValue(commandText);
+
+      if (this.inputEl) {
+        this.inputEl.focus();
+      }
+    }
   }
 }
 
