@@ -21,7 +21,10 @@ import { setActiveWorkspaceBinding } from "../workspace/state";
 import {
   formatMessageLine,
   formatHistorySpacer,
+  formatToolSummary,
   type AttachmentRef,
+  type ToolCallInfo,
+  type ToolSummaryCounts,
 } from "./history-renderer";
 
 const watcherBridge = getWatcherBridge();
@@ -202,19 +205,17 @@ export async function handleMessage(
           timestamp: new Date().toISOString(),
         });
 
-        if (event.name === "bash") {
-          ui.appendOutput(t`\n${magenta("[bash]")} ${event.args?.command}\n`);
-        } else if (event.name === "read") {
-          ui.appendOutput(t`\n${magenta("[read]")} ${event.args?.path}\n`);
-        } else if (event.name === "write") {
-          ui.appendOutput(t`\n${magenta("[write]")} ${event.args?.path}\n`);
-        } else if (event.name === "edit") {
-          ui.appendOutput(t`\n${magenta("[edit]")} ${event.args?.path}\n`);
-        } else if (event.name === "search") {
-          ui.appendOutput(
-            t`\n${magenta("[search]")} "${event.args?.pattern}"${event.args?.path ? ` in ${event.args.path}` : ""}\n`,
-          );
-        } else if (event.name === "complete") {
+        // Add spacer before tool call
+        ui.appendOutput(formatHistorySpacer());
+
+        // Use formatter for tool summary (will be enhanced in tool-result with counts)
+        const toolInfo: ToolCallInfo = {
+          name: event.name || "",
+          args: event.args,
+        };
+
+        // Special handling for non-standard tools
+        if (event.name === "complete") {
           ui.appendOutput(
             t`\n${green("✓ Task complete:")} ${event.args?.summary || ""}\n`,
           );
@@ -224,65 +225,79 @@ export async function handleMessage(
           ui.appendOutput(
             t`\n${yellow(`⏸️  Paused: ${event.args?.reason || ""}`)}\n`,
           );
+        } else {
+          // Standard tools: bash, read, write, edit, search
+          ui.appendOutput(formatToolSummary(toolInfo, undefined, historyConfig.showMetadata));
         }
       } else if (event.type === "tool-result") {
+        // Handle errors for all tools
+        if (event.result?.error) {
+          ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
+          continue;
+        }
+
+        // Handle tool-specific results with optional verbose output
         if (lastToolName === "read") {
-          if (event.result?.error) {
-            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
-          } else {
-            ui.appendOutput(t`  ${green(`✓ Read ${lastToolArgs.path}`)}\n`);
+          // Show verbose file content if enabled
+          if (historyConfig.verboseTools && event.result?.content) {
+            const lines = (event.result.content as string).split("\n");
+            const preview = lines.slice(0, 20).join("\n");
+            const indented = preview
+              .split("\n")
+              .map((line: string) => `  ${line}`)
+              .join("\n");
+            ui.appendOutput(t`${dim(indented)}\n`);
+            if (lines.length > 20) {
+              ui.appendOutput(
+                t`  ${dim(`... and ${lines.length - 20} more lines`)}\n`,
+              );
+            }
           }
         } else if (lastToolName === "write") {
-          if (event.result?.error) {
-            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
-          } else {
-            ui.appendOutput(t`  ${green(`✓ Created ${lastToolArgs.path}`)}\n`);
-          }
+          // Verbose mode could show content preview (future enhancement)
         } else if (lastToolName === "edit") {
-          if (event.result?.error) {
-            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
-          } else {
-            ui.appendOutput(t`  ${green(`✓ Updated ${lastToolArgs.path}`)}\n`);
+          // Show inline diff if enabled
+          if (historyConfig.inlineDiffs && event.result?.diff) {
+            const diff = event.result.diff as string;
+            const diffLines = diff.split("\n");
+            for (const line of diffLines) {
+              if (line.startsWith("+") && !line.startsWith("+++")) {
+                ui.appendOutput(t`  ${green(line)}\n`);
+              } else if (line.startsWith("-") && !line.startsWith("---")) {
+                ui.appendOutput(t`  ${red(line)}\n`);
+              } else {
+                ui.appendOutput(t`  ${dim(line)}\n`);
+              }
+            }
           }
         } else if (lastToolName === "search") {
-          if (event.result?.error) {
-            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
-          } else if (event.result?.message) {
+          // Search results are always shown (when available)
+          if (event.result?.message) {
             ui.appendOutput(`  ${event.result.message}\n`);
           } else if (event.result?.matches) {
             const count = event.result.total || 0;
-            ui.appendOutput(
-              t`  ${green(`✓ Found ${count} match${count !== 1 ? "es" : ""}`)}\n`,
-            );
             const displayMatches = event.result.matches.slice(0, 10);
             for (const match of displayMatches) {
               ui.appendOutput(
-                t`    ${dim(`${match.file}:${match.line}:`)} ${match.content}\n`,
+                t`  ${dim(`${match.file}:${match.line}:`)} ${match.content}\n`,
               );
             }
             if (event.result.matches.length > 10) {
               ui.appendOutput(
-                t`    ${dim(`... and ${event.result.matches.length - 10} more`)}\n`,
+                t`  ${dim(`... and ${event.result.matches.length - 10} more`)}\n`,
               );
             }
           }
         } else if (lastToolName === "bash") {
-          if (event.result?.error) {
-            ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
-          } else if (event.result?.stdout) {
-            // Indent bash output
-            const indentedOutput = event.result.stdout
+          // Show bash output if verbose mode is enabled
+          if (historyConfig.verboseTools && event.result?.stdout) {
+            const indentedOutput = (event.result.stdout as string)
               .split("\n")
               .map((line: string) => `  ${line}`)
               .join("\n");
             ui.appendOutput(indentedOutput);
             if (event.result.stderr) {
               ui.appendOutput(t`  ${dim(`stderr: ${event.result.stderr}`)}\n`);
-            }
-            if (event.result.exitCode !== 0) {
-              ui.appendOutput(
-                t`  ${red(`(exit code: ${event.result.exitCode})`)}\n`,
-              );
             }
           }
         }
