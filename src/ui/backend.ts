@@ -20,12 +20,12 @@ import { createDefaultWorkspaceBinding } from "../workspace/binding";
 import { setActiveWorkspaceBinding } from "../workspace/state";
 import {
   formatMessageLine,
-  formatHistorySpacer,
   formatToolSummary,
   type AttachmentRef,
   type ToolCallInfo,
   type ToolSummaryCounts,
 } from "./history-renderer";
+import { appendHistoryEntry } from "./history-spacing";
 
 const watcherBridge = getWatcherBridge();
 
@@ -54,16 +54,12 @@ export async function handleMessage(
     ui.saveCurrentSession();
   }
   const activeSessionId = ui.currentSessionId;
+  const turnId = `${activeSessionId ?? "session"}-${Date.now()}`;
 
   logger.info("Handling user message", {
     messageLength: message.length,
     imageAttachments: ui.imageAttachments.length,
   });
-
-  // Add spacer between turns
-  if (ui.conversationHistory.length > 0) {
-    ui.appendOutput(formatHistorySpacer());
-  }
 
   // Build message content (text + images if any)
   const hasImages = ui.imageAttachments.length > 0;
@@ -90,8 +86,9 @@ export async function handleMessage(
         index: index + 1,
       }))
     : [];
-
-  ui.appendOutput(
+  appendHistoryEntry(
+    ui,
+    `${turnId}-user`,
     formatMessageLine(
       "user",
       message,
@@ -171,6 +168,9 @@ export async function handleMessage(
     let textChunks = 0;
     let lastToolName = "";
     let lastToolArgs: any = {};
+    let assistantTextChunks = 0;
+    let currentToolGroupId: string | null = null;
+    let currentToolCallId = 0;
 
     for await (const event of runAgent(
       messages,
@@ -190,12 +190,40 @@ export async function handleMessage(
           content: event.content?.substring(0, 50),
           chunkNumber: textChunks,
         });
-        const text = event.content || "";
+        let text = event.content || "";
+        if (assistantTextChunks === 0) {
+          text = text.replace(/^\s+/, "");
+        }
+        if (!text) {
+          continue;
+        }
         assistantResponse += text;
         updateTokenCount(ui, config, "Responding");
+        if (text.trim().length > 0) {
+          if (assistantTextChunks === 0) {
+            // First chunk: show [yeet] prefix with formatMessageLine
+            appendHistoryEntry(
+              ui,
+              `${turnId}-assistant`,
+              formatMessageLine(
+                "assistant",
+                text,
+                { timestamp: new Date() },
+                undefined,
+                historyConfig.showMetadata,
+              ),
+            );
+          } else {
+            // Subsequent chunks: just append text without prefix
+            appendHistoryEntry(ui, `${turnId}-assistant`, text);
+          }
+          assistantTextChunks++;
+        }
       } else if (event.type === "tool") {
         lastToolName = event.name || "";
         lastToolArgs = event.args || {};
+        currentToolCallId += 1;
+        currentToolGroupId = `${turnId}-tool-${currentToolCallId}`;
         watcherBridge.emit({
           type: "tool_call",
           sessionId: activeSessionId,
@@ -205,9 +233,6 @@ export async function handleMessage(
           timestamp: new Date().toISOString(),
         });
 
-        // Add spacer before tool call
-        ui.appendOutput(formatHistorySpacer());
-
         // Use formatter for tool summary (will be enhanced in tool-result with counts)
         const toolInfo: ToolCallInfo = {
           name: event.name || "",
@@ -216,103 +241,222 @@ export async function handleMessage(
 
         // Special handling for non-standard tools
         if (event.name === "complete") {
-          ui.appendOutput(
-            t`\n${green("✓ Task complete:")} ${event.args?.summary || ""}\n`,
+          const statusGroup = `${turnId}-status-${currentToolCallId}`;
+          currentToolGroupId = statusGroup;
+          appendHistoryEntry(
+            ui,
+            statusGroup,
+            t`${green("✓ Task complete:")} ${event.args?.summary || ""}\n`,
           );
         } else if (event.name === "clarify") {
-          ui.appendOutput(t`\n${yellow(`❓ ${event.args?.question || ""}`)}\n`);
+          const statusGroup = `${turnId}-status-${currentToolCallId}`;
+          currentToolGroupId = statusGroup;
+          appendHistoryEntry(
+            ui,
+            statusGroup,
+            t`${yellow(`❓ ${event.args?.question || ""}`)}\n`,
+          );
         } else if (event.name === "pause") {
-          ui.appendOutput(
-            t`\n${yellow(`⏸️  Paused: ${event.args?.reason || ""}`)}\n`,
+          const statusGroup = `${turnId}-status-${currentToolCallId}`;
+          currentToolGroupId = statusGroup;
+          appendHistoryEntry(
+            ui,
+            statusGroup,
+            t`${yellow(`⏸️  Paused: ${event.args?.reason || ""}`)}\n`,
           );
         } else {
-          // Standard tools: bash, read, write, edit, search
-          ui.appendOutput(formatToolSummary(toolInfo, undefined, historyConfig.showMetadata));
+          currentToolGroupId = `${turnId}-tool-${currentToolCallId}`;
+          // Don't show tool summary yet - wait for result with actual counts
         }
       } else if (event.type === "tool-result") {
+        const toolGroup =
+          currentToolGroupId ?? `${turnId}-tool-${currentToolCallId || 0}`;
+
+        // Build tool info and counts from result
+        const toolInfo: ToolCallInfo = {
+          name: lastToolName || "",
+          args: lastToolArgs,
+          result: event.result,
+        };
+        const counts: ToolSummaryCounts = {};
+
         // Handle errors for all tools
         if (event.result?.error) {
-          ui.appendOutput(t`  ${red(`❌ ${event.result.error}`)}\n`);
+          // Show tool summary with error
+          appendHistoryEntry(
+            ui,
+            toolGroup,
+            formatToolSummary(toolInfo, counts, historyConfig.showMetadata),
+          );
+          appendHistoryEntry(
+            ui,
+            toolGroup,
+            t`  ${red(`❌ ${event.result.error}`)}\n`,
+          );
           continue;
         }
 
-        // Handle tool-specific results with optional verbose output
+        // Handle tool-specific results with counts
         if (lastToolName === "read") {
+          // Count lines for read
+          if (event.result?.content) {
+            counts.totalLines = (event.result.content as string).split("\n").length;
+          }
+          // Show tool summary
+          appendHistoryEntry(
+            ui,
+            toolGroup,
+            formatToolSummary(toolInfo, counts, historyConfig.showMetadata),
+          );
+
           // Show verbose file content if enabled
           if (historyConfig.verboseTools && event.result?.content) {
             const lines = (event.result.content as string).split("\n");
             const preview = lines.slice(0, 20).join("\n");
-            const indented = preview
-              .split("\n")
-              .map((line: string) => `  ${line}`)
-              .join("\n");
-            ui.appendOutput(t`${dim(indented)}\n`);
+            appendHistoryEntry(ui, toolGroup, t`${dim(preview)}\n`);
             if (lines.length > 20) {
-              ui.appendOutput(
-                t`  ${dim(`... and ${lines.length - 20} more lines`)}\n`,
+              appendHistoryEntry(
+                ui,
+                toolGroup,
+                t`${dim(`... and ${lines.length - 20} more lines`)}\n`,
               );
             }
           }
         } else if (lastToolName === "write") {
-          // Verbose mode could show content preview (future enhancement)
+          // Count lines for write
+          if (event.result?.content) {
+            counts.totalLines = (event.result.content as string).split("\n").length;
+          }
+          // Show tool summary
+          appendHistoryEntry(
+            ui,
+            toolGroup,
+            formatToolSummary(toolInfo, counts, historyConfig.showMetadata),
+          );
         } else if (lastToolName === "edit") {
+          // Count added/removed lines from diff
+          if (event.result?.diff) {
+            const diff = event.result.diff as string;
+            const diffLines = diff.split("\n");
+            let added = 0;
+            let removed = 0;
+            for (const line of diffLines) {
+              if (line.startsWith("+") && !line.startsWith("+++")) added++;
+              if (line.startsWith("-") && !line.startsWith("---")) removed++;
+            }
+            counts.linesAdded = added;
+            counts.linesRemoved = removed;
+          }
+          // Show tool summary with diff counts
+          appendHistoryEntry(
+            ui,
+            toolGroup,
+            formatToolSummary(toolInfo, counts, historyConfig.showMetadata),
+          );
+
           // Show inline diff if enabled
           if (historyConfig.inlineDiffs && event.result?.diff) {
             const diff = event.result.diff as string;
             const diffLines = diff.split("\n");
             for (const line of diffLines) {
               if (line.startsWith("+") && !line.startsWith("+++")) {
-                ui.appendOutput(t`  ${green(line)}\n`);
+                appendHistoryEntry(ui, toolGroup, t`  ${green(line)}\n`);
               } else if (line.startsWith("-") && !line.startsWith("---")) {
-                ui.appendOutput(t`  ${red(line)}\n`);
+                appendHistoryEntry(ui, toolGroup, t`  ${red(line)}\n`);
               } else {
-                ui.appendOutput(t`  ${dim(line)}\n`);
+                appendHistoryEntry(ui, toolGroup, t`  ${dim(line)}\n`);
               }
             }
           }
         } else if (lastToolName === "search") {
+          // Count matches
+          if (event.result?.total !== undefined) {
+            counts.totalLines = event.result.total;
+          }
+          // Show tool summary
+          appendHistoryEntry(
+            ui,
+            toolGroup,
+            formatToolSummary(toolInfo, counts, historyConfig.showMetadata),
+          );
+
           // Search results are always shown (when available)
           if (event.result?.message) {
-            ui.appendOutput(`  ${event.result.message}\n`);
+            appendHistoryEntry(
+              ui,
+              toolGroup,
+              `  ${event.result.message}\n`,
+            );
           } else if (event.result?.matches) {
-            const count = event.result.total || 0;
             const displayMatches = event.result.matches.slice(0, 10);
             for (const match of displayMatches) {
-              ui.appendOutput(
+              appendHistoryEntry(
+                ui,
+                toolGroup,
                 t`  ${dim(`${match.file}:${match.line}:`)} ${match.content}\n`,
               );
             }
             if (event.result.matches.length > 10) {
-              ui.appendOutput(
+              appendHistoryEntry(
+                ui,
+                toolGroup,
                 t`  ${dim(`... and ${event.result.matches.length - 10} more`)}\n`,
               );
             }
           }
         } else if (lastToolName === "bash") {
+          // Get exit code and line count for bash
+          counts.exitCode = event.result?.exitCode ?? 0;
+          if (event.result?.stdout) {
+            counts.totalLines = (event.result.stdout as string).split("\n").length;
+          }
+          // Show tool summary with exit code
+          appendHistoryEntry(
+            ui,
+            toolGroup,
+            formatToolSummary(toolInfo, counts, historyConfig.showMetadata),
+          );
+
           // Show bash output if verbose mode is enabled
           if (historyConfig.verboseTools && event.result?.stdout) {
-            const indentedOutput = (event.result.stdout as string)
-              .split("\n")
-              .map((line: string) => `  ${line}`)
-              .join("\n");
-            ui.appendOutput(indentedOutput);
+            appendHistoryEntry(
+              ui,
+              toolGroup,
+              `  ${(event.result.stdout as string).trimEnd()}\n`,
+            );
             if (event.result.stderr) {
-              ui.appendOutput(t`  ${dim(`stderr: ${event.result.stderr}`)}\n`);
+              appendHistoryEntry(
+                ui,
+                toolGroup,
+                t`  ${dim(`stderr: ${event.result.stderr}`)}\n`,
+              );
             }
           }
         }
       } else if (event.type === "error") {
-        ui.appendOutput(t`\n${red(`❌ Error: ${event.error}`)}\n`);
+        appendHistoryEntry(
+          ui,
+          `${turnId}-status-error`,
+          t`${red(`❌ Error: ${event.error}`)}\n`,
+        );
       }
     }
 
-    // Add assistant response as a message part for markdown rendering
+    // Add assistant response if it never streamed during the turn
+    if (assistantResponse.trim() && assistantTextChunks === 0) {
+      appendHistoryEntry(
+        ui,
+        `${turnId}-assistant`,
+        formatMessageLine(
+          "assistant",
+          assistantResponse.trim(),
+          { timestamp: new Date() },
+          undefined,
+          historyConfig.showMetadata,
+        ),
+      );
+    }
     if (assistantResponse.trim()) {
-      ui.addMessagePart({
-        id: `assistant-${Date.now()}`,
-        type: "text",
-        content: assistantResponse.trim(),
-      });
       watcherBridge.emit({
         type: "assistant_message",
         sessionId: activeSessionId,

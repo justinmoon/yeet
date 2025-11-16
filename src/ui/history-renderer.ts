@@ -9,6 +9,7 @@ import { semantic } from "./colors";
 /**
  * Constant spacer inserted between rendered history entries.
  * Provides visual breathing room without blank lines or separators.
+ * Two spaces creates a "half-line gap" between entries.
  */
 export const HISTORY_SPACER = "  ";
 
@@ -51,6 +52,7 @@ export function formatMessageLine(
   attachments?: AttachmentRef[],
   showMetadata = true,
 ): StyledText {
+  const sanitized = text.trimEnd();
   // Build prefix based on role
   const prefix =
     role === "user"
@@ -58,7 +60,7 @@ export function formatMessageLine(
       : semantic.historyAgentPrefix("[yeet] ");
 
   // Build main content with attachments
-  let content = text;
+  let content = sanitized;
   if (attachments && attachments.length > 0) {
     const attachmentTags = attachments
       .map((att) => `[${att.type}-${att.index}]`)
@@ -214,12 +216,30 @@ export function formatToolSummary(
       break;
     }
 
-    default:
+  default:
       // Generic tool summary
       summary = JSON.stringify(tool.args || {});
   }
 
-  return t`${toolPrefix}${summary}\n`;
+  summary = summary.trimEnd();
+
+  // Ensure metadata is trimmed as well
+  const summaryText =
+    summary.length > 0 ? summary : JSON.stringify(tool.args || {});
+
+  switch (tool.name) {
+    case "edit":
+    case "bash":
+    case "read":
+    case "write":
+      // Already returned earlier with metadata
+      break;
+    default:
+      // Generic tool summary
+      return t`${toolPrefix}${summaryText}\n`;
+  }
+
+  return t`${toolPrefix}${summaryText}\n`;
 }
 
 /**
@@ -235,5 +255,5 @@ export function getHistorySpacer(): string {
  * Returns StyledText with just the spacer content.
  */
 export function formatHistorySpacer(): StyledText {
-  return t`${HISTORY_SPACER}\n`;
+  return t`${HISTORY_SPACER}`;
 }
