@@ -55,6 +55,11 @@ export class TUIAdapter implements UIAdapter {
   private scrollBox!: ScrollBoxRenderable;
   private contentChunks: Array<string | StyledText> = [];
   private config: Config;
+  private historyConfig: {
+    showMetadata: boolean;
+    inlineDiffs: boolean;
+    verboseTools: boolean;
+  };
   private userInputCallback?: (message: string) => Promise<void>;
   private commandCallback?: (command: string, args: string[]) => Promise<void>;
   private agentHotkeys: Array<{
@@ -64,6 +69,12 @@ export class TUIAdapter implements UIAdapter {
 
   constructor(config: Config) {
     this.config = config;
+    // Extract history config for easy renderer access
+    this.historyConfig = {
+      showMetadata: config.ui?.history?.showMetadata ?? true,
+      inlineDiffs: config.ui?.history?.inlineDiffs ?? true,
+      verboseTools: config.ui?.history?.verboseTools ?? false,
+    };
     this.agentHotkeys = getAgentHotkeyTriggers(config)
       .map((binding) => {
         const descriptor = parseHotkeyCombo(binding.combo);
@@ -178,6 +189,22 @@ export class TUIAdapter implements UIAdapter {
 
   saveCurrentSession(): void {
     saveCurrentSession(this, this.config);
+  }
+
+  /**
+   * Update history rendering settings and refresh the UI.
+   * Used by command palette toggles for metadata, inline diffs, and verbose tools.
+   */
+  updateHistoryConfig(updates: Partial<typeof this.historyConfig>): void {
+    this.historyConfig = { ...this.historyConfig, ...updates };
+    // Also update the main config so it persists
+    if (!this.config.ui) {
+      this.config.ui = {};
+    }
+    if (!this.config.ui.history) {
+      this.config.ui.history = {};
+    }
+    this.config.ui.history = { ...this.config.ui.history, ...updates };
   }
 
   private setupComponents(): void {

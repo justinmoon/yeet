@@ -22,6 +22,18 @@ import { setActiveWorkspaceBinding } from "../workspace/state";
 const watcherBridge = getWatcherBridge();
 
 /**
+ * Extract history rendering config with defaults.
+ * Provides a consistent interface for accessing UI history settings.
+ */
+export function getHistoryConfig(config: Config) {
+  return {
+    showMetadata: config.ui?.history?.showMetadata ?? true,
+    inlineDiffs: config.ui?.history?.inlineDiffs ?? true,
+    verboseTools: config.ui?.history?.verboseTools ?? false,
+  };
+}
+
+/**
  * Backend logic for handling messages, agent interactions, and session management.
  * This is UI-agnostic and can be used by any frontend implementation.
  */
