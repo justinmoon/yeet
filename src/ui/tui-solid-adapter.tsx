@@ -952,9 +952,18 @@ export class TUISolidAdapter implements UIAdapter {
   }
 
   private async runExplain(prompt: string): Promise<void> {
-    this.hideCommandPalette();
-
     try {
+      // Show loading state
+      this.setCommandPaletteTitle?.("Generating tutorial...");
+      this.setCommandPaletteQuery?.("");
+      this.applyPaletteEntries([
+        this.createInfoEntry(
+          "explain-loading",
+          "Loading...",
+          "Analyzing git diff and generating tutorial sections",
+        ),
+      ]);
+
       const { explain } = await import("../explain");
       const { inferGitParams } = await import("../explain/infer-params");
 
@@ -974,10 +983,19 @@ export class TUISolidAdapter implements UIAdapter {
         head: params.head,
       });
 
-      // Show result in modal
+      // Hide palette and show result in modal
+      this.hideCommandPalette();
       this.showExplainReview(result);
     } catch (error: any) {
-      this.appendOutput(`\n\n⚠️ Explain failed: ${error.message}\n`);
+      // Show error in palette
+      this.setCommandPaletteTitle?.("Error · Esc to close");
+      this.applyPaletteEntries([
+        this.createInfoEntry(
+          "explain-error",
+          "Failed to generate tutorial",
+          error.message || String(error),
+        ),
+      ]);
     }
   }
 
