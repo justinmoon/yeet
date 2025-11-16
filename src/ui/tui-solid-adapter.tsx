@@ -311,7 +311,6 @@ export class TUISolidAdapter implements UIAdapter {
 
           this.renderer.keyInput?.on?.("keypress", handleExplainKeys);
           this.renderer.keyInput?.on?.("keyrepeat", handleExplainKeys);
-          this.renderer.keyInput?.on?.("keyrelease", handleExplainKeys);
           const handlePaletteKeys = (key: KeyEvent) => {
             if (this.shouldOpenCommandPalette(key)) {
               key.preventDefault?.();
