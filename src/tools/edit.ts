@@ -2,6 +2,7 @@
 import { jsonSchema, tool } from "ai";
 import z from "zod/v4";
 import { ensureWorkspaceWriteAccess } from "../workspace/state";
+import { createFileDiff } from "./diff-utils";
 
 const editSchema = z.object({
   path: z.string().describe("Path to the file to edit"),
@@ -31,7 +32,10 @@ export const edit = tool({
       const updated = content.replace(oldText, newText);
       await Bun.write(path, updated);
 
-      return { success: true, message: `Updated ${path}` };
+      const afterContent = await Bun.file(path).text();
+      const diff = createFileDiff(path, content, afterContent);
+
+      return { success: true, message: `Updated ${path}`, diff };
     } catch (error: any) {
       return { error: `Failed to edit ${path}: ${error.message}` };
     }

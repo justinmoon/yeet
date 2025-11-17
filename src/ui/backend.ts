@@ -1,4 +1,13 @@
-import { cyan, dim, green, magenta, red, t, yellow } from "@opentui/core";
+import {
+  cyan,
+  dim,
+  green,
+  magenta,
+  red,
+  stringToStyledText,
+  t,
+  yellow,
+} from "@opentui/core";
 import type { MessageContent } from "../agent";
 import { runAgent } from "../agent";
 import { getWatcherBridge } from "../agents/service";
@@ -323,22 +332,15 @@ export async function handleMessage(
               );
             }
           }
-        } else if (lastToolName === "write") {
-          // Count lines for write
-          if (event.result?.content) {
-            counts.totalLines = (event.result.content as string).split("\n").length;
-          }
-          // Show tool summary
-          appendHistoryEntry(
-            ui,
-            toolGroup,
-            formatToolSummary(toolInfo, counts, historyConfig.showMetadata),
-          );
-        } else if (lastToolName === "edit") {
-          // Count added/removed lines from diff
-          if (event.result?.diff) {
-            const diff = event.result.diff as string;
-            const diffLines = diff.split("\n");
+        } else if (lastToolName === "write" || lastToolName === "edit") {
+          const diffText =
+            typeof event.result?.diff === "string"
+              ? (event.result.diff as string)
+              : undefined;
+
+          // Count added/removed lines from diff when available (preferred)
+          if (diffText) {
+            const diffLines = diffText.split("\n");
             let added = 0;
             let removed = 0;
             for (const line of diffLines) {
@@ -347,26 +349,41 @@ export async function handleMessage(
             }
             counts.linesAdded = added;
             counts.linesRemoved = removed;
+          } else if (event.result?.content) {
+            // Fallback for historical results without diffs
+            counts.totalLines = (event.result.content as string).split("\n").length;
           }
-          // Show tool summary with diff counts
+
           appendHistoryEntry(
             ui,
             toolGroup,
             formatToolSummary(toolInfo, counts, historyConfig.showMetadata),
           );
 
-          // Show inline diff if enabled
-          if (historyConfig.inlineDiffs && event.result?.diff) {
-            const diff = event.result.diff as string;
-            const diffLines = diff.split("\n");
+          if (historyConfig.inlineDiffs && diffText) {
+            const diffLines = diffText.split("\n");
+            const StyledTextClass = stringToStyledText("").constructor as any;
+            const blockChunks: any[] = [];
+
             for (const line of diffLines) {
+              if (line.trim().length === 0) continue;
+
+              let styledLine;
               if (line.startsWith("+") && !line.startsWith("+++")) {
-                appendHistoryEntry(ui, toolGroup, t`  ${green(line)}\n`);
+                styledLine = green(line);
               } else if (line.startsWith("-") && !line.startsWith("---")) {
-                appendHistoryEntry(ui, toolGroup, t`  ${red(line)}\n`);
+                styledLine = red(line);
               } else {
-                appendHistoryEntry(ui, toolGroup, t`  ${dim(line)}\n`);
+                styledLine = dim(line);
               }
+
+              blockChunks.push(...stringToStyledText("  ").chunks);
+              blockChunks.push(styledLine);
+              blockChunks.push(...stringToStyledText("\n").chunks);
+            }
+
+            if (blockChunks.length > 0) {
+              appendHistoryEntry(ui, toolGroup, new StyledTextClass(blockChunks));
             }
           }
         } else if (lastToolName === "search") {
