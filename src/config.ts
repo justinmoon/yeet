@@ -275,6 +275,11 @@ export async function loadConfig(): Promise<Config> {
     ...config,
     maxSteps: config.maxSteps || 20,
     temperature: config.temperature || 0.5,
+    opencode: config.opencode || {
+      apiKey: "",
+      baseURL: "https://opencode.ai/zen/v1",
+      model: "grok-code",
+    },
     ui: {
       ...config.ui,
       history: {

@@ -166,7 +166,7 @@ export class TUISolidAdapter implements UIAdapter {
           ? this.config.openai?.model || ""
           : this.config.activeProvider === "maple"
             ? this.config.maple?.model || ""
-            : this.config.opencode.model;
+            : this.config.opencode?.model || "";
     const modelInfo = getModelInfo(currentModelId);
     const initialStatus = modelInfo
       ? `Paused | ${modelInfo.name} | 0/${modelInfo.contextWindow} (0%)`
@@ -1806,7 +1806,7 @@ export class TUISolidAdapter implements UIAdapter {
     if (provider === "maple") {
       return Boolean(this.config.maple?.apiKey);
     }
-    return Boolean(this.config.opencode.apiKey);
+    return Boolean(this.config.opencode?.apiKey);
   }
 
   private getProviderLabel(
@@ -1832,7 +1832,7 @@ export class TUISolidAdapter implements UIAdapter {
           ? this.config.openai?.model
           : this.config.activeProvider === "maple"
             ? this.config.maple?.model
-            : this.config.opencode.model;
+            : this.config.opencode?.model;
     return currentModelId === modelId;
   }
 
@@ -1892,7 +1892,7 @@ export class TUISolidAdapter implements UIAdapter {
       return;
     }
 
-    if (modelInfo.provider === "opencode" && !this.config.opencode.apiKey) {
+    if (modelInfo.provider === "opencode" && !this.config.opencode?.apiKey) {
       this.applyPaletteEntries([
         this.createBackEntry("← Back to models", () => this.openModelPalette()),
         this.createInfoEntry(
@@ -1919,7 +1919,7 @@ export class TUISolidAdapter implements UIAdapter {
       if (this.config.maple) {
         this.config.maple.model = modelId;
       }
-    } else {
+    } else if (this.config.opencode) {
       this.config.opencode.model = modelId;
     }
 
@@ -2096,7 +2096,7 @@ export class TUISolidAdapter implements UIAdapter {
           ? this.config.openai?.model || ""
           : this.config.activeProvider === "maple"
             ? this.config.maple?.model || ""
-            : this.config.opencode.model;
+            : this.config.opencode?.model || "";
     const modelInfo = getModelInfo(modelId);
     const modelName = modelInfo?.name || modelId;
 

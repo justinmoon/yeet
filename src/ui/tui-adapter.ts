@@ -233,7 +233,7 @@ export class TUIAdapter implements UIAdapter {
         ? this.config.anthropic?.model || ""
         : this.config.activeProvider === "maple"
           ? this.config.maple?.model || ""
-          : this.config.opencode.model;
+          : this.config.opencode?.model || "";
     const modelInfo = getModelInfo(currentModelId);
     const modelDisplay = modelInfo
       ? `${modelInfo.name} (${modelInfo.provider})`
@@ -332,7 +332,7 @@ export class TUIAdapter implements UIAdapter {
         );
       }
       if (model.provider === "opencode") {
-        return !!this.config.opencode.apiKey;
+        return !!this.config.opencode?.apiKey;
       }
       if (model.provider === "maple") {
         return !!this.config.maple?.apiKey;
@@ -371,7 +371,9 @@ export class TUIAdapter implements UIAdapter {
         }
         this.config.anthropic.model = modelId;
       } else if (modelInfo.provider === "opencode") {
-        this.config.opencode.model = modelId;
+        if (this.config.opencode) {
+          this.config.opencode.model = modelId;
+        }
       } else if (modelInfo.provider === "maple") {
         if (this.config.maple) {
           this.config.maple.model = modelId;
@@ -639,7 +641,7 @@ export class TUIAdapter implements UIAdapter {
         ? this.config.anthropic?.model || ""
         : this.config.activeProvider === "maple"
           ? this.config.maple!.model
-          : this.config.opencode.model;
+          : this.config.opencode?.model || "";
     const modelInfo = getModelInfo(modelId);
     const modelName = modelInfo?.name || modelId;
 

@@ -219,7 +219,7 @@ export class WebAdapter implements UIAdapter {
           ? this.config.openai?.model || ""
           : this.config.activeProvider === "maple"
             ? this.config.maple!.model
-            : this.config.opencode.model;
+            : this.config.opencode?.model || "";
     const modelInfo = getModelInfo(modelId);
     const modelName = modelInfo?.name || modelId;
 
