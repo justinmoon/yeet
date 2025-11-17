@@ -1,1 +1,2 @@
 - Don't write markdown files unless asked to
+- When rebasing remember that you can't run $EDITOR so you need `GIT_EDITOR=true git rebase --continue`
