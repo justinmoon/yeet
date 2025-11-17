@@ -222,6 +222,7 @@ export async function handleMessage(
       } else if (event.type === "tool") {
         lastToolName = event.name || "";
         lastToolArgs = event.args || {};
+        assistantTextChunks = 0;
         currentToolCallId += 1;
         currentToolGroupId = `${turnId}-tool-${currentToolCallId}`;
         watcherBridge.emit({
