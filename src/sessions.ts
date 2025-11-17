@@ -7,20 +7,20 @@ import {
 } from "node:fs";
 import { join } from "node:path";
 import type { MessageContent } from "./agent";
-import type { AgentCapability, PermissionPreset } from "./config";
-import { YEET_CONFIG_DIR } from "./config";
+import { upsertAgentSessionContext } from "./agents/context-store";
 import type {
   AgentSessionContext,
   AgentSessionStatus,
   SessionBreadcrumb,
   SessionTrigger,
 } from "./agents/types";
-import { upsertAgentSessionContext } from "./agents/context-store";
-import {
-  createDefaultWorkspaceBinding,
-  type WorkspaceBinding,
-} from "./workspace/binding";
+import type { AgentCapability, PermissionPreset } from "./config";
+import { YEET_CONFIG_DIR } from "./config";
 import { logger } from "./logger";
+import {
+  type WorkspaceBinding,
+  createDefaultWorkspaceBinding,
+} from "./workspace/binding";
 
 export interface Session {
   id: string;

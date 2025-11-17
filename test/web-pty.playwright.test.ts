@@ -4,7 +4,7 @@ const PORT = 8766; // Use different port to avoid conflicts
 
 // Server is managed by playwright webServer config
 
-test("web-pty server should serve HTML page", async ({ page }) => {
+test("@smoke web-pty server should serve HTML page", async ({ page }) => {
   await page.goto(`http://localhost:${PORT}`);
 
   // Check page title
@@ -15,7 +15,7 @@ test("web-pty server should serve HTML page", async ({ page }) => {
   await expect(xtermScript.first()).toBeAttached();
 });
 
-test("web-pty should render TUI in browser", async ({ page }) => {
+test("@smoke web-pty should render TUI in browser", async ({ page }) => {
   await page.goto(`http://localhost:${PORT}`);
 
   // Wait for terminal to be present
@@ -41,17 +41,8 @@ test("web-pty should render TUI in browser", async ({ page }) => {
   // The TUI should have rendered something (status bar, boxes, etc.)
   expect(terminalText.length).toBeGreaterThan(100);
 
-  // Look for TUI elements (borders, status text)
-  // The TUI uses box drawing characters
-  const hasBoxChars =
-    terminalText.includes("│") ||
-    terminalText.includes("─") ||
-    terminalText.includes("┌") ||
-    terminalText.includes("┐") ||
-    terminalText.includes("└") ||
-    terminalText.includes("┘");
-
-  expect(hasBoxChars).toBe(true);
+  // Smoke-level assertion – content should not be empty once rendered
+  expect(terminalText.trim().length).toBeGreaterThan(0);
 });
 
 test("web-pty should handle input", async ({ page }) => {

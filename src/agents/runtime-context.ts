@@ -8,9 +8,7 @@ export interface ActiveAgentContext {
 
 const contextStack: ActiveAgentContext[] = [];
 
-export function pushActiveAgentContext(
-  context: ActiveAgentContext,
-): void {
+export function pushActiveAgentContext(context: ActiveAgentContext): void {
   contextStack.push({
     sessionId: context.sessionId ?? null,
     agentId: context.agentId,
@@ -18,9 +16,7 @@ export function pushActiveAgentContext(
   });
 }
 
-export function popActiveAgentContext(
-  context?: ActiveAgentContext,
-): void {
+export function popActiveAgentContext(context?: ActiveAgentContext): void {
   if (contextStack.length === 0) {
     return;
   }

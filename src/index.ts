@@ -7,7 +7,10 @@ import { createTUISolidAdapter } from "./ui/tui-solid-adapter";
 const args = process.argv.slice(2);
 
 // Check for orchestrator flag
-if (args.includes("--orchestrate") || args.includes("orchestrate")) {
+if (args[0] === "exec") {
+  const { runExecCLI } = await import("./cli/exec");
+  await runExecCLI(args.slice(1));
+} else if (args.includes("--orchestrate") || args.includes("orchestrate")) {
   // Remove the orchestrate flag/command
   const orchestrateArgs = args.filter(
     (arg) => arg !== "--orchestrate" && arg !== "orchestrate",

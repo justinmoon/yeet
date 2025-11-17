@@ -1,10 +1,12 @@
 import os from "os";
 import path from "path";
-import { chmod, mkdir, readdir, readFile } from "fs/promises";
+import { chmod, mkdir, readFile, readdir } from "fs/promises";
 import { normalizeHotkeyCombo } from "./utils/hotkeys";
 
 // Centralized config directory - follows XDG Base Directory spec
-export const YEET_CONFIG_DIR = path.join(os.homedir(), ".config", "yeet");
+// Allow override via YEET_CONFIG_DIR env var for testing/CI
+export const YEET_CONFIG_DIR =
+  process.env.YEET_CONFIG_DIR || path.join(os.homedir(), ".config", "yeet");
 export const AGENT_CONFIG_DIR = path.join(YEET_CONFIG_DIR, "agents");
 
 async function ensureConfigDir(): Promise<void> {
@@ -84,7 +86,7 @@ export interface AgentProfileConfig {
 export type AgentProfileMap = Record<string, AgentProfileConfig>;
 
 export interface Config {
-  activeProvider: "opencode" | "maple" | "anthropic" | "openai";
+  activeProvider: "opencode" | "maple" | "anthropic" | "openai" | "fake";
   opencode: {
     apiKey: string;
     baseURL: string;
@@ -124,6 +126,9 @@ export interface Config {
     model?: string;
   };
   agents?: AgentProfileMap;
+  fake?: {
+    fixture?: string;
+  };
 }
 
 async function tryLoadOpenCodeCredentials(): Promise<{
@@ -269,6 +274,22 @@ export async function loadConfig(): Promise<Config> {
     temperature: config.temperature || 0.5,
   };
 
+  const overrideProvider = process.env.YEET_PROVIDER;
+  if (
+    overrideProvider &&
+    ["opencode", "maple", "anthropic", "openai", "fake"].includes(
+      overrideProvider,
+    )
+  ) {
+    resolved.activeProvider = overrideProvider as Config["activeProvider"];
+  }
+
+  if (resolved.activeProvider === "fake") {
+    resolved.fake = {
+      fixture: process.env.YEET_AGENT_FIXTURE || config.fake?.fixture,
+    };
+  }
+
   resolved.agents = await loadAgentProfiles(config.agents);
   await validateAgentProfiles(resolved.agents);
 
@@ -368,7 +389,9 @@ function normalizePermissionPreset(
     allowShell:
       typeof preset.allowShell === "boolean" ? preset.allowShell : undefined,
     allowNetwork:
-      typeof preset.allowNetwork === "boolean" ? preset.allowNetwork : undefined,
+      typeof preset.allowNetwork === "boolean"
+        ? preset.allowNetwork
+        : undefined,
     notes: typeof preset.notes === "string" ? preset.notes : undefined,
   };
 }
@@ -432,7 +455,7 @@ function normalizeAgentProfile(
     ? profile.capabilities.filter((cap: any) =>
         ["primary", "subtask", "watcher"].includes(cap),
       )
-    : base?.capabilities ?? [];
+    : (base?.capabilities ?? []);
 
   if (capabilities.length === 0) {
     capabilities.push("subtask");
@@ -485,11 +508,7 @@ function normalizeAgentProfile(
   return normalized;
 }
 
-const CAPABILITY_LIST: AgentCapability[] = [
-  "primary",
-  "subtask",
-  "watcher",
-];
+const CAPABILITY_LIST: AgentCapability[] = ["primary", "subtask", "watcher"];
 
 function normalizeCommandName(value: any): string | null {
   if (typeof value !== "string") {
@@ -499,9 +518,7 @@ function normalizeCommandName(value: any): string | null {
   if (!trimmed) {
     return null;
   }
-  const withoutSlash = trimmed.startsWith("/")
-    ? trimmed.slice(1)
-    : trimmed;
+  const withoutSlash = trimmed.startsWith("/") ? trimmed.slice(1) : trimmed;
   return withoutSlash.toLowerCase();
 }
 
@@ -608,10 +625,7 @@ function normalizeAgentTriggers(
 
   if (raw?.slash && Array.isArray(raw.slash)) {
     for (const entry of raw.slash) {
-      const normalized = normalizeSlashTriggerEntry(
-        entry,
-        fallbackCapability,
-      );
+      const normalized = normalizeSlashTriggerEntry(entry, fallbackCapability);
       if (normalized) {
         slashEntries.set(normalized.command, normalized);
       }
@@ -657,7 +671,11 @@ async function loadAgentProfiles(
 
   if (inlineProfiles) {
     for (const [id, profile] of Object.entries(inlineProfiles)) {
-      const normalized = normalizeAgentProfile(id, profile, merged[id] || undefined);
+      const normalized = normalizeAgentProfile(
+        id,
+        profile,
+        merged[id] || undefined,
+      );
       if (normalized) {
         merged[id] = normalized;
       }
@@ -688,9 +706,7 @@ async function loadAgentProfiles(
   return merged;
 }
 
-async function validateAgentProfiles(
-  agents?: AgentProfileMap,
-): Promise<void> {
+async function validateAgentProfiles(agents?: AgentProfileMap): Promise<void> {
   if (!agents) return;
   const { AgentRegistry } = await import("./agents/registry");
   // Instantiate to trigger validation logic

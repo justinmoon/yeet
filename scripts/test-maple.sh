@@ -49,7 +49,31 @@ echo ""
 # Run the tests
 echo -e "${GREEN}Running E2E tests...${NC}\n"
 
-bun test test/maple-e2e.test.ts "$@"
+# Support --junit flag for nightly runs
+if [[ "$*" == *"--junit"* ]]; then
+  # Extract junit path from arguments
+  JUNIT_PATH=""
+  NEXT_IS_PATH=false
+  for arg in "$@"; do
+    if [ "$NEXT_IS_PATH" = true ]; then
+      JUNIT_PATH="$arg"
+      break
+    fi
+    if [ "$arg" = "--junit" ]; then
+      NEXT_IS_PATH=true
+    fi
+  done
+
+  if [ -n "$JUNIT_PATH" ]; then
+    mkdir -p "$(dirname "$JUNIT_PATH")"
+    bun test test/maple-e2e.test.ts --reporter=junit --reporter-outfile="$JUNIT_PATH"
+  else
+    echo -e "${RED}✗${NC} --junit flag requires a path argument"
+    exit 1
+  fi
+else
+  bun test test/maple-e2e.test.ts "$@"
+fi
 
 TEST_EXIT_CODE=$?
 

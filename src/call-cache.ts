@@ -16,7 +16,10 @@ export function upsertToolCall(sessionId: string, call: CachedToolCall) {
   callCache.set(sessionId, bucket);
 }
 
-export function getToolCall(sessionId: string, callId: string): CachedToolCall | undefined {
+export function getToolCall(
+  sessionId: string,
+  callId: string,
+): CachedToolCall | undefined {
   return callCache.get(sessionId)?.get(callId);
 }
 
@@ -26,7 +29,9 @@ export function clearSession(sessionId: string) {
 
 // Search across all sessions for a tool call by call_id
 // This is needed because the fetch transformer doesn't have direct access to sessionId
-export function getToolCallByCallId(callId: string): CachedToolCall | undefined {
+export function getToolCallByCallId(
+  callId: string,
+): CachedToolCall | undefined {
   for (const [, sessionMap] of callCache) {
     const call = sessionMap.get(callId);
     if (call) return call;

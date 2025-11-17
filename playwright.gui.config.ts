@@ -1,5 +1,14 @@
 import { defineConfig, devices } from "@playwright/test";
 
+// Support junit reporter for CI/pre-merge
+const reporters: any[] = process.env.CI
+  ? [
+      ["junit", { outputFile: "reports/pre-merge/playwright/gui/junit.xml" }],
+      ["html", { outputFolder: "reports/pre-merge/playwright/gui/html" }],
+      ["line"],
+    ]
+  : ["list"];
+
 export default defineConfig({
   testDir: "./test",
   testMatch: "**/gui.playwright.test.ts", // Only fast GUI tests, not E2E
@@ -7,7 +16,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0, // Retries for CI only
   workers: 1,
-  reporter: "list",
+  reporter: reporters,
   use: {
     baseURL: "http://localhost:3456",
     trace: "on-first-retry",

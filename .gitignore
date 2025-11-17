@@ -35,8 +35,10 @@ coverage/
 test-results/
 .last-run.json
 .helix/
+reports/
 
 worktrees
 
 # Video files
 video.*
+Library/

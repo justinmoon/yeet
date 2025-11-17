@@ -142,4 +142,137 @@ describe("Session Management", () => {
     const deleted = deleteSession("non-existent-id");
     expect(deleted).toBe(false);
   });
+
+  test("save and load multiple sessions sequentially", () => {
+    // Create 5 sessions to simulate multiple agents
+    const sessions = Array.from({ length: 5 }, (_, i) => {
+      const session = createSession("claude-sonnet-4-5", "opencode");
+      session.conversationHistory = [
+        { role: "user", content: `Agent ${i} request` },
+        { role: "assistant", content: `Agent ${i} response` },
+      ];
+      saveSession(session);
+      return session;
+    });
+
+    // Verify all sessions were saved correctly
+    for (const session of sessions) {
+      const loaded = loadSession(session.id);
+      expect(loaded).not.toBeNull();
+      expect(loaded?.id).toBe(session.id);
+      expect(loaded?.conversationHistory.length).toBe(2);
+    }
+  });
+
+  test("sequential session updates", () => {
+    const session = createSession("claude-sonnet-4-5", "opencode");
+    saveSession(session);
+
+    // Simulate sequential updates to the same session
+    for (let i = 0; i < 10; i++) {
+      const loaded = loadSession(session.id);
+      if (loaded) {
+        loaded.conversationHistory.push({
+          role: i % 2 === 0 ? "user" : "assistant",
+          content: `Message ${i}`,
+        });
+        saveSession(loaded);
+      }
+    }
+
+    const final = loadSession(session.id);
+    expect(final).not.toBeNull();
+    expect(final?.conversationHistory.length).toBe(10);
+  });
+
+  test("load multiple sessions", () => {
+    // Create and save multiple sessions
+    const sessions = Array.from({ length: 5 }, (_, i) => {
+      const session = createSession("grok-code", "opencode");
+      session.conversationHistory = [{ role: "user", content: `Test ${i}` }];
+      saveSession(session);
+      return session;
+    });
+
+    // Load all
+    const loaded = sessions.map((s) => loadSession(s.id));
+
+    // Verify all loaded correctly
+    expect(loaded.every((s) => s !== null)).toBe(true);
+    expect(loaded.length).toBe(5);
+  });
+
+  test("handle session deletion while preserving others", () => {
+    const session1 = createSession("claude-sonnet-4-5", "opencode");
+    session1.conversationHistory = [{ role: "user", content: "Test 1" }];
+    saveSession(session1);
+
+    // Verify save
+    expect(loadSession(session1.id)).not.toBeNull();
+
+    // Delete session
+    const deleted = deleteSession(session1.id);
+    expect(deleted).toBe(true);
+
+    // Verify deletion
+    expect(loadSession(session1.id)).toBeNull();
+
+    // Create a new session after deletion to verify isolation
+    const session2 = createSession("grok-code", "opencode");
+    session2.conversationHistory = [{ role: "user", content: "Test 2" }];
+    saveSession(session2);
+
+    // Verify new session works independently
+    const loaded2 = loadSession(session2.id);
+    expect(loaded2).not.toBeNull();
+    expect(loaded2?.conversationHistory[0].content).toBe("Test 2");
+  });
+
+  test("session with large conversation history", () => {
+    const session = createSession("claude-sonnet-4-5", "opencode");
+
+    // Simulate a long conversation (100 messages)
+    for (let i = 0; i < 100; i++) {
+      session.conversationHistory.push({
+        role: i % 2 === 0 ? "user" : "assistant",
+        content: `Message ${i} with some content that simulates a real conversation`,
+      });
+    }
+
+    saveSession(session);
+    const loaded = loadSession(session.id);
+
+    expect(loaded).not.toBeNull();
+    expect(loaded?.conversationHistory.length).toBe(100);
+    expect(loaded?.conversationHistory[0].content).toBe(
+      "Message 0 with some content that simulates a real conversation",
+    );
+    expect(loaded?.conversationHistory[99].content).toBe(
+      "Message 99 with some content that simulates a real conversation",
+    );
+  });
+
+  test("session persistence across multiple save/load cycles", () => {
+    const session = createSession("grok-code", "opencode");
+    session.conversationHistory = [{ role: "user", content: "Initial" }];
+    saveSession(session);
+
+    // Save and reload multiple times
+    for (let i = 0; i < 5; i++) {
+      const loaded = loadSession(session.id);
+      expect(loaded).not.toBeNull();
+
+      if (loaded) {
+        loaded.conversationHistory.push({
+          role: "assistant",
+          content: `Response ${i}`,
+        });
+
+        saveSession(loaded);
+      }
+    }
+
+    const final = loadSession(session.id);
+    expect(final?.conversationHistory.length).toBe(6); // 1 initial + 5 responses
+  });
 });

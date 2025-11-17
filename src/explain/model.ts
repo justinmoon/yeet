@@ -8,8 +8,8 @@ import {
   createAnthropicFetch,
 } from "../auth";
 import { loadConfig } from "../config";
-import { createOpenAIFetch } from "../openai-auth";
 import { createMapleFetch } from "../maple";
+import { createOpenAIFetch } from "../openai-auth";
 
 export async function createExplainModel(): Promise<LanguageModel> {
   const config = await loadConfig();

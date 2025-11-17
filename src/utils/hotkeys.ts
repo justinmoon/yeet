@@ -52,7 +52,8 @@ function normalizeSegment(segment: string): string {
 function orderedModifiers(mods: string[]): string[] {
   const unique = Array.from(new Set(mods));
   return unique.sort(
-    (a, b) => MODIFIER_ORDER.indexOf(a as any) - MODIFIER_ORDER.indexOf(b as any),
+    (a, b) =>
+      MODIFIER_ORDER.indexOf(a as any) - MODIFIER_ORDER.indexOf(b as any),
   );
 }
 
@@ -112,10 +113,7 @@ function resolveEventKey(event: HotkeyEventLike): string {
   return normalized;
 }
 
-function resolveModifier(
-  primary?: boolean,
-  secondary?: boolean,
-): boolean {
+function resolveModifier(primary?: boolean, secondary?: boolean): boolean {
   if (typeof primary === "boolean") {
     return primary;
   }

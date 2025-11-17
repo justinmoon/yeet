@@ -1,0 +1,5 @@
+{"type":"text","content":"🤖 Starting Yeet CLI smoke run...\n"}
+{"type":"tool","name":"read","args":{"path":"README.md"}}
+{"type":"tool-result","name":"read","result":{"stdout":"# Yeet\nA friendly deterministic fixture output.\n"}}
+{"type":"text","content":"Yeet is alive!\n"}
+{"type":"done","summary":"Completed deterministic smoke run."}

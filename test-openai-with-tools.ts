@@ -5,9 +5,9 @@
 
 import { createOpenAI } from "@ai-sdk/openai";
 import { streamText } from "ai";
+import { z } from "zod";
 import { loadConfig } from "./src/config";
 import { createOpenAIFetch } from "./src/openai-auth";
-import { z } from "zod";
 
 async function test() {
   console.log("Loading config...");

@@ -1,7 +1,4 @@
-import type {
-  AgentSessionContext,
-  AgentSessionStatus,
-} from "./types";
+import type { AgentSessionContext, AgentSessionStatus } from "./types";
 
 const contexts = new Map<string, AgentSessionContext>();
 

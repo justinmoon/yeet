@@ -14,22 +14,22 @@ import {
   stringToStyledText,
   t,
 } from "@opentui/core";
-import { getAgentHotkeyTriggers } from "../agents/triggers";
 import type { MessageContent } from "../agent";
+import { getAgentHotkeyTriggers } from "../agents/triggers";
 import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
 import type { Config } from "../config";
 import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
+import {
+  type HotkeyDescriptor,
+  matchHotkeyEvent,
+  parseHotkeyCombo,
+} from "../utils/hotkeys";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import type { UIAdapter } from "./interface";
 import { ModelSelectorModal } from "./model-modal";
 import { SessionSelectorModal } from "./session-modal";
-import {
-  matchHotkeyEvent,
-  parseHotkeyCombo,
-  type HotkeyDescriptor,
-} from "../utils/hotkeys";
 
 export class TUIAdapter implements UIAdapter {
   conversationHistory: Array<{
@@ -71,9 +71,7 @@ export class TUIAdapter implements UIAdapter {
         return { descriptor, command: binding.command };
       })
       .filter(
-        (
-          value,
-        ): value is { descriptor: HotkeyDescriptor; command: string } =>
+        (value): value is { descriptor: HotkeyDescriptor; command: string } =>
           value !== null,
       );
   }

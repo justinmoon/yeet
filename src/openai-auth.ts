@@ -1,10 +1,10 @@
-import { generatePKCE } from "@openauthjs/openauth/pkce";
 import { randomBytes } from "crypto";
+import { generatePKCE } from "@openauthjs/openauth/pkce";
+import { getToolCallByCallId } from "./call-cache";
+import { getCodexInstructions } from "./codex-instructions";
 import type { Config } from "./config";
 import { saveConfig } from "./config";
 import { logger } from "./logger";
-import { getCodexInstructions } from "./codex-instructions";
-import { getToolCallByCallId } from "./call-cache";
 
 // OpenAI OAuth constants (from codex CLI)
 const CLIENT_ID = "app_EMoamEEZ73f0CkXaXp7hrann";
@@ -75,16 +75,17 @@ function decodeJWT(token: string): JWTPayload | null {
  */
 function extractAccountId(token: string): string | null {
   const payload = decodeJWT(token);
-  return (
-    payload?.["https://api.openai.com/auth"]?.chatgpt_account_id || null
-  );
+  return payload?.["https://api.openai.com/auth"]?.chatgpt_account_id || null;
 }
 
 /**
  * Start OpenAI OAuth flow
  */
 export async function startOpenAIOAuth(): Promise<OAuthResult> {
-  const pkce = (await generatePKCE()) as { challenge: string; verifier: string };
+  const pkce = (await generatePKCE()) as {
+    challenge: string;
+    verifier: string;
+  };
   const state = createState();
 
   const url = new URL(AUTHORIZE_URL);
@@ -258,7 +259,10 @@ async function codexSseToChatCompletionsStream(
   const stream = new ReadableStream<Uint8Array>({
     async start(controller) {
       let buffer = "";
-      const toolCallsMap = new Map<string, { id: string; name: string; args: string }>();
+      const toolCallsMap = new Map<
+        string,
+        { id: string; name: string; args: string }
+      >();
 
       const sendChunk = (obj: unknown) => {
         const line = `data: ${JSON.stringify(obj)}\n\n`;
@@ -308,11 +312,13 @@ async function codexSseToChatCompletionsStream(
                     object: "chat.completion.chunk",
                     created: Date.now(),
                     model: "gpt-5-codex",
-                    choices: [{
-                      index: 0,
-                      delta: { content: text },
-                      finish_reason: null,
-                    }],
+                    choices: [
+                      {
+                        index: 0,
+                        delta: { content: text },
+                        finish_reason: null,
+                      },
+                    ],
                   });
                 }
               }
@@ -325,24 +331,32 @@ async function codexSseToChatCompletionsStream(
                 console.log("Event payload:", JSON.stringify(payload, null, 2));
                 console.log("Extracted ID:", toolCallId);
                 if (toolCallId && name) {
-                  toolCallsMap.set(toolCallId, { id: toolCallId, name, args: "" });
+                  toolCallsMap.set(toolCallId, {
+                    id: toolCallId,
+                    name,
+                    args: "",
+                  });
                   sendChunk({
                     id: "codex",
                     object: "chat.completion.chunk",
                     created: Date.now(),
                     model: "gpt-5-codex",
-                    choices: [{
-                      index: 0,
-                      delta: {
-                        tool_calls: [{
-                          index: 0,
-                          id: toolCallId,
-                          type: "function",
-                          function: { name, arguments: "" },
-                        }],
+                    choices: [
+                      {
+                        index: 0,
+                        delta: {
+                          tool_calls: [
+                            {
+                              index: 0,
+                              id: toolCallId,
+                              type: "function",
+                              function: { name, arguments: "" },
+                            },
+                          ],
+                        },
+                        finish_reason: null,
                       },
-                      finish_reason: null,
-                    }],
+                    ],
                   });
                 }
               }
@@ -359,18 +373,22 @@ async function codexSseToChatCompletionsStream(
                       object: "chat.completion.chunk",
                       created: Date.now(),
                       model: "gpt-5-codex",
-                      choices: [{
-                        index: 0,
-                        delta: {
-                          tool_calls: [{
-                            index: 0,
-                            id: call_id,
-                            type: "function",
-                            function: { arguments: argsDelta },
-                          }],
+                      choices: [
+                        {
+                          index: 0,
+                          delta: {
+                            tool_calls: [
+                              {
+                                index: 0,
+                                id: call_id,
+                                type: "function",
+                                function: { arguments: argsDelta },
+                              },
+                            ],
+                          },
+                          finish_reason: null,
                         },
-                        finish_reason: null,
-                      }],
+                      ],
                     });
                   }
                 }
@@ -386,17 +404,26 @@ async function codexSseToChatCompletionsStream(
                   object: "chat.completion.chunk",
                   created: Date.now(),
                   model: "gpt-5-codex",
-                  choices: [{
-                    index: 0,
-                    delta: {},
-                    finish_reason: "stop",
-                  }],
+                  choices: [
+                    {
+                      index: 0,
+                      delta: {},
+                      finish_reason: "stop",
+                    },
+                  ],
                 });
               }
 
               // Log other event types for debugging
-              else if (eventType && !eventType.includes("in_progress") && !eventType.includes("created")) {
-                logger.debug("Unhandled Codex SSE event", { eventType, payload });
+              else if (
+                eventType &&
+                !eventType.includes("in_progress") &&
+                !eventType.includes("created")
+              ) {
+                logger.debug("Unhandled Codex SSE event", {
+                  eventType,
+                  payload,
+                });
               }
             } catch (parseError) {
               logger.error("Failed to parse SSE data", { data, parseError });
@@ -416,7 +443,7 @@ async function codexSseToChatCompletionsStream(
     headers: {
       "content-type": "text/event-stream; charset=utf-8",
       "cache-control": "no-cache",
-      "connection": "keep-alive",
+      connection: "keep-alive",
     },
   });
 }
@@ -524,7 +551,7 @@ export function createOpenAIFetch(config: Config) {
           // Filter out system messages (Codex doesn't support them)
           // System prompt goes in the instructions field instead
           const filteredMessages = parsed.messages.filter(
-            (msg: any) => msg.role !== "system"
+            (msg: any) => msg.role !== "system",
           );
 
           // Convert messages to input format
@@ -619,12 +646,12 @@ export function createOpenAIFetch(config: Config) {
               type: item.type,
               role: item.role,
               hasCallId: !!item.call_id,
-            }))
+            })),
           });
 
           // Helper to strip ID from an item
           const stripId = (item: any) => {
-            if ('id' in item) {
+            if ("id" in item) {
               const { id, ...rest } = item;
               return rest;
             }
@@ -633,21 +660,25 @@ export function createOpenAIFetch(config: Config) {
 
           // Step 1: Filter out item_reference and strip all IDs
           const filtered = parsed.input
-            .filter((item: any) => item?.type !== 'item_reference')
+            .filter((item: any) => item?.type !== "item_reference")
             .map(stripId);
 
           // Step 2: Check which function_call objects already exist
           const existingFunctionCalls = new Set(
             filtered
-              .filter((item: any) => item?.type === 'function_call' && typeof item.call_id === 'string')
-              .map((item: any) => item.call_id)
+              .filter(
+                (item: any) =>
+                  item?.type === "function_call" &&
+                  typeof item.call_id === "string",
+              )
+              .map((item: any) => item.call_id),
           );
 
           // Step 3: Inject missing function_call objects before function_call_output
           const finalInput: any[] = [];
           for (const item of filtered) {
             // If this is a function_call_output, inject the corresponding function_call first (if missing)
-            if (item?.type === 'function_call_output') {
+            if (item?.type === "function_call_output") {
               const callId = item.call_id;
               if (callId && !existingFunctionCalls.has(callId)) {
                 // Look up the cached tool call
@@ -659,12 +690,13 @@ export function createOpenAIFetch(config: Config) {
                   });
 
                   finalInput.push({
-                    type: 'function_call',
+                    type: "function_call",
                     name: cached.name,
                     call_id: cached.call_id,
-                    arguments: typeof cached.arguments === 'string'
-                      ? cached.arguments
-                      : JSON.stringify(cached.arguments),
+                    arguments:
+                      typeof cached.arguments === "string"
+                        ? cached.arguments
+                        : JSON.stringify(cached.arguments),
                   });
                   existingFunctionCalls.add(callId);
                 } else {
@@ -673,7 +705,7 @@ export function createOpenAIFetch(config: Config) {
               }
 
               // Normalize output to JSON string
-              if (typeof item.output !== 'string') {
+              if (typeof item.output !== "string") {
                 item.output = JSON.stringify(item.output ?? {});
               }
             }
@@ -693,7 +725,7 @@ export function createOpenAIFetch(config: Config) {
               hasOutput: !!item.output,
               hasCallId: !!item.call_id,
               hasArguments: !!item.arguments,
-            }))
+            })),
           });
         }
 
@@ -702,7 +734,6 @@ export function createOpenAIFetch(config: Config) {
         if (!parsed.include) {
           parsed.include = ["reasoning.encrypted_content"];
         }
-
 
         logger.debug("OpenAI fetch - transformed body:", parsed);
         body = JSON.stringify(parsed);

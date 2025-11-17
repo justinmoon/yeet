@@ -1,4 +1,4 @@
-import { tmpdir, platform, release } from "os";
+import { platform, release, tmpdir } from "os";
 import { join } from "path";
 import { $ } from "bun";
 import { mkdtemp, rm } from "fs/promises";

@@ -1,7 +1,7 @@
 import {
+  type WorkspaceBinding,
   assertWorkspaceWriteAllowed,
   createDefaultWorkspaceBinding,
-  type WorkspaceBinding,
 } from "./binding";
 
 const bindingStack: WorkspaceBinding[] = [

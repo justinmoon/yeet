@@ -66,4 +66,46 @@ describe("tool.write", () => {
     const readContent = await readFile(testFile, "utf-8");
     expect(readContent).toBe(content);
   });
+
+  test("write extended unicode characters", async () => {
+    const testFile = join(testDir, "extended-unicode.txt");
+    const content =
+      "Arabic: مرحبا\nCyrillic: Привет\nEmoji: 🎉🚀💻\nMath: ∑∫∂∇\nCJK: 日本語 中文 한국어";
+
+    const result = await write.execute({ path: testFile, content }, {} as any);
+
+    expect(result.success).toBe(true);
+    const readContent = await readFile(testFile, "utf-8");
+    expect(readContent).toBe(content);
+    expect(readContent).toContain("مرحبا");
+    expect(readContent).toContain("Привет");
+    expect(readContent).toContain("🎉🚀💻");
+    expect(readContent).toContain("∑∫∂∇");
+    expect(readContent).toContain("日本語");
+  });
+
+  test("write large file (>50k characters)", async () => {
+    const testFile = join(testDir, "large-write.txt");
+    const line = "This is a line of text for a large file write test.\n";
+    const content = line.repeat(1000); // ~50k characters
+
+    const result = await write.execute({ path: testFile, content }, {} as any);
+
+    expect(result.success).toBe(true);
+    const readContent = await readFile(testFile, "utf-8");
+    expect(readContent.length).toBeGreaterThan(50000);
+    expect(readContent).toBe(content);
+  });
+
+  test("write empty file", async () => {
+    const testFile = join(testDir, "empty.txt");
+    const result = await write.execute(
+      { path: testFile, content: "" },
+      {} as any,
+    );
+
+    expect(result.success).toBe(true);
+    const readContent = await readFile(testFile, "utf-8");
+    expect(readContent).toBe("");
+  });
 });

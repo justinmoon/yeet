@@ -14,14 +14,17 @@ export interface CallbackServerResult {
 export interface CallbackServer {
   port: number;
   close: () => void;
-  waitForCallback: (expectedState: string) => Promise<CallbackServerResult | null>;
+  waitForCallback: (
+    expectedState: string,
+  ) => Promise<CallbackServerResult | null>;
 }
 
 /**
  * Start a local HTTP server to capture OAuth callback
  */
 export async function startCallbackServer(): Promise<CallbackServer> {
-  let resolveCallback: ((result: CallbackServerResult | null) => void) | null = null;
+  let resolveCallback: ((result: CallbackServerResult | null) => void) | null =
+    null;
   let expectedState = "";
   let server: ReturnType<typeof Bun.serve> | null = null;
 
@@ -123,12 +126,15 @@ export async function startCallbackServer(): Promise<CallbackServer> {
         resolveCallback = resolve;
 
         // Timeout after 5 minutes
-        setTimeout(() => {
-          if (resolveCallback) {
-            resolveCallback(null);
-            resolveCallback = null;
-          }
-        }, 5 * 60 * 1000);
+        setTimeout(
+          () => {
+            if (resolveCallback) {
+              resolveCallback(null);
+              resolveCallback = null;
+            }
+          },
+          5 * 60 * 1000,
+        );
       });
     },
   };

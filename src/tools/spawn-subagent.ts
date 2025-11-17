@@ -1,9 +1,9 @@
 // @ts-nocheck - AI SDK v5 types are complex, but runtime works correctly
 import { jsonSchema, tool } from "ai";
 import z from "zod/v4";
-import type { AgentCapability } from "../config";
-import { getAgentSpawner } from "../agents/service";
 import { getActiveAgentContext } from "../agents/runtime-context";
+import { getAgentSpawner } from "../agents/service";
+import type { AgentCapability } from "../config";
 
 const capabilityEnum = z.enum(["primary", "subtask", "watcher"]);
 const returnModeEnum = z.enum(["blocking", "background"]);

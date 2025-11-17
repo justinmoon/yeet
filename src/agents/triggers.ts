@@ -94,9 +94,7 @@ export function findAgentSlashCommandTrigger(
   );
 }
 
-export function getAgentHotkeyTriggers(
-  config: Config,
-): AgentHotkeyTrigger[] {
+export function getAgentHotkeyTriggers(config: Config): AgentHotkeyTrigger[] {
   if (!config.agents) return [];
   const triggers: AgentHotkeyTrigger[] = [];
   for (const profile of Object.values(config.agents)) {

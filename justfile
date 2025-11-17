@@ -4,13 +4,17 @@
 default:
     @just --list
 
-# Run all CI checks
-ci:
-    nix run .#ci
-
 # Run pre-merge checks
 pre-merge:
     nix run .#pre-merge
+
+# Run nightly test suite
+nightly:
+    nix run .#nightly
+
+# Run nightly test suite (direct script, for debugging)
+nightly-headless:
+    bash scripts/nightly.sh
 
 # Run post-merge updates
 post-merge:

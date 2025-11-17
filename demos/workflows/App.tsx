@@ -6,13 +6,15 @@ import {
   useEdgesState,
   useNodesState,
 } from "@xyflow/react";
+import type { Edge } from "@xyflow/react";
 import { useEffect, useState } from "react";
 import "@xyflow/react/dist/style.css";
 import { machineToFlow } from "./machineToFlow";
+import type { FlowNode } from "./machineToFlow";
 
 export function App() {
-  const [nodes, setNodes, onNodesChange] = useNodesState([]);
-  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
+  const [nodes, setNodes, onNodesChange] = useNodesState<FlowNode>([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [task, setTask] = useState("");
   const [isRunning, setIsRunning] = useState(false);
   const [activeState, setActiveState] = useState<string | null>(null);

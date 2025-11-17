@@ -1,22 +1,22 @@
 import { runAgent } from "../agent";
+import type { MessageContent } from "../agent";
 import type { Config } from "../config";
 import type { AgentCapability, AgentProfileConfig } from "../config";
-import type { AgentSessionStatus, SessionTrigger } from "./types";
+import type { WorkspacePolicy } from "../config";
 import { createSession, saveSession } from "../sessions";
 import { resolveWorkspaceBinding } from "../workspace/binding";
-import type { MessageContent } from "../agent";
-import { AgentRegistry } from "./registry";
-import { AgentInbox, type InboxUpdate } from "./inbox";
+import { popWorkspaceBinding, pushWorkspaceBinding } from "../workspace/state";
 import {
   getAgentSessionContext,
   updateAgentSessionStatus,
 } from "./context-store";
-import type { WorkspacePolicy } from "../config";
-import { pushWorkspaceBinding, popWorkspaceBinding } from "../workspace/state";
+import type { AgentInbox, InboxUpdate } from "./inbox";
+import type { AgentRegistry } from "./registry";
 import {
   popActiveAgentContext,
   pushActiveAgentContext,
 } from "./runtime-context";
+import type { AgentSessionStatus, SessionTrigger } from "./types";
 
 export interface SpawnRequest {
   agentId: string;
@@ -68,8 +68,7 @@ export class AgentSpawner {
       basePath: request.workingDirectory || process.cwd(),
       policy: request.workspacePolicy || profile.defaultWorkspace,
       label: `${profile.id}:${request.parentSessionId || "root"}`,
-      defaultAllowWrites:
-        profile.permissionOverrides?.allowWrites ?? true,
+      defaultAllowWrites: profile.permissionOverrides?.allowWrites ?? true,
     });
 
     const session = createSession(profile.model, config.activeProvider, {
@@ -89,9 +88,7 @@ export class AgentSpawner {
 
     const context = getAgentSessionContext(session.id);
     if (!context) {
-      throw new Error(
-        `Failed to register session context for ${session.id}`,
-      );
+      throw new Error(`Failed to register session context for ${session.id}`);
     }
 
     const controller = new AbortController();
@@ -222,7 +219,13 @@ export class AgentSpawner {
       updateAgentSessionStatus(sessionId, status);
       onStatusChange(status);
       this.inbox.push(
-        this.createUpdate(sessionId, profile, status, undefined, error?.message),
+        this.createUpdate(
+          sessionId,
+          profile,
+          status,
+          undefined,
+          error?.message,
+        ),
       );
       return {
         sessionId,

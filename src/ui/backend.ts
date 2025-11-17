@@ -1,11 +1,11 @@
 import { cyan, dim, green, magenta, red, t, yellow } from "@opentui/core";
 import type { MessageContent } from "../agent";
 import { runAgent } from "../agent";
-import { getWatcherBridge } from "../agents/service";
 import {
   popActiveAgentContext,
   pushActiveAgentContext,
 } from "../agents/runtime-context";
+import { getWatcherBridge } from "../agents/service";
 import type { Config } from "../config";
 import { logger } from "../logger";
 import { getModelInfo } from "../models/registry";
@@ -15,29 +15,11 @@ import {
   formatTokenCount,
   truncateMessages,
 } from "../tokens";
-import type { UIAdapter } from "./interface";
 import { createDefaultWorkspaceBinding } from "../workspace/binding";
 import { setActiveWorkspaceBinding } from "../workspace/state";
+import type { UIAdapter } from "./interface";
 
 const watcherBridge = getWatcherBridge();
-
-/**
- * Get the active model ID based on the active provider
- */
-function getActiveModelId(config: Config): string {
-  switch (config.activeProvider) {
-    case "anthropic":
-      return config.anthropic?.model || "";
-    case "openai":
-      return config.openai?.model || "";
-    case "maple":
-      return config.maple?.model || "";
-    case "opencode":
-      return config.opencode.model;
-    default:
-      return config.opencode.model;
-  }
-}
 
 /**
  * Backend logic for handling messages, agent interactions, and session management.
@@ -120,7 +102,10 @@ export async function handleMessage(
     // Don't print [yeet] prefix - we'll only show it if there's actual text output
 
     // Get model info for context window limits
-    const modelId = getActiveModelId(config);
+    const modelId =
+      config.activeProvider === "maple"
+        ? config.maple!.model
+        : config.opencode.model;
     const modelInfo = getModelInfo(modelId);
 
     // Build conversation history with current message
@@ -346,7 +331,12 @@ export function updateTokenCount(
   config: Config,
   statusPrefix = "Paused",
 ): void {
-  const modelId = getActiveModelId(config);
+  const modelId =
+    config.activeProvider === "anthropic"
+      ? config.anthropic?.model || ""
+      : config.activeProvider === "maple"
+        ? config.maple!.model
+        : config.opencode.model;
   const modelInfo = getModelInfo(modelId);
 
   if (!modelInfo) {
@@ -372,7 +362,10 @@ export function updateTokenCount(
 }
 
 export function saveCurrentSession(ui: UIAdapter, config: Config): void {
-  const modelId = getActiveModelId(config);
+  const modelId =
+    config.activeProvider === "maple"
+      ? config.maple!.model
+      : config.opencode.model;
 
   const {
     createSession,

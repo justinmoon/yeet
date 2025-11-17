@@ -62,24 +62,6 @@
           PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS = "true";
         };
         
-        apps.ci = {
-          type = "app";
-          program = "${pkgs.writeShellScript "ci" ''
-            export PATH="${pkgs.lib.makeBinPath [
-              pkgs.bun
-              pkgs.biome
-              pkgs.ripgrep
-            ]}:$PATH"
-
-            # Tell Playwright to use Nix-provided browsers
-            export PLAYWRIGHT_BROWSERS_PATH="${pkgs.playwright-driver.browsers}"
-            export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
-            export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
-
-            exec ${./scripts/ci.sh}
-          ''}";
-        };
-
         apps.pre-merge = {
           type = "app";
           program = "${pkgs.writeShellScript "pre-merge" ''
@@ -96,8 +78,29 @@
             export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
 
             echo "Running pre-merge checks..."
-            ${./scripts/ci.sh}
+            ${./scripts/pre-merge.sh}
             echo "Pre-merge checks passed!"
+          ''}";
+        };
+
+        apps.nightly = {
+          type = "app";
+          program = "${pkgs.writeShellScript "nightly" ''
+            set -e
+            export PATH="${pkgs.lib.makeBinPath [
+              pkgs.bun
+              pkgs.biome
+              pkgs.ripgrep
+            ]}:$PATH"
+
+            # Tell Playwright to use Nix-provided browsers
+            export PLAYWRIGHT_BROWSERS_PATH="${pkgs.playwright-driver.browsers}"
+            export PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
+            export PLAYWRIGHT_SKIP_VALIDATE_HOST_REQUIREMENTS=true
+
+            echo "Running nightly suite..."
+            ${./scripts/nightly.sh}
+            echo "Nightly suite completed!"
           ''}";
         };
       });

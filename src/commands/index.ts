@@ -1,9 +1,12 @@
+import { getAgentInbox, getAgentSpawner } from "../agents/service";
+import {
+  findAgentSlashCommandTrigger,
+  getAgentHotkeyTriggers,
+  getAgentSlashCommandTriggers,
+} from "../agents/triggers";
+import type { SessionTrigger } from "../agents/types";
 import { exchangeOAuthCode, startAnthropicOAuth } from "../auth";
-import type {
-  AgentCapability,
-  AgentReturnMode,
-  Config,
-} from "../config";
+import type { AgentCapability, AgentReturnMode, Config } from "../config";
 import { saveConfig } from "../config";
 import {
   createStubExplainResult,
@@ -16,13 +19,6 @@ import type { ExplainResult } from "../explain";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
 import type { UIAdapter } from "../ui/interface";
 import { setActiveWorkspaceBinding } from "../workspace/state";
-import { getAgentSpawner, getAgentInbox } from "../agents/service";
-import type { SessionTrigger } from "../agents/types";
-import {
-  findAgentSlashCommandTrigger,
-  getAgentHotkeyTriggers,
-  getAgentSlashCommandTriggers,
-} from "../agents/triggers";
 
 export interface ParsedCommand {
   isCommand: boolean;
@@ -91,9 +87,7 @@ export async function executeCommand(
       await handleExplainCommand(args, ui);
       break;
     default:
-      if (
-        await tryHandleAgentSlashCommand(command, args, ui, config)
-      ) {
+      if (await tryHandleAgentSlashCommand(command, args, ui, config)) {
         break;
       }
       ui.appendOutput(`❌ Unknown command: /${command}\n`);
@@ -124,10 +118,7 @@ async function handleToggleCommand(
   ui.appendOutput(`🎨 Switched to ${newTheme.name} theme\n`);
 }
 
-async function handleHelpCommand(
-  ui: UIAdapter,
-  config: Config,
-): Promise<void> {
+async function handleHelpCommand(ui: UIAdapter, config: Config): Promise<void> {
   ui.appendOutput("Available commands:\n");
   ui.appendOutput("  /auth login         - Login with Anthropic OAuth\n");
   ui.appendOutput("  /auth status        - Show current authentication\n");
@@ -139,9 +130,15 @@ async function handleHelpCommand(
   ui.appendOutput("  /save <name>        - Name current session\n");
   ui.appendOutput("  /clear              - Clear current session\n");
   ui.appendOutput("  /toggle             - Cycle through color themes\n");
-  ui.appendOutput("  /workspace <mode>   - Set workspace to readonly or writable\n");
-  ui.appendOutput("  /spawnagent <id>    - Launch a configured subagent with prompt\n");
-  ui.appendOutput("  /inbox              - Show pending subagent status updates\n");
+  ui.appendOutput(
+    "  /workspace <mode>   - Set workspace to readonly or writable\n",
+  );
+  ui.appendOutput(
+    "  /spawnagent <id>    - Launch a configured subagent with prompt\n",
+  );
+  ui.appendOutput(
+    "  /inbox              - Show pending subagent status updates\n",
+  );
   ui.appendOutput(
     "  /explain [prompt]   - Generate tutorial for current diff\n",
   );
@@ -165,9 +162,7 @@ async function handleHelpCommand(
     ui.appendOutput("\nAgent Commands:\n");
     for (const entry of agentCommands) {
       const note = entry.description ? ` - ${entry.description}` : "";
-      ui.appendOutput(
-        `  /${entry.command} (${entry.agentId})${note}\n`,
-      );
+      ui.appendOutput(`  /${entry.command} (${entry.agentId})${note}\n`);
     }
   }
 
@@ -671,11 +666,7 @@ async function handleWorkspaceCommand(
     return;
   }
 
-  const binding = ensureSessionWorkspace(
-    session,
-    process.cwd(),
-    allowWrites,
-  );
+  const binding = ensureSessionWorkspace(session, process.cwd(), allowWrites);
   binding.allowWrites = allowWrites;
   saveSession(session, { skipParentUpdate: true });
   setActiveWorkspaceBinding(binding);
@@ -745,9 +736,7 @@ interface SpawnAgentOptions {
   returnMode?: AgentReturnMode;
 }
 
-async function spawnAgentWithPrompt(
-  options: SpawnAgentOptions,
-): Promise<void> {
+async function spawnAgentWithPrompt(options: SpawnAgentOptions): Promise<void> {
   if (!options.prompt || !options.prompt.trim()) {
     throw new Error("Prompt required");
   }

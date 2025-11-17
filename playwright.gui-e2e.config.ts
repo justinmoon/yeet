@@ -8,6 +8,16 @@ import { defineConfig, devices } from "@playwright/test";
  *
  * Usage: bunx playwright test --config=playwright.gui-e2e.config.ts
  */
+
+// Support junit reporter for nightly runs
+const reporters: any[] = process.env.CI
+  ? [
+      ["junit", { outputFile: "reports/nightly/playwright/gui-e2e/junit.xml" }],
+      ["html", { outputFolder: "reports/nightly/playwright/gui-e2e/html" }],
+      ["line"],
+    ]
+  : ["list"];
+
 export default defineConfig({
   testDir: "./test",
   testMatch: "**/gui-fizzbuzz.playwright.test.ts", // Only E2E tests
@@ -15,7 +25,7 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 3, // Retry flaky E2E tests up to 3 times (AI behavior can vary)
   workers: 1,
-  reporter: "list",
+  reporter: reporters,
   use: {
     baseURL: "http://localhost:3456",
     trace: "on-first-retry",

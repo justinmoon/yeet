@@ -62,27 +62,11 @@ export async function planSections(
   const model = await createExplainModel();
   const prompt = buildPlannerPrompt(intent, diffs);
 
-  let result;
-  try {
-    result = await generateObject({
-      model,
-      prompt,
-      schema: PlannerSchema,
-    });
-  } catch (error: any) {
-    console.warn("Structured output failed, using text generation fallback");
-    const { generateText } = await import("ai");
-    const textResult = await generateText({
-      model,
-      prompt:
-        prompt +
-        '\n\nRespond with JSON only matching this schema: {"sections": [{"title": "...", "diffId": "...", "explanation": "...", "tags": ["..."]}]}',
-    });
-    const parsed = JSON.parse(
-      textResult.text.replace(/```json\n?|\n?```/g, "").trim(),
-    );
-    result = { object: parsed };
-  }
+  const result = await generateObject({
+    model,
+    prompt,
+    schema: PlannerSchema,
+  });
 
   return result.object.sections.map((section) => ({
     id: randomUUID(),

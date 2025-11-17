@@ -1,7 +1,7 @@
 import { homedir, platform } from "os";
+import path from "path";
 import { fileURLToPath } from "url";
 import { stat } from "fs/promises";
-import path from "path";
 
 export interface EncodedImage {
   mimeType: string;

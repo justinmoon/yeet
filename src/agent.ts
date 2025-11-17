@@ -8,12 +8,13 @@ import {
   CLAUDE_CODE_BETA,
   createAnthropicFetch,
 } from "./auth";
-import { createOpenAIFetch } from "./openai-auth";
+import { clearSession, upsertToolCall } from "./call-cache";
 import type { Config } from "./config";
 import { logger } from "./logger";
 import { createMapleFetch } from "./maple";
+import { createOpenAIFetch } from "./openai-auth";
+import { streamFakeProvider } from "./providers/fake";
 import * as tools from "./tools";
-import { clearSession, upsertToolCall } from "./call-cache";
 
 // NOTE: Claude Code spoofing copied from opencode
 // When using Anthropic, we pretend to be "Claude Code" to get better results
@@ -96,6 +97,22 @@ export async function* runAgent(
   logger.debug("Agent session started", { sessionId });
 
   try {
+    const fixtureMode =
+      process.env.CI_AGENT_FIXTURES === "1" ||
+      process.env.YEET_PROVIDER === "fake" ||
+      config.activeProvider === "fake";
+    if (fixtureMode) {
+      const fixtureName =
+        process.env.YEET_AGENT_FIXTURE || config.fake?.fixture || "hello-world";
+      for await (const event of streamFakeProvider({ fixture: fixtureName })) {
+        if (event.type === "tool" && event.name && onToolCall) {
+          onToolCall(event.name);
+        }
+        yield event;
+      }
+      logger.info("Served agent fixture", { fixtureName });
+      return;
+    }
 
     // Choose provider based on config
     let provider;
@@ -241,7 +258,7 @@ export async function* runAgent(
         if (textBuffer) {
           logger.debug("Flushing text buffer before event", {
             eventType: chunk.type,
-            bufferLength: textBuffer.length
+            bufferLength: textBuffer.length,
           });
           yield { type: "text", content: textBuffer };
           textBuffer = "";

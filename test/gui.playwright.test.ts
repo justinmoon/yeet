@@ -8,7 +8,7 @@ import { expect, test } from "@playwright/test";
 const GUI_URL = "http://localhost:3456";
 
 test.describe("GUI Basic Functionality", () => {
-  test("page loads with control panel", async ({ page }) => {
+  test("@smoke page loads with control panel", async ({ page }) => {
     await page.goto(GUI_URL);
 
     // Control panel elements
@@ -16,7 +16,7 @@ test.describe("GUI Basic Functionality", () => {
     await expect(page.getByRole("button", { name: "Start" })).toBeVisible();
   });
 
-  test("React loads without JavaScript errors", async ({ page }) => {
+  test("@smoke React loads without JavaScript errors", async ({ page }) => {
     const errors: string[] = [];
 
     page.on("console", (msg) => {

@@ -15,6 +15,12 @@
     "jsx": "preserve",
     "jsxImportSource": "@opentui/solid"
   },
-  "include": ["src/**/*", "test/**/*", "demos/**/*", "*.d.ts", "solid-preload.ts"],
+  "include": [
+    "src/**/*",
+    "test/**/*",
+    "demos/**/*",
+    "*.d.ts",
+    "solid-preload.ts"
+  ],
   "exclude": ["node_modules", "dist"]
 }

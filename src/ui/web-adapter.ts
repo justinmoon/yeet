@@ -117,17 +117,9 @@ export class WebAdapter implements UIAdapter {
               if (!text) return;
 
               if (self.pendingOAuthSetup) {
-                const { verifier, provider = "anthropic", state } =
-                  self.pendingOAuthSetup;
+                const { verifier } = self.pendingOAuthSetup;
                 self.pendingOAuthSetup = undefined;
-                await handleOAuthCodeInput(
-                  text,
-                  verifier,
-                  self,
-                  self.config,
-                  provider,
-                  state,
-                );
+                await handleOAuthCodeInput(text, verifier, self, self.config);
               } else if (self.pendingMapleSetup) {
                 const apiKey = text;
                 const modelId = self.pendingMapleSetup.modelId;

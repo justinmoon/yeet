@@ -31,15 +31,15 @@ bun run src/index.ts
 # Or build and run
 bun run build
 ./yeet
+
+# Explain a diff range via CLI
+./src/explain/cli.ts --prompt "Teach me the PTY changes" --cwd ~/code/project --base main --head feature
 ```
 
 ### Keyboard Shortcuts
 
 - **Enter**: Send message to agent
 - **Shift+Enter**: New line (multiline messages)
-- **Ctrl+Shift+P** or **Cmd+O**: Open command palette
-  - Select "Explain Changes" to generate tutorials from git diffs
-  - Enter a prompt like "explain what changed" and the agent will infer the git refs
 - **Ctrl+C**: Exit
 
 ## Tools

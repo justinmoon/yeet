@@ -6,10 +6,28 @@ import type { Edge, Node } from "@xyflow/react";
 import { MarkerType } from "@xyflow/react";
 import dagre from "dagre";
 
+export type FlowNodeData = {
+  label: string;
+  baseLabel?: string;
+  isActive: boolean;
+};
+export type FlowNode = Node<FlowNodeData>;
+
+type TransitionTarget = string | { target: string };
+
+interface TransitionConfig {
+  target?: string;
+  guard?: string;
+}
+
 interface StateNode {
   key: string;
   type?: string;
-  on?: Record<string, string | { target: string }>;
+  on?: Record<string, TransitionTarget>;
+  invoke?: {
+    onDone?: TransitionConfig | TransitionConfig[];
+    onError?: TransitionTarget;
+  };
 }
 
 interface MachineDefinition {
@@ -20,12 +38,15 @@ interface MachineDefinition {
 /**
  * Extract states and transitions from XState machine
  */
-export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
+export function machineToFlow(machine: MachineDefinition): {
+  nodes: FlowNode[];
+  edges: Edge[];
+} {
   // Extract states from the machine
   const states = Object.keys(machine.states || {});
   const initial = machine.initial || states[0];
 
-  const nodes: Node[] = [];
+  const nodes: FlowNode[] = [];
   const edges: Edge[] = [];
 
   // Create nodes for each state
@@ -44,9 +65,11 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
     });
 
     // Extract event-based transitions (state.on)
-    const transitions = state.on || {};
-    for (const [event, target] of Object.entries(transitions)) {
-      const targetState = typeof target === "string" ? target : target.target;
+    const transitionsEntries = Object.entries(state.on ?? {}) as Array<
+      [string, TransitionTarget]
+    >;
+    for (const [event, target] of transitionsEntries) {
+      const targetState = typeof target === "string" ? target : target?.target;
 
       if (targetState && targetState !== stateKey) {
         edges.push({
@@ -86,7 +109,7 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
 
         for (const transition of onDoneTransitions) {
           const targetState =
-            typeof transition === "string" ? transition : transition.target;
+            typeof transition === "string" ? transition : transition?.target;
 
           if (targetState && targetState !== stateKey) {
             const hasGuard = typeof transition === "object" && transition.guard;
@@ -126,7 +149,7 @@ export function machineToFlow(machine: any): { nodes: Node[]; edges: Edge[] } {
         const targetState =
           typeof invoke.onError === "string"
             ? invoke.onError
-            : invoke.onError.target;
+            : invoke.onError?.target;
 
         if (targetState && targetState !== stateKey) {
           edges.push({
@@ -189,10 +212,10 @@ function formatEventLabel(event: string): string {
  * Auto-layout nodes using dagre
  */
 function getLayoutedElements(
-  nodes: Node[],
+  nodes: FlowNode[],
   edges: Edge[],
   direction = "LR",
-): { nodes: Node[]; edges: Edge[] } {
+): { nodes: FlowNode[]; edges: Edge[] } {
   const dagreGraph = new dagre.graphlib.Graph();
   dagreGraph.setDefaultEdgeLabel(() => ({}));
 
@@ -221,7 +244,7 @@ function getLayoutedElements(
 
   dagre.layout(dagreGraph);
 
-  const layoutedNodes = nodes.map((node) => {
+  const layoutedNodes = nodes.map<FlowNode>((node) => {
     const nodeWithPosition = dagreGraph.node(node.id);
     return {
       ...node,
