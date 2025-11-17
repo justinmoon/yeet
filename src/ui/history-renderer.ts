@@ -9,9 +9,9 @@ import { semantic } from "./colors";
 /**
  * Constant spacer inserted between rendered history entries.
  * Provides visual breathing room without blank lines or separators.
- * Two spaces creates a "half-line gap" between entries.
+ * Single space creates a minimal gap between entries.
  */
-export const HISTORY_SPACER = "  ";
+export const HISTORY_SPACER = " ";
 
 /**
  * Role type for message formatting
