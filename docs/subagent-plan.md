@@ -45,11 +45,9 @@
 ## 5. Update UI and State Machines
 1. Expand the UI adapter interface to support `setSubagentCount`, `showSubagentStatus`, and `openSubagentTranscript`.
 2. Surface a minimal status ledger (e.g., `planner#3 running`, `reviewer#2 waiting`) in the TUI status bar plus an inbox panel for completed work.
-3. Enhance the XState machine to treat blocking subagents as asynchronous actors: the main agent records the pending child, streams other work, and only consumes the summary when ready.
 ### Acceptance Criteria
 - UI adapters (TUI + future surfaces) implement new methods without breaking existing behavior.
 - Status ledger/inbox visible and updates when AgentInbox entries change.
-- XState machine handles blocking subagents without deadlocks or context bloat.
 - **Manual Verification:** With a running session, spawn multiple subtasks and verify the indicator counts increase/decrease, inbox items can be opened, and the main agent continues processing user input while waiting on child summaries.
 
 ## 6. Phase 1 Pilot: Oracle Subtask
