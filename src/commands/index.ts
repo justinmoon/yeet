@@ -1,13 +1,16 @@
-import { getAgentInbox, getAgentSpawner } from "../agents/service";
-import {
-  findAgentSlashCommandTrigger,
-  getAgentHotkeyTriggers,
-  getAgentSlashCommandTriggers,
-} from "../agents/triggers";
-import type { SessionTrigger } from "../agents/types";
 import { exchangeOAuthCode, startAnthropicOAuth } from "../auth";
-import type { AgentCapability, AgentReturnMode, Config } from "../config";
+import type {
+  AgentCapability,
+  AgentReturnMode,
+  Config,
+} from "../config";
 import { saveConfig } from "../config";
+import {
+  formatMessageLine,
+  formatHistorySpacer,
+  type AttachmentRef,
+} from "../ui/history-renderer";
+import { getHistoryConfig } from "../ui/backend";
 import {
   createStubExplainResult,
   getGitDiff,
@@ -19,6 +22,13 @@ import type { ExplainResult } from "../explain";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
 import type { UIAdapter } from "../ui/interface";
 import { setActiveWorkspaceBinding } from "../workspace/state";
+import { getAgentSpawner, getAgentInbox } from "../agents/service";
+import type { SessionTrigger } from "../agents/types";
+import {
+  findAgentSlashCommandTrigger,
+  getAgentHotkeyTriggers,
+  getAgentSlashCommandTriggers,
+} from "../agents/triggers";
 
 export interface ParsedCommand {
   isCommand: boolean;
@@ -60,7 +70,7 @@ export async function executeCommand(
       await handleSessionsCommand(ui);
       break;
     case "load":
-      await handleLoadCommand(args, ui);
+      await handleLoadCommand(args, ui, config);
       break;
     case "save":
       await handleSaveCommand(args, ui);
@@ -69,7 +79,7 @@ export async function executeCommand(
       await handleClearCommand(ui);
       break;
     case "toggle":
-      await handleToggleCommand(ui, config);
+      await handleToggleCommand(args, ui, config);
       break;
     case "workspace":
       await handleWorkspaceCommand(args, ui);
@@ -87,7 +97,9 @@ export async function executeCommand(
       await handleExplainCommand(args, ui);
       break;
     default:
-      if (await tryHandleAgentSlashCommand(command, args, ui, config)) {
+      if (
+        await tryHandleAgentSlashCommand(command, args, ui, config)
+      ) {
         break;
       }
       ui.appendOutput(`❌ Unknown command: /${command}\n`);
@@ -96,29 +108,113 @@ export async function executeCommand(
 }
 
 async function handleToggleCommand(
+  args: string[],
   ui: UIAdapter,
   config: Config,
 ): Promise<void> {
-  const { cycleTheme } = await import("../ui/colors");
-  const newTheme = cycleTheme();
+  const option = args[0]?.toLowerCase();
 
-  // Update background color if UI supports it
-  if (ui.setBackgroundColor) {
-    ui.setBackgroundColor(newTheme.background);
+  switch (option) {
+    case "metadata": {
+      // Toggle metadata display
+      if (!config.ui) config.ui = {};
+      if (!config.ui.history) config.ui.history = {};
+      const newValue = !config.ui.history.showMetadata;
+      config.ui.history.showMetadata = newValue;
+      await saveConfig(config);
+
+      // Update TUIAdapter config if available
+      if (ui.updateHistoryConfig) {
+        ui.updateHistoryConfig({ showMetadata: newValue });
+      }
+
+      ui.appendOutput(
+        newValue
+          ? "✓ Metadata display enabled (timestamps and token counts)\n"
+          : "✓ Metadata display disabled\n",
+      );
+      break;
+    }
+
+    case "diffs": {
+      // Toggle inline diffs for edit tool
+      if (!config.ui) config.ui = {};
+      if (!config.ui.history) config.ui.history = {};
+      const newValue = !config.ui.history.inlineDiffs;
+      config.ui.history.inlineDiffs = newValue;
+      await saveConfig(config);
+
+      // Update TUIAdapter config if available
+      if (ui.updateHistoryConfig) {
+        ui.updateHistoryConfig({ inlineDiffs: newValue });
+      }
+
+      ui.appendOutput(
+        newValue
+          ? "✓ Inline diffs enabled (edit tool will show diffs)\n"
+          : "✓ Inline diffs disabled (edit tool shows summary only)\n",
+      );
+      break;
+    }
+
+    case "verbose": {
+      // Toggle verbose tool output
+      if (!config.ui) config.ui = {};
+      if (!config.ui.history) config.ui.history = {};
+      const newValue = !config.ui.history.verboseTools;
+      config.ui.history.verboseTools = newValue;
+      await saveConfig(config);
+
+      // Update TUIAdapter config if available
+      if (ui.updateHistoryConfig) {
+        ui.updateHistoryConfig({ verboseTools: newValue });
+      }
+
+      ui.appendOutput(
+        newValue
+          ? "✓ Verbose tool output enabled (show full details)\n"
+          : "✓ Verbose tool output disabled (show summaries only)\n",
+      );
+      break;
+    }
+
+    case "theme":
+    case undefined: {
+      // Default behavior: toggle theme
+      const { cycleTheme } = await import("../ui/colors");
+      const newTheme = cycleTheme();
+
+      // Update background color if UI supports it
+      if (ui.setBackgroundColor) {
+        ui.setBackgroundColor(newTheme.background);
+      }
+
+      // Save theme to config
+      const { themes } = await import("../ui/colors");
+      const themeName = Object.keys(themes).find((k) => themes[k] === newTheme);
+      if (themeName) {
+        config.theme = themeName;
+        await saveConfig(config);
+      }
+
+      ui.appendOutput(`🎨 Switched to ${newTheme.name} theme\n`);
+      break;
+    }
+
+    default:
+      ui.appendOutput(`❌ Unknown toggle option: ${option}\n`);
+      ui.appendOutput("Available options:\n");
+      ui.appendOutput("  /toggle theme      - Cycle color theme\n");
+      ui.appendOutput("  /toggle metadata   - Toggle timestamps and token counts\n");
+      ui.appendOutput("  /toggle diffs      - Toggle inline diffs for edit tool\n");
+      ui.appendOutput("  /toggle verbose    - Toggle verbose tool output\n");
   }
-
-  // Save theme to config
-  const { themes } = await import("../ui/colors");
-  const themeName = Object.keys(themes).find((k) => themes[k] === newTheme);
-  if (themeName) {
-    config.theme = themeName;
-    await saveConfig(config);
-  }
-
-  ui.appendOutput(`🎨 Switched to ${newTheme.name} theme\n`);
 }
 
-async function handleHelpCommand(ui: UIAdapter, config: Config): Promise<void> {
+async function handleHelpCommand(
+  ui: UIAdapter,
+  config: Config,
+): Promise<void> {
   ui.appendOutput("Available commands:\n");
   ui.appendOutput("  /auth login         - Login with Anthropic OAuth\n");
   ui.appendOutput("  /auth status        - Show current authentication\n");
@@ -129,16 +225,10 @@ async function handleHelpCommand(ui: UIAdapter, config: Config): Promise<void> {
   ui.appendOutput("  /load <id|number>   - Load a session by ID or number\n");
   ui.appendOutput("  /save <name>        - Name current session\n");
   ui.appendOutput("  /clear              - Clear current session\n");
-  ui.appendOutput("  /toggle             - Cycle through color themes\n");
-  ui.appendOutput(
-    "  /workspace <mode>   - Set workspace to readonly or writable\n",
-  );
-  ui.appendOutput(
-    "  /spawnagent <id>    - Launch a configured subagent with prompt\n",
-  );
-  ui.appendOutput(
-    "  /inbox              - Show pending subagent status updates\n",
-  );
+  ui.appendOutput("  /toggle [option]    - Toggle theme, metadata, diffs, or verbose output\n");
+  ui.appendOutput("  /workspace <mode>   - Set workspace to readonly or writable\n");
+  ui.appendOutput("  /spawnagent <id>    - Launch a configured subagent with prompt\n");
+  ui.appendOutput("  /inbox              - Show pending subagent status updates\n");
   ui.appendOutput(
     "  /explain [prompt]   - Generate tutorial for current diff\n",
   );
@@ -162,7 +252,9 @@ async function handleHelpCommand(ui: UIAdapter, config: Config): Promise<void> {
     ui.appendOutput("\nAgent Commands:\n");
     for (const entry of agentCommands) {
       const note = entry.description ? ` - ${entry.description}` : "";
-      ui.appendOutput(`  /${entry.command} (${entry.agentId})${note}\n`);
+      ui.appendOutput(
+        `  /${entry.command} (${entry.agentId})${note}\n`,
+      );
     }
   }
 
@@ -314,7 +406,7 @@ async function handleSessionsCommand(ui: UIAdapter): Promise<void> {
   ui.appendOutput("Usage: /load <id|number> to resume a session\n");
 }
 
-async function handleLoadCommand(args: string[], ui: UIAdapter): Promise<void> {
+async function handleLoadCommand(args: string[], ui: UIAdapter, config: Config): Promise<void> {
   if (args.length === 0) {
     ui.appendOutput("❌ Usage: /load <session-id|number>\n");
     return;
@@ -397,26 +489,47 @@ function loadSessionIntoUI(session: any, ui: UIAdapter): void {
     `  ${session.model} • ${session.totalMessages} messages • Workspace: ${binding.allowWrites ? "writable" : "read-only"}\n\n`,
   );
 
-  // Replay conversation
-  for (const message of session.conversationHistory) {
+  // Replay conversation using shared formatter
+  const historyConfig = getHistoryConfig(config);
+  for (let i = 0; i < session.conversationHistory.length; i++) {
+    const message = session.conversationHistory[i];
+
+    // Add spacer between messages (except before first)
+    if (i > 0) {
+      ui.appendOutput(formatHistorySpacer());
+    }
+
     if (message.role === "user") {
       const hasImages =
         Array.isArray(message.content) &&
         message.content.some((p: any) => p.type === "image");
+
+      let text = "";
+      let attachments: AttachmentRef[] = [];
+
       if (hasImages) {
         const imageCount = (message.content as any[]).filter(
           (p) => p.type === "image",
         ).length;
-        const text = (message.content as any[])
+        text = (message.content as any[])
           .filter((p) => p.type === "text")
           .map((p) => p.text)
           .join("");
-        ui.appendOutput(`You: ${text} [${imageCount} image(s)]\n\n`);
+        attachments = Array.from({ length: imageCount }, (_, idx) => ({
+          type: "image" as const,
+          index: idx + 1,
+        }));
       } else {
-        ui.appendOutput(`You: ${message.content}\n\n`);
+        text = message.content as string;
       }
+
+      ui.appendOutput(
+        formatMessageLine("user", text, undefined, attachments, historyConfig.showMetadata),
+      );
     } else {
-      ui.appendOutput(`Assistant: ${message.content}\n\n`);
+      ui.appendOutput(
+        formatMessageLine("assistant", message.content as string, undefined, undefined, historyConfig.showMetadata),
+      );
     }
   }
 
@@ -666,7 +779,11 @@ async function handleWorkspaceCommand(
     return;
   }
 
-  const binding = ensureSessionWorkspace(session, process.cwd(), allowWrites);
+  const binding = ensureSessionWorkspace(
+    session,
+    process.cwd(),
+    allowWrites,
+  );
   binding.allowWrites = allowWrites;
   saveSession(session, { skipParentUpdate: true });
   setActiveWorkspaceBinding(binding);
@@ -736,7 +853,9 @@ interface SpawnAgentOptions {
   returnMode?: AgentReturnMode;
 }
 
-async function spawnAgentWithPrompt(options: SpawnAgentOptions): Promise<void> {
+async function spawnAgentWithPrompt(
+  options: SpawnAgentOptions,
+): Promise<void> {
   if (!options.prompt || !options.prompt.trim()) {
     throw new Error("Prompt required");
   }

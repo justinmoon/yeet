@@ -95,6 +95,14 @@ export interface Config {
   maxSteps?: number;
   temperature?: number;
   theme?: string; // Color theme: tokyonight, nord, catppuccin, everforest
+  // UI configuration
+  ui?: {
+    history?: {
+      showMetadata?: boolean; // default true - show timestamps and token counts
+      inlineDiffs?: boolean; // default true - show diffs inline for edit tool
+      verboseTools?: boolean; // default false - show full output for all tools
+    };
+  };
   // Maple AI configuration (optional)
   maple?: {
     apiUrl: string;
@@ -272,6 +280,20 @@ export async function loadConfig(): Promise<Config> {
     ...config,
     maxSteps: config.maxSteps || 20,
     temperature: config.temperature || 0.5,
+    opencode: config.opencode || {
+      apiKey: "",
+      baseURL: "https://opencode.ai/zen/v1",
+      model: "grok-code",
+    },
+    ui: {
+      ...config.ui,
+      history: {
+        ...config.ui?.history, // Preserve any existing/future keys
+        showMetadata: config.ui?.history?.showMetadata ?? true,
+        inlineDiffs: config.ui?.history?.inlineDiffs ?? true,
+        verboseTools: config.ui?.history?.verboseTools ?? false,
+      },
+    },
   };
 
   const overrideProvider = process.env.YEET_PROVIDER;
