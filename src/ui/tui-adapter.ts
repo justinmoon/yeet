@@ -20,7 +20,7 @@ import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
 import type { Config } from "../config";
 import { logger } from "../logger";
-import { getModelInfo } from "../models/registry";
+import { getActiveModel, getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import type { UIAdapter } from "./interface";
 import { ModelSelectorModal } from "./model-modal";
@@ -228,16 +228,13 @@ export class TUIAdapter implements UIAdapter {
     });
     this.renderer.root.add(container);
 
-    const currentModelId =
-      this.config.activeProvider === "anthropic"
-        ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "maple"
-          ? this.config.maple?.model || ""
-          : this.config.opencode?.model || "";
-    const modelInfo = getModelInfo(currentModelId);
+    const { id: currentModelId, info: modelInfo } = getActiveModel(
+      this.config,
+    );
+    const fallbackName = currentModelId || "Unknown model";
     const modelDisplay = modelInfo
       ? `${modelInfo.name} (${modelInfo.provider})`
-      : currentModelId;
+      : fallbackName;
 
     // Status bar at top with light background (full width)
     this.status = new TextRenderable(this.renderer, {
@@ -636,18 +633,13 @@ export class TUIAdapter implements UIAdapter {
   }
 
   private updateAttachmentIndicator(): void {
-    const modelId =
-      this.config.activeProvider === "anthropic"
-        ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "maple"
-          ? this.config.maple!.model
-          : this.config.opencode?.model || "";
-    const modelInfo = getModelInfo(modelId);
-    const modelName = modelInfo?.name || modelId;
+    const { id: modelId, info: modelInfo } = getActiveModel(this.config);
+    const modelName = modelInfo?.name || modelId || "Unknown model";
+    const maxContext = modelInfo?.contextWindow || "?";
 
     if (this.imageAttachments.length > 0) {
       this.setStatus(
-        `${modelName} | ${this.currentTokens > 0 ? `${this.currentTokens}/${modelInfo?.contextWindow || "?"}` : "0/?"} | 📎 ${this.imageAttachments.length} image(s)`,
+        `${modelName} | ${this.currentTokens > 0 ? `${this.currentTokens}/${maxContext}` : "0/?"} | 📎 ${this.imageAttachments.length} image(s)`,
       );
     } else {
       this.updateTokenCount();

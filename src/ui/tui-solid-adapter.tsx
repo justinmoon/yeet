@@ -32,7 +32,7 @@ import { logger } from "../logger";
 import { startOpenAIOAuth } from "../openai-auth";
 import type { CallbackServer } from "../openai-callback-server";
 import { startCallbackServer } from "../openai-callback-server";
-import { MODELS, getModelInfo } from "../models/registry";
+import { MODELS, getActiveModel, getModelInfo } from "../models/registry";
 import { listSessions, loadSession, type Session } from "../sessions";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import { cycleTheme, getCurrentTheme, setTheme, themes } from "./colors";
@@ -159,18 +159,13 @@ export class TUISolidAdapter implements UIAdapter {
 
   async start(): Promise<void> {
     // Get model info for initial status
-    const currentModelId =
-      this.config.activeProvider === "anthropic"
-        ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "openai"
-          ? this.config.openai?.model || ""
-          : this.config.activeProvider === "maple"
-            ? this.config.maple?.model || ""
-            : this.config.opencode?.model || "";
-    const modelInfo = getModelInfo(currentModelId);
+    const { id: currentModelId, info: modelInfo } = getActiveModel(
+      this.config,
+    );
+    const fallbackName = currentModelId || "Unknown model";
     const initialStatus = modelInfo
       ? `Paused | ${modelInfo.name} | 0/${modelInfo.contextWindow} (0%)`
-      : "Paused";
+      : `Paused | ${fallbackName} | 0/? (0%)`;
 
     render(
       () => {
@@ -2089,21 +2084,14 @@ export class TUISolidAdapter implements UIAdapter {
   }
 
   private updateAttachmentIndicator(): void {
-    const modelId =
-      this.config.activeProvider === "anthropic"
-        ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "openai"
-          ? this.config.openai?.model || ""
-          : this.config.activeProvider === "maple"
-            ? this.config.maple?.model || ""
-            : this.config.opencode?.model || "";
-    const modelInfo = getModelInfo(modelId);
-    const modelName = modelInfo?.name || modelId;
+    const { id: modelId, info: modelInfo } = getActiveModel(this.config);
+    const modelName = modelInfo?.name || modelId || "Unknown model";
+    const maxContext = modelInfo?.contextWindow || "?";
 
     if (this.imageAttachments.length > 0) {
       const tokenPortion =
         this.currentTokens > 0
-          ? `${this.currentTokens}/${modelInfo?.contextWindow || "?"}`
+          ? `${this.currentTokens}/${maxContext}`
           : "0/?";
       this.setStatus(
         `${modelName} | ${tokenPortion} | 📎 ${this.imageAttachments.length} image(s)`,

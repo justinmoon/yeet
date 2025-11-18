@@ -17,7 +17,7 @@ import {
 } from "../agents/runtime-context";
 import type { Config } from "../config";
 import { logger } from "../logger";
-import { getModelInfo } from "../models/registry";
+import { getActiveModel } from "../models/registry";
 import {
   calculateContextUsage,
   countMessageTokens,
@@ -138,11 +138,7 @@ export async function handleMessage(
     // Don't print [yeet] prefix - we'll only show it if there's actual text output
 
     // Get model info for context window limits
-    const modelId =
-      config.activeProvider === "maple"
-        ? config.maple!.model
-        : config.opencode.model;
-    const modelInfo = getModelInfo(modelId);
+    const { id: modelId, info: modelInfo } = getActiveModel(config);
 
     // Build conversation history with current message
     let messages = [
@@ -535,23 +531,17 @@ export function updateTokenCount(
   config: Config,
   statusPrefix = "Paused",
 ): void {
-  const modelId =
-    config.activeProvider === "anthropic"
-      ? config.anthropic?.model || ""
-      : config.activeProvider === "maple"
-        ? config.maple!.model
-        : config.opencode.model;
-  const modelInfo = getModelInfo(modelId);
+  const { id: modelId, info: modelInfo } = getActiveModel(config);
+  const tokens = countMessageTokens(ui.conversationHistory, modelId);
+  ui.currentTokens = tokens;
+  const tokenDisplay = formatTokenCount(tokens);
 
   if (!modelInfo) {
-    ui.currentTokens = 0;
+    const label = modelId || "Unknown model";
+    ui.setStatus(`${statusPrefix} | ${label} | ${tokenDisplay} tokens`);
     return;
   }
 
-  const tokens = countMessageTokens(ui.conversationHistory, modelId);
-  ui.currentTokens = tokens;
-
-  const tokenDisplay = formatTokenCount(tokens);
   const maxTokens = modelInfo.contextWindow;
   const usage = calculateContextUsage(tokens, maxTokens);
   const maxDisplay = formatTokenCount(maxTokens);
