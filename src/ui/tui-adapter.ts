@@ -14,22 +14,26 @@ import {
   stringToStyledText,
   t,
 } from "@opentui/core";
-import type { MessageContent } from "../agent";
 import { getAgentHotkeyTriggers } from "../agents/triggers";
+import type { MessageContent } from "../agent";
 import { readImageFromClipboard } from "../clipboard";
 import { executeCommand, handleMapleSetup, parseCommand } from "../commands";
 import type { Config } from "../config";
 import { logger } from "../logger";
-import { getModelInfo } from "../models/registry";
-import {
-  type HotkeyDescriptor,
-  matchHotkeyEvent,
-  parseHotkeyCombo,
-} from "../utils/hotkeys";
+import { getActiveModel, getModelInfo } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import type { UIAdapter } from "./interface";
 import { ModelSelectorModal } from "./model-modal";
 import { SessionSelectorModal } from "./session-modal";
+import {
+  matchHotkeyEvent,
+  parseHotkeyCombo,
+  type HotkeyDescriptor,
+} from "../utils/hotkeys";
+import {
+  formatMessageLine,
+  formatHistorySpacer,
+} from "./history-renderer";
 
 export class TUIAdapter implements UIAdapter {
   conversationHistory: Array<{
@@ -55,6 +59,11 @@ export class TUIAdapter implements UIAdapter {
   private scrollBox!: ScrollBoxRenderable;
   private contentChunks: Array<string | StyledText> = [];
   private config: Config;
+  private historyConfig: {
+    showMetadata: boolean;
+    inlineDiffs: boolean;
+    verboseTools: boolean;
+  };
   private userInputCallback?: (message: string) => Promise<void>;
   private commandCallback?: (command: string, args: string[]) => Promise<void>;
   private agentHotkeys: Array<{
@@ -64,6 +73,12 @@ export class TUIAdapter implements UIAdapter {
 
   constructor(config: Config) {
     this.config = config;
+    // Extract history config for easy renderer access
+    this.historyConfig = {
+      showMetadata: config.ui?.history?.showMetadata ?? true,
+      inlineDiffs: config.ui?.history?.inlineDiffs ?? true,
+      verboseTools: config.ui?.history?.verboseTools ?? false,
+    };
     this.agentHotkeys = getAgentHotkeyTriggers(config)
       .map((binding) => {
         const descriptor = parseHotkeyCombo(binding.combo);
@@ -71,7 +86,9 @@ export class TUIAdapter implements UIAdapter {
         return { descriptor, command: binding.command };
       })
       .filter(
-        (value): value is { descriptor: HotkeyDescriptor; command: string } =>
+        (
+          value,
+        ): value is { descriptor: HotkeyDescriptor; command: string } =>
           value !== null,
       );
   }
@@ -146,9 +163,19 @@ export class TUIAdapter implements UIAdapter {
   }
 
   addMessagePart(part: import("./interface").MessagePart): void {
-    // Legacy TUI adapter doesn't use message parts yet
-    // Just append as text for now
-    this.appendOutput(part.content);
+    // Add spacer before assistant response
+    this.appendOutput(formatHistorySpacer());
+
+    // Format assistant message using history formatter
+    this.appendOutput(
+      formatMessageLine(
+        "assistant",
+        part.content,
+        { timestamp: new Date() },
+        undefined,
+        this.historyConfig.showMetadata,
+      ),
+    );
   }
 
   clearOutput(): void {
@@ -178,6 +205,22 @@ export class TUIAdapter implements UIAdapter {
     saveCurrentSession(this, this.config);
   }
 
+  /**
+   * Update history rendering settings and refresh the UI.
+   * Used by command palette toggles for metadata, inline diffs, and verbose tools.
+   */
+  updateHistoryConfig(updates: Partial<typeof this.historyConfig>): void {
+    this.historyConfig = { ...this.historyConfig, ...updates };
+    // Also update the main config so it persists
+    if (!this.config.ui) {
+      this.config.ui = {};
+    }
+    if (!this.config.ui.history) {
+      this.config.ui.history = {};
+    }
+    this.config.ui.history = { ...this.config.ui.history, ...updates };
+  }
+
   private setupComponents(): void {
     const container = new BoxRenderable(this.renderer, {
       id: "main",
@@ -185,16 +228,13 @@ export class TUIAdapter implements UIAdapter {
     });
     this.renderer.root.add(container);
 
-    const currentModelId =
-      this.config.activeProvider === "anthropic"
-        ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "maple"
-          ? this.config.maple?.model || ""
-          : this.config.opencode.model;
-    const modelInfo = getModelInfo(currentModelId);
+    const { id: currentModelId, info: modelInfo } = getActiveModel(
+      this.config,
+    );
+    const fallbackName = currentModelId || "Unknown model";
     const modelDisplay = modelInfo
       ? `${modelInfo.name} (${modelInfo.provider})`
-      : currentModelId;
+      : fallbackName;
 
     // Status bar at top with light background (full width)
     this.status = new TextRenderable(this.renderer, {
@@ -289,7 +329,7 @@ export class TUIAdapter implements UIAdapter {
         );
       }
       if (model.provider === "opencode") {
-        return !!this.config.opencode.apiKey;
+        return !!this.config.opencode?.apiKey;
       }
       if (model.provider === "maple") {
         return !!this.config.maple?.apiKey;
@@ -328,7 +368,9 @@ export class TUIAdapter implements UIAdapter {
         }
         this.config.anthropic.model = modelId;
       } else if (modelInfo.provider === "opencode") {
-        this.config.opencode.model = modelId;
+        if (this.config.opencode) {
+          this.config.opencode.model = modelId;
+        }
       } else if (modelInfo.provider === "maple") {
         if (this.config.maple) {
           this.config.maple.model = modelId;
@@ -413,35 +455,58 @@ export class TUIAdapter implements UIAdapter {
         `  ${session.model} • ${session.totalMessages} messages\n\n`,
       );
 
-      // Replay conversation
+      // Replay conversation using history formatter
       for (let i = 0; i < session.conversationHistory.length; i++) {
         const message = session.conversationHistory[i];
 
-        // Add subtle separator between turns (except before first message)
+        // Add spacer between turns (except before first message)
         if (i > 0) {
-          this.appendOutput(t`${dim("─")}\n`);
+          this.appendOutput(formatHistorySpacer());
         }
 
         if (message.role === "user") {
           const hasImages =
             Array.isArray(message.content) &&
             message.content.some((p: any) => p.type === "image");
+
+          let text = "";
+          let attachments: import("./history-renderer").AttachmentRef[] = [];
+
           if (hasImages) {
             const imageCount = (message.content as any[]).filter(
               (p) => p.type === "image",
             ).length;
-            const text = (message.content as any[])
+            text = (message.content as any[])
               .filter((p) => p.type === "text")
               .map((p) => p.text)
               .join("");
-            this.appendOutput(
-              t`${cyan("[you]")} ${text} ${dim(`[${imageCount} image(s)]`)}\n`,
-            );
+            attachments = Array.from({ length: imageCount }, (_, idx) => ({
+              type: "image" as const,
+              index: idx + 1,
+            }));
           } else {
-            this.appendOutput(t`${cyan("[you]")} ${message.content}\n`);
+            text = message.content as string;
           }
+
+          this.appendOutput(
+            formatMessageLine(
+              "user",
+              text,
+              undefined,
+              attachments,
+              this.historyConfig.showMetadata,
+            ),
+          );
         } else {
-          this.appendOutput(t`${green("[yeet]")} ${message.content}\n`);
+          this.appendOutput(
+            formatMessageLine(
+              "assistant",
+              message.content as string,
+              undefined,
+              undefined,
+              this.historyConfig.showMetadata,
+            ),
+          );
         }
       }
 
@@ -568,18 +633,13 @@ export class TUIAdapter implements UIAdapter {
   }
 
   private updateAttachmentIndicator(): void {
-    const modelId =
-      this.config.activeProvider === "anthropic"
-        ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "maple"
-          ? this.config.maple!.model
-          : this.config.opencode.model;
-    const modelInfo = getModelInfo(modelId);
-    const modelName = modelInfo?.name || modelId;
+    const { id: modelId, info: modelInfo } = getActiveModel(this.config);
+    const modelName = modelInfo?.name || modelId || "Unknown model";
+    const maxContext = modelInfo?.contextWindow || "?";
 
     if (this.imageAttachments.length > 0) {
       this.setStatus(
-        `${modelName} | ${this.currentTokens > 0 ? `${this.currentTokens}/${modelInfo?.contextWindow || "?"}` : "0/?"} | 📎 ${this.imageAttachments.length} image(s)`,
+        `${modelName} | ${this.currentTokens > 0 ? `${this.currentTokens}/${maxContext}` : "0/?"} | 📎 ${this.imageAttachments.length} image(s)`,
       );
     } else {
       this.updateTokenCount();

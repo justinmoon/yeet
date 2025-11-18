@@ -17,6 +17,12 @@ export interface Theme {
   errorRed: string;
   warningYellow: string;
   toolMagenta: string;
+  // History-specific colors
+  agentCyan: string; // For [yeet] prefix
+  toolGrey: string; // For tool prefixes like [edit], [bash]
+  metadataGrey: string; // For timestamps, token counts
+  diffAdd: string; // For + in diffs
+  diffRemove: string; // For - in diffs
 }
 
 export const themes: Record<string, Theme> = {
@@ -29,6 +35,11 @@ export const themes: Record<string, Theme> = {
     errorRed: "#f7768e",
     warningYellow: "#e0af68",
     toolMagenta: "#bb9af7",
+    agentCyan: "#7dcfff",
+    toolGrey: "#565f89",
+    metadataGrey: "#565f89",
+    diffAdd: "#9ece6a",
+    diffRemove: "#f7768e",
   },
   nord: {
     name: "Nord",
@@ -39,6 +50,11 @@ export const themes: Record<string, Theme> = {
     errorRed: "#bf616a",
     warningYellow: "#ebcb8b",
     toolMagenta: "#b48ead",
+    agentCyan: "#88c0d0",
+    toolGrey: "#4c566a",
+    metadataGrey: "#4c566a",
+    diffAdd: "#a3be8c",
+    diffRemove: "#bf616a",
   },
   catppuccin: {
     name: "Catppuccin Macchiato",
@@ -49,6 +65,11 @@ export const themes: Record<string, Theme> = {
     errorRed: "#ed8796",
     warningYellow: "#eed49f",
     toolMagenta: "#f5bde6",
+    agentCyan: "#91d7e3",
+    toolGrey: "#5b6078",
+    metadataGrey: "#5b6078",
+    diffAdd: "#a6da95",
+    diffRemove: "#ed8796",
   },
   everforest: {
     name: "Everforest Dark",
@@ -59,6 +80,11 @@ export const themes: Record<string, Theme> = {
     errorRed: "#e67e80",
     warningYellow: "#dbbc7f",
     toolMagenta: "#d699b6",
+    agentCyan: "#83c092",
+    toolGrey: "#7a8478",
+    metadataGrey: "#7a8478",
+    diffAdd: "#a7c080",
+    diffRemove: "#e67e80",
   },
 };
 
@@ -114,6 +140,14 @@ export const semantic = {
   success: (text: string) => fg(getCurrentTheme().successGreen)(text),
   error: (text: string) => fg(getCurrentTheme().errorRed)(text),
   warning: (text: string) => fg(getCurrentTheme().warningYellow)(text),
+
+  // History-specific styling
+  historyUserPrefix: (text: string) => fg(getCurrentTheme().userBlue)(text),
+  historyAgentPrefix: (text: string) => fg(getCurrentTheme().agentCyan)(text),
+  historyToolPrefix: (text: string) => fg(getCurrentTheme().toolGrey)(text),
+  historyMetadata: (text: string) => dim(fg(getCurrentTheme().metadataGrey)(text)),
+  historyDiffAdd: (text: string) => fg(getCurrentTheme().diffAdd)(text),
+  historyDiffRemove: (text: string) => fg(getCurrentTheme().diffRemove)(text),
 };
 
 /**

@@ -63,6 +63,11 @@ export interface UIAdapter {
   updateTokenCount(): void;
   saveCurrentSession(): void;
   setBackgroundColor?(color: string): void;
+  updateHistoryConfig?(updates: {
+    showMetadata?: boolean;
+    inlineDiffs?: boolean;
+    verboseTools?: boolean;
+  }): void;
 
   // Modal selectors
   showSessionSelector?(): void;

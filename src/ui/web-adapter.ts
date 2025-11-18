@@ -2,7 +2,7 @@ import type { MessageContent } from "../agent";
 import { handleMapleSetup, handleOAuthCodeInput } from "../commands";
 import type { Config } from "../config";
 import { logger } from "../logger";
-import { getModelInfo } from "../models/registry";
+import { getActiveModel } from "../models/registry";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import type { UIAdapter } from "./interface";
 
@@ -72,18 +72,10 @@ export class WebAdapter implements UIAdapter {
           self.ws = ws;
 
           // Send initial status
-          const modelId =
-            self.config.activeProvider === "anthropic"
-              ? self.config.anthropic?.model || ""
-              : self.config.activeProvider === "openai"
-                ? self.config.openai?.model || ""
-                : self.config.activeProvider === "maple"
-                  ? self.config.maple?.model || ""
-                  : self.config.opencode.model;
-          const modelInfo = getModelInfo(modelId);
+          const { id: modelId, info: modelInfo } = getActiveModel(self.config);
           const modelDisplay = modelInfo
             ? `${modelInfo.name} (${self.config.activeProvider})`
-            : modelId;
+            : modelId || "Unknown model";
 
           ws.send(
             JSON.stringify({
@@ -204,20 +196,13 @@ export class WebAdapter implements UIAdapter {
   }
 
   private updateAttachmentIndicator(): void {
-    const modelId =
-      this.config.activeProvider === "anthropic"
-        ? this.config.anthropic?.model || ""
-        : this.config.activeProvider === "openai"
-          ? this.config.openai?.model || ""
-          : this.config.activeProvider === "maple"
-            ? this.config.maple!.model
-            : this.config.opencode.model;
-    const modelInfo = getModelInfo(modelId);
-    const modelName = modelInfo?.name || modelId;
+    const { id: modelId, info: modelInfo } = getActiveModel(this.config);
+    const modelName = modelInfo?.name || modelId || "Unknown model";
+    const maxContext = modelInfo?.contextWindow || "?";
 
     if (this.imageAttachments.length > 0) {
       this.setStatus(
-        `${modelName} | ${this.currentTokens > 0 ? `${this.currentTokens}/${modelInfo?.contextWindow || "?"}` : "0/?"} | 📎 ${this.imageAttachments.length} image(s)`,
+        `${modelName} | ${this.currentTokens > 0 ? `${this.currentTokens}/${maxContext}` : "0/?"} | 📎 ${this.imageAttachments.length} image(s)`,
       );
     } else {
       this.updateTokenCount();

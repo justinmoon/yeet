@@ -2,6 +2,7 @@
 import { jsonSchema, tool } from "ai";
 import z from "zod/v4";
 import { ensureWorkspaceWriteAccess } from "../workspace/state";
+import { createFileDiff } from "./diff-utils";
 
 const writeSchema = z.object({
   path: z.string().describe("Path for the new file"),
@@ -14,8 +15,16 @@ export const write = tool({
   execute: async ({ path, content }: { path: string; content: string }) => {
     try {
       ensureWorkspaceWriteAccess(`write to ${path}`);
+      const file = Bun.file(path);
+      const existedBefore = await file.exists();
+      const beforeContent = existedBefore ? await file.text() : "";
+
       await Bun.write(path, content);
-      return { success: true, message: `Created ${path}` };
+
+      const afterContent = await Bun.file(path).text();
+      const diff = createFileDiff(path, beforeContent, afterContent);
+
+      return { success: true, message: `Created ${path}`, diff };
     } catch (error: any) {
       return { error: `Failed to write ${path}: ${error.message}` };
     }

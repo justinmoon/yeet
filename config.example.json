@@ -8,6 +8,15 @@
   "maxSteps": 5,
   "temperature": 0.3,
 
+  "_comment_ui": "UI configuration for chat history display",
+  "ui": {
+    "history": {
+      "showMetadata": true,
+      "inlineDiffs": true,
+      "verboseTools": false
+    }
+  },
+
   "_comment": "Maple AI configuration (optional) - remove the underscore from _maple to enable, or use /models command",
   "_maple": {
     "apiUrl": "https://enclave.trymaple.ai",

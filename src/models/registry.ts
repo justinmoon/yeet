@@ -1,3 +1,5 @@
+import type { Config } from "../config";
+
 export interface ModelInfo {
   id: string;
   provider: "opencode" | "maple" | "anthropic" | "openai";
@@ -153,4 +155,40 @@ export function getModelsByProvider(
   provider: "opencode" | "maple" | "anthropic" | "openai",
 ): ModelInfo[] {
   return MODELS.filter((m) => m.provider === provider);
+}
+
+const DEFAULT_MODEL_IDS = {
+  anthropic: "claude-sonnet-4-5-20250929",
+  openai: "gpt-5-codex",
+  opencode: "grok-code",
+  maple: "mistral-small-3-1-24b",
+};
+
+export function getModelIdForProvider(
+  config: Config,
+  provider: Config["activeProvider"] = config.activeProvider,
+): string {
+  switch (provider) {
+    case "anthropic":
+      return config.anthropic?.model || DEFAULT_MODEL_IDS.anthropic;
+    case "openai":
+      return config.openai?.model || DEFAULT_MODEL_IDS.openai;
+    case "maple":
+      return (
+        config.maple?.model ||
+        config.opencode?.model ||
+        DEFAULT_MODEL_IDS.maple
+      );
+    case "fake":
+    case "opencode":
+    default:
+      return config.opencode?.model || DEFAULT_MODEL_IDS.opencode;
+  }
+}
+
+export function getActiveModel(
+  config: Config,
+): { id: string; info?: ModelInfo } {
+  const id = getModelIdForProvider(config);
+  return { id, info: getModelInfo(id) };
 }
