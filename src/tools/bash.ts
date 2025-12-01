@@ -31,7 +31,7 @@ export const bash = tool({
 
     try {
       // quiet() prevents Bun from writing command output directly to terminal
-      const result = await $`sh -c ${command}`.nothrow().quiet();
+      const result = await $`sh -c ${command}`.cwd(binding.cwd).nothrow().quiet();
       return {
         stdout: result.stdout.toString(),
         stderr: result.stderr.toString(),

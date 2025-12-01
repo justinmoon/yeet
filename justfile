@@ -84,6 +84,11 @@ fmt-check:
 # Install dependencies
 install:
     bun install
+    bash scripts/install-yeet.sh
+
+# Install launcher only
+install-bin:
+    bash scripts/install-yeet.sh
 
 # Build project
 build:

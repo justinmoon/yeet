@@ -26,7 +26,10 @@ import {
 } from "../tokens";
 import type { UIAdapter } from "./interface";
 import { createDefaultWorkspaceBinding } from "../workspace/binding";
-import { setActiveWorkspaceBinding } from "../workspace/state";
+import {
+  getActiveWorkspaceBinding,
+  setActiveWorkspaceBinding,
+} from "../workspace/state";
 import {
   formatMessageLine,
   formatToolSummary,
@@ -571,7 +574,9 @@ export function saveCurrentSession(ui: UIAdapter, config: Config): void {
   if (!ui.currentSessionId) {
     const session = createSession(modelId, config.activeProvider, {
       agentCapability: "primary",
-      workspace: createDefaultWorkspaceBinding(process.cwd()),
+      workspace: createDefaultWorkspaceBinding(
+        getActiveWorkspaceBinding().cwd,
+      ),
     });
     ui.currentSessionId = session.id;
     if (session.workspace) {
@@ -584,12 +589,18 @@ export function saveCurrentSession(ui: UIAdapter, config: Config): void {
   if (!session) {
     session = createSession(modelId, config.activeProvider, {
       agentCapability: "primary",
-      workspace: createDefaultWorkspaceBinding(process.cwd()),
+      workspace: createDefaultWorkspaceBinding(
+        getActiveWorkspaceBinding().cwd,
+      ),
     });
     session.id = ui.currentSessionId;
   }
 
-  const workspace = ensureSessionWorkspace(session, process.cwd(), true);
+  const workspace = ensureSessionWorkspace(
+    session,
+    getActiveWorkspaceBinding().cwd,
+    true,
+  );
   setActiveWorkspaceBinding(workspace);
 
   session.conversationHistory = ui.conversationHistory;

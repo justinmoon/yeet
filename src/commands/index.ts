@@ -21,7 +21,10 @@ import {
 import type { ExplainResult } from "../explain";
 import { MODELS, getModelInfo, getModelsByProvider } from "../models/registry";
 import type { UIAdapter } from "../ui/interface";
-import { setActiveWorkspaceBinding } from "../workspace/state";
+import {
+  getActiveWorkspaceBinding,
+  setActiveWorkspaceBinding,
+} from "../workspace/state";
 import { getAgentSpawner, getAgentInbox } from "../agents/service";
 import type { SessionTrigger } from "../agents/types";
 import {
@@ -280,7 +283,7 @@ async function handleExplainCommand(
     ? filteredArgs.join(" ")
     : "Explain the current branch changes";
 
-  const cwd = process.cwd();
+  const cwd = getActiveWorkspaceBinding().cwd;
   ui.appendOutput(`\n🔍 Running /explain in ${cwd}\n`);
 
   try {
@@ -469,7 +472,7 @@ function loadSessionIntoUI(session: any, ui: UIAdapter): void {
   const { ensureSessionWorkspace } = require("../sessions");
   const binding = ensureSessionWorkspace(
     session,
-    process.cwd(),
+    getActiveWorkspaceBinding().cwd,
     session.workspace?.allowWrites ?? true,
   );
   setActiveWorkspaceBinding(binding);
@@ -781,7 +784,7 @@ async function handleWorkspaceCommand(
 
   const binding = ensureSessionWorkspace(
     session,
-    process.cwd(),
+    getActiveWorkspaceBinding().cwd,
     allowWrites,
   );
   binding.allowWrites = allowWrites;

@@ -20,7 +20,9 @@ import { logger } from "./logger";
 import {
   type WorkspaceBinding,
   createDefaultWorkspaceBinding,
+  getLaunchCwd,
 } from "./workspace/binding";
+import { getActiveWorkspaceBinding } from "./workspace/state";
 
 export interface Session {
   id: string;
@@ -112,7 +114,9 @@ export function createSession(
   };
 
   if (!session.workspace) {
-    session.workspace = createDefaultWorkspaceBinding(process.cwd());
+    const cwd =
+      getActiveWorkspaceBinding()?.cwd || getLaunchCwd() || process.cwd();
+    session.workspace = createDefaultWorkspaceBinding(cwd);
   }
 
   if (
@@ -329,7 +333,9 @@ export function loadSession(sessionId: string): Session | null {
 
     session.breadcrumbs = session.breadcrumbs || [];
     if (!session.workspace) {
-      session.workspace = createDefaultWorkspaceBinding(process.cwd());
+      const cwd =
+        getActiveWorkspaceBinding()?.cwd || getLaunchCwd() || process.cwd();
+      session.workspace = createDefaultWorkspaceBinding(cwd);
     }
 
     return session as Session;
@@ -496,7 +502,10 @@ function sessionToContext(
   status: AgentSessionStatus,
 ): AgentSessionContext {
   const workspace =
-    session.workspace ?? createDefaultWorkspaceBinding(process.cwd());
+    session.workspace ??
+    createDefaultWorkspaceBinding(
+      getActiveWorkspaceBinding()?.cwd || getLaunchCwd() || process.cwd(),
+    );
   if (!session.workspace) {
     session.workspace = workspace;
   }

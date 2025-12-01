@@ -18,6 +18,10 @@ export interface WorkspaceBindingOptions {
   defaultAllowWrites?: boolean;
 }
 
+export function getLaunchCwd(): string {
+  return process.env.YEET_ORIGINAL_PWD || process.cwd();
+}
+
 export function createDefaultWorkspaceBinding(cwd: string): WorkspaceBinding {
   return {
     id: `ws:${cwd}`,

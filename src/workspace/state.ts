@@ -2,29 +2,38 @@ import {
   type WorkspaceBinding,
   assertWorkspaceWriteAllowed,
   createDefaultWorkspaceBinding,
+  getLaunchCwd,
 } from "./binding";
 
-const bindingStack: WorkspaceBinding[] = [
-  createDefaultWorkspaceBinding(process.cwd()),
-];
+let bindingStack: WorkspaceBinding[] | null = null;
+
+function getBindingStack(): WorkspaceBinding[] {
+  if (!bindingStack) {
+    bindingStack = [createDefaultWorkspaceBinding(getLaunchCwd())];
+  }
+  return bindingStack;
+}
 
 export function setActiveWorkspaceBinding(binding: WorkspaceBinding): void {
-  bindingStack.length = 1;
-  bindingStack[0] = binding;
+  const stack = getBindingStack();
+  stack.length = 1;
+  stack[0] = binding;
 }
 
 export function pushWorkspaceBinding(binding: WorkspaceBinding): void {
-  bindingStack.push(binding);
+  getBindingStack().push(binding);
 }
 
 export function popWorkspaceBinding(): void {
-  if (bindingStack.length > 1) {
-    bindingStack.pop();
+  const stack = getBindingStack();
+  if (stack.length > 1) {
+    stack.pop();
   }
 }
 
 export function getActiveWorkspaceBinding(): WorkspaceBinding {
-  return bindingStack[bindingStack.length - 1];
+  const stack = getBindingStack();
+  return stack[stack.length - 1];
 }
 
 export function ensureWorkspaceWriteAccess(action: string): void {
