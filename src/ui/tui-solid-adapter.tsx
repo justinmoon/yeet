@@ -2402,7 +2402,7 @@ export class TUISolidAdapter implements UIAdapter {
         steps: status.steps,
       };
 
-      // Update status bar
+      // Update status bar with context usage like normal mode
       const agentLabel =
         status.activeAgent === "coder"
           ? "Coder"
@@ -2411,9 +2411,8 @@ export class TUISolidAdapter implements UIAdapter {
             : status.flowState === "awaiting_user_input"
               ? "Awaiting input"
               : "Paused";
-      this.setStatus(
-        `Orchestration · Step ${status.currentStep}/${status.totalSteps} · ${agentLabel}`,
-      );
+      const orchestrationPrefix = `Step ${status.currentStep}/${status.totalSteps} · ${agentLabel}`;
+      updateTokenCount(this, this.config, orchestrationPrefix);
 
       // If awaiting user input, show the prompt
       if (status.awaitingUserPrompt) {
