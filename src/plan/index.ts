@@ -156,3 +156,50 @@ export {
   formatAgentTransition,
   createOrchestrationStatusText,
 } from "./ui-renderer";
+
+// Event logging
+export type {
+  LogEntry,
+  StateTransitionEntry,
+  ToolCallEntry,
+  AskUserEntry,
+  ErrorEntry,
+  StepChangeEntry,
+  OrchestrationLifecycleEntry,
+  EventLog,
+  LogSummary,
+} from "./event-log";
+export {
+  generateEventId,
+  createEventLog,
+  addLogEntry,
+  logStateTransition,
+  logToolCall,
+  logAskUser,
+  logUserResponse,
+  logError,
+  logErrorRecovered,
+  logStepChange,
+  logLifecycle,
+  updateLogState,
+  serializeLog,
+  parseLog,
+  LogParseError,
+  getLogSummary,
+} from "./event-log";
+
+// Persistence
+export type { ResumeResult } from "./persistence";
+export {
+  getLogPath,
+  getTranscriptsDir,
+  ensureLogDir,
+  saveLog,
+  loadLog,
+  deleteLog,
+  resumeOrchestration,
+  syncLogState,
+  createTranscriptPath,
+  saveTranscript,
+  loadTranscript,
+} from "./persistence";
