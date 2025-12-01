@@ -90,3 +90,39 @@ export {
   buildPrompt,
   buildContextSeed,
 } from "./prompt-builder";
+
+// Orchestration tools
+export type { ToolAction } from "./tools";
+export {
+  requestReview,
+  requestChanges,
+  approve,
+  createAskUserTool,
+  createCoderTools,
+  createReviewerTools,
+  getToolsForRole,
+} from "./tools";
+
+// Tool executor
+export type {
+  StepResolver,
+  UserPromptHandler,
+  ToolExecutionResult,
+} from "./tool-executor";
+export {
+  ToolExecutor,
+  createArrayStepResolver,
+  createPlanBodyStepResolver,
+} from "./tool-executor";
+
+// Tool filtering (read-only enforcement)
+export type { ToolFilterResult } from "./tool-filter";
+export {
+  WRITE_TOOL_NAMES,
+  WRITE_BASH_PATTERNS,
+  isWriteTool,
+  isWriteBashCommand,
+  createToolFilter,
+  filterToolsForRole,
+  createReadOnlyInterceptor,
+} from "./tool-filter";
