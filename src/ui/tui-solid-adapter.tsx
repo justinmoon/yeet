@@ -1146,8 +1146,12 @@ export class TUISolidAdapter implements UIAdapter {
     }
     const name =
       typeof key.name === "string" ? key.name.toLowerCase() : undefined;
-    // Ctrl+Shift+S to show orchestration status
-    return name === "s" && key.ctrl && key.shift;
+    const meta = (key as any).meta || (key as any).cmd;
+    const alt = (key as any).alt || (key as any).option;
+    // Cmd+I via Ghostty sends \x1bi (Escape+i = Alt+I), or native Meta+I
+    const altI = name === "i" && alt;
+    const metaI = name === "i" && meta;
+    return altI || metaI;
   }
 
   private showCommandPalette(): void {
@@ -2011,7 +2015,7 @@ export class TUISolidAdapter implements UIAdapter {
       ),
       this.createInfoEntry(
         "help-orchestration",
-        "Ctrl+Shift+S",
+        "Cmd+I",
         "Show orchestration status (coder/reviewer mode)",
       ),
       this.createInfoEntry(
@@ -2394,7 +2398,7 @@ export class TUISolidAdapter implements UIAdapter {
         `  Plan: ${relativePlanPath}\n` +
         `  Current step: ${activeStep}/${steps.length}\n` +
         `  Steps: ${steps.map((s) => s.id).join(", ") || "none detected"}\n` +
-        `  Press Ctrl+Shift+S to view status\n\n`,
+        `  Press Cmd+I to view status\n\n`,
     );
 
     this.setStatus(
