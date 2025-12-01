@@ -55,6 +55,10 @@
    - Offers `/orchestrate <goal>` and a tool hook so the main agent can delegate large workflows.
    - Tracks progress/EQ: e.g., `plan → implement → review`, each step represented as a child session/breadcrumb.
 
+5. **State machine enforcer**
+  - I want to be able to tell the coding agent that basically "you are only able to quit if you call some tool call ... otherwise you must keep working ... ie 'message user / ask for help' or 'submit for review' or 'llm unreachable'"
+  - perhaps we could just enforce this directly in code
+
 ## Data Flow Example (Orchestrator)
 1. User runs `/orchestrate build login page`.
 2. Spawner creates `orchestrator` session (primary/subtask hybrid) with its own workspace binding.
