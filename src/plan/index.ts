@@ -126,3 +126,33 @@ export {
   filterToolsForRole,
   createReadOnlyInterceptor,
 } from "./tool-filter";
+
+// UI state management
+export type {
+  OrchestrationUIState,
+  OrchestrationUIEvent,
+} from "./ui-state";
+export {
+  DEFAULT_ORCHESTRATION_UI_STATE,
+  createOrchestrationUIState,
+  reduceOrchestrationUIState,
+} from "./ui-state";
+
+// UI rendering
+export {
+  orchestrationColors,
+  formatOrchestrationStatus,
+  formatAgentPrefix,
+  formatAgentMessage,
+  formatAgentToolCall,
+  formatAskUserPrompt,
+  formatStepHeader,
+  formatStepApproved,
+  formatChangeRequest,
+  formatLoopGuardWarning,
+  formatError,
+  formatOrchestrationStarted,
+  formatOrchestrationComplete,
+  formatAgentTransition,
+  createOrchestrationStatusText,
+} from "./ui-renderer";
