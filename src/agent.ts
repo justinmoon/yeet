@@ -91,6 +91,8 @@ export async function* runAgent(
   onToolCall?: (tool: string) => void,
   maxSteps?: number,
   abortSignal?: AbortSignal,
+  customTools?: Record<string, unknown>,
+  customSystemPrompt?: string,
 ): AsyncGenerator<AgentEvent> {
   // Generate session ID for tool call cache (Codex stateless mode)
   const sessionId = crypto.randomUUID();
@@ -180,7 +182,8 @@ export async function* runAgent(
       modelName = config.opencode.model;
     }
 
-    const toolSet = {
+    // Use custom tools if provided, otherwise use default toolset
+    const toolSet = customTools || {
       bash: tools.bash,
       read: tools.read,
       edit: tools.edit,
@@ -210,9 +213,9 @@ export async function* runAgent(
 
     const result = await streamText({
       model: provider(modelName),
-      system: getSystemPrompt(config.activeProvider),
+      system: customSystemPrompt || getSystemPrompt(config.activeProvider),
       messages: messages as any,
-      tools: toolSet,
+      tools: toolSet as any,
       // Only use stopWhen if maxSteps > 1 (multi-step mode)
       ...(effectiveSteps > 1 ? { stopWhen: stepCountIs(effectiveSteps) } : {}),
       temperature: config.temperature || 0.3,

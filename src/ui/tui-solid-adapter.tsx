@@ -36,11 +36,18 @@ import { startCallbackServer } from "../openai-callback-server";
 import { MODELS, getActiveModel, getModelInfo } from "../models/registry";
 import { listSessions, loadSession, type Session } from "../sessions";
 import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
-import { cycleTheme, getCurrentTheme, setTheme, themes } from "./colors";
+import { cycleTheme, getCurrentTheme, semantic, setTheme, themes } from "./colors";
+import { t } from "@opentui/core";
 import type { MessagePart, UIAdapter } from "./interface";
 import { createSyntaxStyle } from "./syntax-theme";
 import { glob } from "glob";
 import type { FlowState, AgentRole } from "../plan/flow-types";
+import {
+  OrchestrationController,
+  type OrchestrationStatus,
+} from "../plan/orchestration-controller";
+import { existsSync } from "node:fs";
+import { getActiveWorkspaceBinding } from "../workspace/state";
 
 /**
  * Orchestration state for coder/reviewer mode.
@@ -179,6 +186,7 @@ export class TUISolidAdapter implements UIAdapter {
     awaitingUserPrompt: null,
     steps: [],
   };
+  private orchestrationController: OrchestrationController | null = null;
   private setOrchestrationVisible?: (value: boolean) => void;
   private getOrchestrationVisible?: () => boolean;
 
@@ -562,7 +570,18 @@ export class TUISolidAdapter implements UIAdapter {
                     e.preventDefault();
                     const message = textareaRef?.plainText || "";
                     if (message.trim()) {
-                      if (this.pendingOAuthSetup) {
+                      // Check if orchestration controller is awaiting user input
+                      if (this.orchestrationController?.isAwaitingUser()) {
+                        this.clearInput();
+                        this.appendOutput(`[you] ${message}\n\n`);
+                        try {
+                          await this.orchestrationController.handleUserReply(message);
+                        } catch (error: any) {
+                          this.appendOutput(
+                            `\n[orchestration] Error handling reply: ${error.message}\n\n`,
+                          );
+                        }
+                      } else if (this.pendingOAuthSetup) {
                         const code = message;
                         const verifier = this.pendingOAuthSetup.verifier;
                         const provider = (this.pendingOAuthSetup.provider ||
@@ -2273,10 +2292,10 @@ export class TUISolidAdapter implements UIAdapter {
 
   private async populateOrchestrationPlanEntries(): Promise<void> {
     try {
-      const cwd = process.cwd();
+      const cwd = getActiveWorkspaceBinding().cwd;
       const planFiles = await glob("**/plan.md", {
         cwd,
-        ignore: ["node_modules/**", ".git/**", "dist/**", "build/**"],
+        ignore: ["node_modules/**", ".git/**", "dist/**", "build/**", "worktrees/**"],
         absolute: true,
       });
 
@@ -2339,71 +2358,193 @@ export class TUISolidAdapter implements UIAdapter {
   }
 
   private async selectOrchestrationPlan(planPath: string): Promise<void> {
-    const cwd = process.cwd();
+    const cwd = getActiveWorkspaceBinding().cwd;
     const planDir = path.dirname(planPath);
 
     // Look for intent.md and spec.md in the same directory
     const intentPath = path.join(planDir, "intent.md");
     const specPath = path.join(planDir, "spec.md");
 
-    // Parse plan to extract steps
-    const fs = await import("fs/promises");
-    let planContent: string;
-    try {
-      planContent = await fs.readFile(planPath, "utf-8");
-    } catch {
+    // Validate that intent.md and spec.md exist
+    if (!existsSync(intentPath)) {
       this.appendOutput(
-        `\n[orchestration] Error: Could not read plan file: ${planPath}\n`,
+        `\n[orchestration] Error: intent.md not found in ${planDir}\n` +
+          `Create an intent.md file describing the user's goals.\n\n`,
       );
       this.hideCommandPalette();
       return;
     }
 
-    // Extract steps from plan body (simple regex for "Step N:" or "- Step N:")
-    const stepMatches = planContent.matchAll(
-      /(?:^|\n)[-*]?\s*Step\s+(\d+)[:\s]+([^\n]+)/gi,
-    );
-    const steps: Array<{ id: string; title: string }> = [];
-    for (const match of stepMatches) {
-      steps.push({ id: match[1], title: match[2].trim() });
+    if (!existsSync(specPath)) {
+      this.appendOutput(
+        `\n[orchestration] Error: spec.md not found in ${planDir}\n` +
+          `Create a spec.md file with detailed requirements.\n\n`,
+      );
+      this.hideCommandPalette();
+      return;
     }
-
-    // Extract active_step from frontmatter
-    const frontmatterMatch = planContent.match(
-      /^---\s*\n[\s\S]*?active_step:\s*["']?(\d+)["']?[\s\S]*?---/,
-    );
-    const activeStep = frontmatterMatch?.[1] || "1";
-
-    // Update orchestration state
-    this.orchestrationState = {
-      active: true,
-      planPath,
-      intentPath,
-      specPath,
-      currentStep: activeStep,
-      totalSteps: steps.length || 1,
-      activeAgent: "coder",
-      flowState: "coder_active",
-      changeRequestCount: 0,
-      awaitingUserPrompt: null,
-      steps,
-    };
 
     this.hideCommandPalette();
 
-    // Output status message
-    const relativePlanPath = path.relative(cwd, planPath);
-    this.appendOutput(
-      `\n[orchestration] Started coder/reviewer mode\n` +
-        `  Plan: ${relativePlanPath}\n` +
-        `  Current step: ${activeStep}/${steps.length}\n` +
-        `  Steps: ${steps.map((s) => s.id).join(", ") || "none detected"}\n` +
-        `  Press Cmd+I to view status\n\n`,
-    );
+    // Create status callback
+    const onStatus = (status: OrchestrationStatus) => {
+      this.orchestrationState = {
+        active: true,
+        planPath,
+        intentPath,
+        specPath,
+        currentStep: status.currentStep,
+        totalSteps: status.totalSteps,
+        activeAgent: status.activeAgent,
+        flowState: status.flowState,
+        changeRequestCount: status.changeRequestCount,
+        awaitingUserPrompt: status.awaitingUserPrompt,
+        steps: status.steps,
+      };
 
-    this.setStatus(
-      `Orchestration · Step ${activeStep}/${steps.length} · Coder active`,
-    );
+      // Update status bar
+      const agentLabel =
+        status.activeAgent === "coder"
+          ? "Coder"
+          : status.activeAgent === "reviewer"
+            ? "Reviewer"
+            : status.flowState === "awaiting_user_input"
+              ? "Awaiting input"
+              : "Paused";
+      this.setStatus(
+        `Orchestration · Step ${status.currentStep}/${status.totalSteps} · ${agentLabel}`,
+      );
+
+      // If awaiting user input, show the prompt
+      if (status.awaitingUserPrompt) {
+        this.appendOutput(
+          `\n[orchestration] ${status.activeAgent || "System"} asks:\n` +
+            `  ${status.awaitingUserPrompt}\n` +
+            `  (Type your response and press Enter)\n\n`,
+        );
+      }
+    };
+
+    // Track pending tool calls to get args when result arrives
+    const pendingTools = new Map<string, Record<string, unknown>>();
+
+    // Create output callback with proper styling
+    const onOutput = (role: AgentRole, event: { type: string; content?: string; name?: string; args?: unknown; result?: unknown }) => {
+      if (event.type === "text" && event.content) {
+        // Style the role prefix like agent output
+        const prefix = semantic.historyAgentPrefix(`[${role}] `);
+        this.appendOutput(t`${prefix}${event.content}`);
+      } else if (event.type === "tool" && event.name) {
+        // Store args for when result arrives
+        pendingTools.set(event.name, (event.args as Record<string, unknown>) || {});
+      } else if (event.type === "tool-result" && event.name) {
+        const args = pendingTools.get(event.name) || {};
+        pendingTools.delete(event.name);
+        const result = event.result as Record<string, unknown> | undefined;
+
+        // Format tool output similar to formatToolSummary but with role prefix
+        const toolPrefix = semantic.historyToolPrefix(`[${role}:${event.name}] `);
+
+        // Build tool-specific summary
+        switch (event.name) {
+          case "read": {
+            const filePath = (args.path || args.file_path || "unknown") as string;
+            const content = result?.content as string | undefined;
+            if (content) {
+              const lineCount = content.split("\n").length;
+              const metadata = semantic.historyMetadata(` · ${lineCount} lines`);
+              this.appendOutput(t`${toolPrefix}${filePath}${metadata}\n`);
+            } else {
+              this.appendOutput(t`${toolPrefix}${filePath}\n`);
+            }
+            return;
+          }
+          case "edit": {
+            const filePath = (args.path || args.file_path || "unknown") as string;
+            this.appendOutput(t`${toolPrefix}${filePath}\n`);
+            return;
+          }
+          case "write": {
+            const filePath = (args.path || args.file_path || "unknown") as string;
+            this.appendOutput(t`${toolPrefix}${filePath}\n`);
+            return;
+          }
+          case "bash": {
+            const command = (args.command || "") as string;
+            // Truncate long commands
+            const truncatedCmd = command.length > 60 ? command.slice(0, 57) + "..." : command;
+            const exitCode = (result?.exitCode ?? 0) as number;
+            const statusPart = exitCode === 0
+              ? semantic.success(`exit ${exitCode}`)
+              : semantic.error(`exit ${exitCode}`);
+            const stdout = (result?.stdout || "") as string;
+            const lineCount = stdout.split("\n").filter((l: string) => l).length;
+            if (lineCount > 0) {
+              const linesPart = semantic.historyMetadata(` · ${lineCount} lines`);
+              this.appendOutput(t`${toolPrefix}${truncatedCmd} ${statusPart}${linesPart}\n`);
+            } else {
+              this.appendOutput(t`${toolPrefix}${truncatedCmd} ${statusPart}\n`);
+            }
+            return;
+          }
+          case "search": {
+            const pattern = (args.pattern || "") as string;
+            const searchPath = args.path as string | undefined;
+            const summary = `"${pattern}"${searchPath ? ` in ${searchPath}` : ""}`;
+            this.appendOutput(t`${toolPrefix}${summary}\n`);
+            return;
+          }
+          default: {
+            // For orchestration tools and others, show a brief summary
+            let summary = "";
+            if (args && Object.keys(args).length > 0) {
+              const firstArg = Object.entries(args)[0];
+              summary = `${firstArg[0]}=${JSON.stringify(firstArg[1]).slice(0, 40)}`;
+            }
+            this.appendOutput(t`${toolPrefix}${summary}\n`);
+            return;
+          }
+        }
+      }
+    };
+
+    // Create and start the controller
+    try {
+      this.orchestrationController = new OrchestrationController({
+        planPath,
+        config: this.config,
+        onStatus,
+        onOutput,
+      });
+
+      const relativePlanPath = path.relative(cwd, planPath);
+      this.appendOutput(
+        `\n[orchestration] Starting coder/reviewer mode\n` +
+          `  Plan: ${relativePlanPath}\n` +
+          `  Press Cmd+I to view status\n\n`,
+      );
+
+      await this.orchestrationController.start();
+    } catch (error: any) {
+      this.appendOutput(
+        `\n[orchestration] Error starting orchestration: ${error.message}\n\n`,
+      );
+      this.orchestrationController = null;
+      this.orchestrationState = {
+        active: false,
+        planPath: "",
+        intentPath: "",
+        specPath: "",
+        currentStep: "1",
+        totalSteps: 0,
+        activeAgent: null,
+        flowState: "coder_active",
+        changeRequestCount: 0,
+        awaitingUserPrompt: null,
+        steps: [],
+      };
+      this.setStatus("Ready");
+    }
   }
 
   private showOrchestrationStatusPalette(): void {

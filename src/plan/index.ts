@@ -203,3 +203,16 @@ export {
   saveTranscript,
   loadTranscript,
 } from "./persistence";
+
+// Orchestration controller
+export type {
+  OrchestrationStatus,
+  StatusCallback,
+  OutputCallback,
+  RoleModelConfig,
+  OrchestrationControllerConfig,
+} from "./orchestration-controller";
+export {
+  OrchestrationController,
+  startOrchestration,
+} from "./orchestration-controller";
