@@ -39,6 +39,25 @@ import { handleMessage, saveCurrentSession, updateTokenCount } from "./backend";
 import { cycleTheme, getCurrentTheme, setTheme, themes } from "./colors";
 import type { MessagePart, UIAdapter } from "./interface";
 import { createSyntaxStyle } from "./syntax-theme";
+import { glob } from "glob";
+import type { FlowState, AgentRole } from "../plan/flow-types";
+
+/**
+ * Orchestration state for coder/reviewer mode.
+ */
+interface OrchestrationState {
+  active: boolean;
+  planPath: string;
+  intentPath: string;
+  specPath: string;
+  currentStep: string;
+  totalSteps: number;
+  activeAgent: AgentRole | null;
+  flowState: FlowState;
+  changeRequestCount: number;
+  awaitingUserPrompt: string | null;
+  steps: Array<{ id: string; title: string }>;
+}
 
 type CommandPaletteMode =
   | "actions"
@@ -47,7 +66,8 @@ type CommandPaletteMode =
   | "themes"
   | "help"
   | "auth"
-  | "explain";
+  | "explain"
+  | "orchestration";
 
 interface CommandPaletteEntry {
   id: string;
@@ -144,6 +164,23 @@ export class TUISolidAdapter implements UIAdapter {
     result: null,
     index: 0,
   };
+
+  // Orchestration state for coder/reviewer mode
+  private orchestrationState: OrchestrationState = {
+    active: false,
+    planPath: "",
+    intentPath: "",
+    specPath: "",
+    currentStep: "1",
+    totalSteps: 0,
+    activeAgent: null,
+    flowState: "coder_active",
+    changeRequestCount: 0,
+    awaitingUserPrompt: null,
+    steps: [],
+  };
+  private setOrchestrationVisible?: (value: boolean) => void;
+  private getOrchestrationVisible?: () => boolean;
 
   private getStatusText!: () => string;
   private getOutputContent!: () => Array<string | StyledText>;
@@ -310,6 +347,20 @@ export class TUISolidAdapter implements UIAdapter {
             if (this.shouldOpenCommandPalette(key)) {
               key.preventDefault?.();
               this.showCommandPalette();
+              return;
+            }
+
+            // Ctrl+Shift+S: Show orchestration status
+            if (this.shouldShowOrchestrationStatus(key)) {
+              key.preventDefault?.();
+              if (this.orchestrationState.active) {
+                this.showCommandPalette();
+                this.showOrchestrationStatusPalette();
+              } else {
+                this.appendOutput(
+                  "\n[orchestration] No active orchestration. Use Command Palette → Start Coder/Reviewer Mode\n",
+                );
+              }
               return;
             }
 
@@ -1006,6 +1057,15 @@ export class TUISolidAdapter implements UIAdapter {
   private buildRootPaletteEntries(): CommandPaletteEntry[] {
     return [
       {
+        id: "start-orchestration",
+        label: "Start Coder/Reviewer Mode",
+        description: this.orchestrationState.active
+          ? `Active: Step ${this.orchestrationState.currentStep}/${this.orchestrationState.totalSteps}`
+          : "Select a plan.md to start orchestrated coding",
+        keywords: ["coder", "reviewer", "orchestration", "plan", "workflow"],
+        run: () => this.openOrchestrationPalette(),
+      },
+      {
         id: "explain-changes",
         label: "Explain Changes",
         description: "Generate tutorial from git diff",
@@ -1078,6 +1138,16 @@ export class TUISolidAdapter implements UIAdapter {
     const ctrlO = name === "o" && key.ctrl;
     const metaO = name === "o" && meta;
     return ctrlShiftP || ctrlO || metaO;
+  }
+
+  private shouldShowOrchestrationStatus(key: KeyEvent): boolean {
+    if (!key || this.explainModalActive) {
+      return false;
+    }
+    const name =
+      typeof key.name === "string" ? key.name.toLowerCase() : undefined;
+    // Ctrl+Shift+S to show orchestration status
+    return name === "s" && key.ctrl && key.shift;
   }
 
   private showCommandPalette(): void {
@@ -1940,6 +2010,11 @@ export class TUISolidAdapter implements UIAdapter {
         "Open the command palette from anywhere",
       ),
       this.createInfoEntry(
+        "help-orchestration",
+        "Ctrl+Shift+S",
+        "Show orchestration status (coder/reviewer mode)",
+      ),
+      this.createInfoEntry(
         "help-sessions",
         "Resume Session",
         "Browse and load saved conversations",
@@ -2162,6 +2237,295 @@ export class TUISolidAdapter implements UIAdapter {
 
     this.addImageAttachment(image, source);
     return true;
+  }
+
+  // ============================================================================
+  // Orchestration (Coder/Reviewer Mode)
+  // ============================================================================
+
+  private openOrchestrationPalette(): void {
+    if (this.orchestrationState.active) {
+      // If already active, show status/options
+      this.showOrchestrationStatusPalette();
+      return;
+    }
+
+    this.setCommandPaletteMode?.("orchestration");
+    this.setCommandPaletteTitle?.(
+      "Start Coder/Reviewer Mode · Select a plan.md",
+    );
+    this.setCommandPaletteQuery?.("");
+    this.applyPaletteEntries([
+      this.createBackEntry(),
+      this.createInfoEntry(
+        "orchestration-loading",
+        "Searching for plan.md files...",
+      ),
+    ]);
+
+    // Search for plan.md files asynchronously
+    setTimeout(() => this.populateOrchestrationPlanEntries(), 0);
+  }
+
+  private async populateOrchestrationPlanEntries(): Promise<void> {
+    try {
+      const cwd = process.cwd();
+      const planFiles = await glob("**/plan.md", {
+        cwd,
+        ignore: ["node_modules/**", ".git/**", "dist/**", "build/**"],
+        absolute: true,
+      });
+
+      if (planFiles.length === 0) {
+        this.applyPaletteEntries([
+          this.createBackEntry(),
+          this.createInfoEntry(
+            "orchestration-empty",
+            "No plan.md files found",
+            "Create a docs/<feature>/plan.md file to get started.",
+          ),
+        ]);
+        return;
+      }
+
+      // Sort by path depth (prefer shallower paths)
+      planFiles.sort((a, b) => {
+        const depthA = a.split("/").length;
+        const depthB = b.split("/").length;
+        return depthA - depthB;
+      });
+
+      const entries: CommandPaletteEntry[] = [
+        this.createBackEntry(),
+        ...planFiles.slice(0, 20).map((planPath) => {
+          const relativePath = path.relative(cwd, planPath);
+          const dirName = path.dirname(relativePath);
+
+          return {
+            id: `plan-${planPath}`,
+            label: dirName || "plan.md",
+            description: relativePath,
+            keywords: ["plan", dirName, relativePath],
+            run: () => this.selectOrchestrationPlan(planPath),
+          };
+        }),
+      ];
+
+      if (planFiles.length > 20) {
+        entries.push(
+          this.createInfoEntry(
+            "orchestration-more",
+            `... and ${planFiles.length - 20} more`,
+            "Type to filter the list",
+          ),
+        );
+      }
+
+      this.applyPaletteEntries(entries);
+    } catch (error: any) {
+      this.applyPaletteEntries([
+        this.createBackEntry(),
+        this.createInfoEntry(
+          "orchestration-error",
+          "Error searching for plans",
+          error.message || String(error),
+        ),
+      ]);
+    }
+  }
+
+  private async selectOrchestrationPlan(planPath: string): Promise<void> {
+    const cwd = process.cwd();
+    const planDir = path.dirname(planPath);
+
+    // Look for intent.md and spec.md in the same directory
+    const intentPath = path.join(planDir, "intent.md");
+    const specPath = path.join(planDir, "spec.md");
+
+    // Parse plan to extract steps
+    const fs = await import("fs/promises");
+    let planContent: string;
+    try {
+      planContent = await fs.readFile(planPath, "utf-8");
+    } catch {
+      this.appendOutput(
+        `\n[orchestration] Error: Could not read plan file: ${planPath}\n`,
+      );
+      this.hideCommandPalette();
+      return;
+    }
+
+    // Extract steps from plan body (simple regex for "Step N:" or "- Step N:")
+    const stepMatches = planContent.matchAll(
+      /(?:^|\n)[-*]?\s*Step\s+(\d+)[:\s]+([^\n]+)/gi,
+    );
+    const steps: Array<{ id: string; title: string }> = [];
+    for (const match of stepMatches) {
+      steps.push({ id: match[1], title: match[2].trim() });
+    }
+
+    // Extract active_step from frontmatter
+    const frontmatterMatch = planContent.match(
+      /^---\s*\n[\s\S]*?active_step:\s*["']?(\d+)["']?[\s\S]*?---/,
+    );
+    const activeStep = frontmatterMatch?.[1] || "1";
+
+    // Update orchestration state
+    this.orchestrationState = {
+      active: true,
+      planPath,
+      intentPath,
+      specPath,
+      currentStep: activeStep,
+      totalSteps: steps.length || 1,
+      activeAgent: "coder",
+      flowState: "coder_active",
+      changeRequestCount: 0,
+      awaitingUserPrompt: null,
+      steps,
+    };
+
+    this.hideCommandPalette();
+
+    // Output status message
+    const relativePlanPath = path.relative(cwd, planPath);
+    this.appendOutput(
+      `\n[orchestration] Started coder/reviewer mode\n` +
+        `  Plan: ${relativePlanPath}\n` +
+        `  Current step: ${activeStep}/${steps.length}\n` +
+        `  Steps: ${steps.map((s) => s.id).join(", ") || "none detected"}\n` +
+        `  Press Ctrl+Shift+S to view status\n\n`,
+    );
+
+    this.setStatus(
+      `Orchestration · Step ${activeStep}/${steps.length} · Coder active`,
+    );
+  }
+
+  private showOrchestrationStatusPalette(): void {
+    const state = this.orchestrationState;
+
+    this.setCommandPaletteMode?.("orchestration");
+    this.setCommandPaletteTitle?.("Orchestration Status · Coder/Reviewer Mode");
+    this.setCommandPaletteQuery?.("");
+
+    const entries: CommandPaletteEntry[] = [
+      this.createBackEntry(),
+      this.createInfoEntry(
+        "orch-status-header",
+        "━━━ Status ━━━",
+      ),
+      this.createInfoEntry(
+        "orch-status-step",
+        `Step: ${state.currentStep}/${state.totalSteps}`,
+        state.steps.find((s) => s.id === state.currentStep)?.title || "",
+      ),
+      this.createInfoEntry(
+        "orch-status-agent",
+        `Active Agent: ${state.activeAgent || "none"}`,
+        `State: ${state.flowState}`,
+      ),
+      this.createInfoEntry(
+        "orch-status-changes",
+        `Change Requests: ${state.changeRequestCount}`,
+        state.changeRequestCount >= 3 ? "⚠️ Loop guard warning" : "",
+      ),
+    ];
+
+    if (state.awaitingUserPrompt) {
+      entries.push(
+        this.createInfoEntry(
+          "orch-status-prompt",
+          "⏳ Awaiting User Input",
+          state.awaitingUserPrompt,
+        ),
+      );
+    }
+
+    // Add step list
+    if (state.steps.length > 0) {
+      entries.push(
+        this.createInfoEntry("orch-steps-header", "━━━ Steps ━━━"),
+      );
+      for (const step of state.steps) {
+        const isCurrent = step.id === state.currentStep;
+        const prefix = isCurrent ? "▶ " : "  ";
+        entries.push(
+          this.createInfoEntry(
+            `orch-step-${step.id}`,
+            `${prefix}Step ${step.id}`,
+            step.title,
+          ),
+        );
+      }
+    }
+
+    // Add action entries
+    entries.push(
+      this.createInfoEntry("orch-actions-header", "━━━ Actions ━━━"),
+      {
+        id: "orch-stop",
+        label: "Stop Orchestration",
+        description: "Exit coder/reviewer mode",
+        run: () => this.stopOrchestration(),
+      },
+    );
+
+    this.applyPaletteEntries(entries);
+  }
+
+  private stopOrchestration(): void {
+    this.orchestrationState = {
+      active: false,
+      planPath: "",
+      intentPath: "",
+      specPath: "",
+      currentStep: "1",
+      totalSteps: 0,
+      activeAgent: null,
+      flowState: "coder_active",
+      changeRequestCount: 0,
+      awaitingUserPrompt: null,
+      steps: [],
+    };
+
+    this.hideCommandPalette();
+    this.appendOutput("\n[orchestration] Stopped coder/reviewer mode\n\n");
+    this.setStatus("Ready");
+  }
+
+  /**
+   * Update orchestration state from external source (e.g., flow machine events).
+   */
+  updateOrchestrationState(updates: Partial<OrchestrationState>): void {
+    this.orchestrationState = { ...this.orchestrationState, ...updates };
+
+    if (this.orchestrationState.active) {
+      const state = this.orchestrationState;
+      const agentLabel =
+        state.activeAgent === "coder"
+          ? "Coder"
+          : state.activeAgent === "reviewer"
+            ? "Reviewer"
+            : "Paused";
+      this.setStatus(
+        `Orchestration · Step ${state.currentStep}/${state.totalSteps} · ${agentLabel}`,
+      );
+    }
+  }
+
+  /**
+   * Check if orchestration mode is active.
+   */
+  isOrchestrationActive(): boolean {
+    return this.orchestrationState.active;
+  }
+
+  /**
+   * Get current orchestration state (for external orchestration controllers).
+   */
+  getOrchestrationState(): OrchestrationState {
+    return { ...this.orchestrationState };
   }
 }
 
