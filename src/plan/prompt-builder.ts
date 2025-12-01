@@ -24,6 +24,12 @@ export function buildCoderPrompt(config: PromptConfig): string {
     "You are the coder agent working on implementing a plan step by step.",
     "Your job is to implement the current step according to the specification.",
     "",
+    "## MANDATORY: Call `request_review` When Done",
+    "",
+    "**You MUST call the `request_review` tool when you have finished implementing the step.**",
+    "This is how you hand off to the reviewer. Without calling `request_review`, the workflow cannot proceed.",
+    "Do not continue working indefinitely - once the acceptance criteria are met, call `request_review` immediately.",
+    "",
     "## Current Step",
     "",
     `You are working on step: **${config.activeStep}**`,
@@ -53,14 +59,24 @@ export function buildCoderPrompt(config: PromptConfig): string {
   }
 
   lines.push(
-    "## Instructions",
+    "## Workflow",
     "",
     "1. Read the intent and spec files to understand the full context",
     "2. Implement the current step according to the acceptance criteria",
-    "3. When done, use the `request_review` tool to submit for review",
-    "4. If you need clarification, use the `ask_user` tool",
+    "3. **Make a git commit for this step** before requesting review",
+    "4. **Call `request_review` to submit your work for review** (REQUIRED)",
     "",
-    "Focus on completing this step before moving to the next.",
+    "**Important:** Before calling `request_review`, make a git commit for this step.",
+    "Do not request review on uncommitted work. The reviewer will only review committed changes.",
+    "",
+    "If you need clarification at any point, use the `ask_user` tool.",
+    "",
+    "## Available Tools",
+    "",
+    "- `request_review()` - **REQUIRED** when done. Submits your work for review.",
+    "- `ask_user(message)` - Ask the user a question if you need clarification.",
+    "",
+    "Focus on completing this step, commit your changes, then call `request_review`. Do not move to other steps.",
   );
 
   return lines.join("\n");
@@ -81,6 +97,16 @@ export function buildReviewerPrompt(config: PromptConfig): string {
     "",
     "You are the reviewer agent responsible for verifying implementation quality.",
     "Your job is to review the coder's work and ensure it meets the acceptance criteria.",
+    "",
+    "## MANDATORY: You Must Call `approve` or `request_changes`",
+    "",
+    "**You MUST end your review by calling either `approve` or `request_changes`.**",
+    "This is how you hand off control. Without calling one of these tools, the workflow cannot proceed.",
+    "",
+    "- Call `approve()` if the implementation meets the acceptance criteria",
+    "- Call `request_changes(reason)` if changes are needed, with specific instructions",
+    "",
+    "Do not review indefinitely - make a decision and call the appropriate tool.",
     "",
     "## Current Step Under Review",
     "",
@@ -115,20 +141,32 @@ export function buildReviewerPrompt(config: PromptConfig): string {
   lines.push(
     "## Review Checklist",
     "",
-    "1. Read the plan step's acceptance criteria",
-    "2. Verify the implementation meets the criteria",
-    "3. Check for regressions on prior steps",
-    "4. Consider risks for future steps",
+    "1. Check that changes are committed (run `git status`)",
+    "2. Read the plan step's acceptance criteria",
+    "3. Verify the implementation meets the criteria",
+    "4. Check for regressions on prior steps",
     "5. Run tests if applicable (`just pre-merge` or project CI)",
+    "6. **Call `approve` or `request_changes`** (REQUIRED)",
     "",
-    "## Available Actions",
+    "**Important:** Review only committed changes. If there are uncommitted changes or no",
+    "step-specific commit, call `request_changes` and ask the coder to commit first.",
     "",
-    "- `approve()` - Step meets acceptance criteria, advance to next step",
-    "- `request_changes(reason)` - Changes needed before approval",
-    "- `ask_user(message)` - Need clarification from the user",
+    "**Reject plan-specific artifacts:** Code, comments, and filenames must be appropriate long-term.",
+    "Reject any references to the plan, step numbers, or task-specific context that won't make sense",
+    "after the plan is completed. Examples to reject:",
+    "- Comments like `# Required by step 3` or `// Added for plan task`",
+    "- Filenames like `step3-helper.ts` or `plan-migration.sql`",
+    "- Variable names like `step2Config` or `planTaskResult`",
+    "The plan is temporary; the code is permanent. All artifacts should stand on their own.",
+    "",
+    "## Available Tools",
+    "",
+    "- `approve()` - **Call this** when the step meets acceptance criteria",
+    "- `request_changes(reason)` - **Call this** when changes are needed (be specific)",
+    "- `ask_user(message)` - Ask the user a question if you need clarification",
     "",
     "**Important:** You are in read-only mode. You cannot modify files.",
-    "If you need code changes, use `request_changes` with specific instructions.",
+    "If you need code changes, call `request_changes` with specific instructions for the coder.",
   );
 
   return lines.join("\n");
@@ -155,8 +193,8 @@ export function buildPrompt(role: AgentRole, config: PromptConfig): string {
  */
 export function buildContextSeed(role: AgentRole, config: PromptConfig): string {
   if (role === "coder") {
-    return `Please implement step "${config.activeStep}" according to the plan. Read the intent and spec files first to understand the context.`;
+    return `Please implement step "${config.activeStep}" according to the plan. Read the intent and spec files first to understand the context. When you have finished implementing the step, you MUST call \`request_review\` to submit your work.`;
   } else {
-    return `Please review step "${config.activeStep}". Check if the implementation meets the acceptance criteria in the plan.`;
+    return `Please review step "${config.activeStep}". Check if the implementation meets the acceptance criteria in the plan. When you have completed your review, you MUST call either \`approve\` or \`request_changes\`.`;
   }
 }

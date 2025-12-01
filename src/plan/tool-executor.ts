@@ -306,12 +306,13 @@ export function createArrayStepResolver(steps: string[]): StepResolver {
  */
 export function createPlanBodyStepResolver(planBody: string): StepResolver {
   // Extract step identifiers from the plan body
-  // Match patterns like "Step 1:", "- Step 2:", "## Step 3:", "1.", "2.", etc.
+  // Match patterns like "Step 1:", "- Step 2:", "## Step 3:", "1.", "1)", etc.
   const stepPatterns = [
     /(?:^|\n)#+\s*Step\s+(\d+|[\w-]+)/gi,
     /(?:^|\n)-\s*Step\s+(\d+|[\w-]+)/gi,
     /(?:^|\n)\*\s*Step\s+(\d+|[\w-]+)/gi,
-    /(?:^|\n)(\d+)\.\s/g,
+    /(?:^|\n)(\d+)\)\s/g,  // "1) ..." style
+    /(?:^|\n)(\d+)\.\s/g,  // "1. ..." style
   ];
 
   const steps: string[] = [];

@@ -422,7 +422,7 @@ Final content
       expect(resolver.getNextStep("2")).toBe("3");
     });
 
-    test("extracts numbered lists", () => {
+    test("extracts numbered lists with period", () => {
       const body = `
 1. First task
 2. Second task
@@ -432,6 +432,39 @@ Final content
 
       expect(resolver.getNextStep("1")).toBe("2");
       expect(resolver.getNextStep("2")).toBe("3");
+    });
+
+    test("extracts numbered lists with parenthesis", () => {
+      const body = `
+1) First task
+2) Second task
+3) Third task
+`;
+      const resolver = createPlanBodyStepResolver(body);
+
+      expect(resolver.getNextStep("1")).toBe("2");
+      expect(resolver.getNextStep("2")).toBe("3");
+      expect(resolver.getNextStep("3")).toBe(null);
+    });
+
+    test("extracts plan with parenthesis-style steps and titles", () => {
+      const body = `
+Implementation Plan: Postgres + Typegen
+
+1) Nix/dev env tooling
+   Acceptance: nix develop provides Postgres 17.x
+
+2) Env and secrets layout
+   Acceptance: .env.dev, .env.test committed
+
+3) Postgres data dirs and helpers
+   Acceptance: helpers create .devdata/pg-dev
+`;
+      const resolver = createPlanBodyStepResolver(body);
+
+      expect(resolver.getNextStep("1")).toBe("2");
+      expect(resolver.getNextStep("2")).toBe("3");
+      expect(resolver.getNextStep("3")).toBe(null);
     });
 
     test("sorts numeric steps correctly", () => {

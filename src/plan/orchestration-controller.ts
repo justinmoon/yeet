@@ -429,9 +429,21 @@ export class OrchestrationController {
       );
 
       if (!action) {
-        // Agent completed without calling orchestration tool
-        // This shouldn't happen, but handle gracefully
-        logger.warn("Coder completed without calling orchestration tool");
+        // Agent completed without calling orchestration tool (hit step limit)
+        // Transition to awaiting_user_input instead of silently restarting
+        logger.warn("Coder completed without calling orchestration tool - pausing for user input");
+        await this.flowMachine.send({
+          type: "ask_user",
+          message: "The coder reached the step limit without requesting a review. Would you like to continue, or should I request a review now?",
+          requester: "coder",
+        });
+        this.eventLog = logAskUser(
+          this.eventLog,
+          "coder",
+          "Reached step limit without calling request_review. Pausing for user input.",
+        );
+        this.eventLog = syncLogState(this.eventLog, this.flowMachine);
+        await this.saveEventLog();
         return;
       }
 
@@ -481,7 +493,21 @@ export class OrchestrationController {
       );
 
       if (!action) {
-        logger.warn("Reviewer completed without calling orchestration tool");
+        // Reviewer completed without calling orchestration tool (hit step limit)
+        // Transition to awaiting_user_input instead of silently restarting
+        logger.warn("Reviewer completed without calling orchestration tool - pausing for user input");
+        await this.flowMachine.send({
+          type: "ask_user",
+          message: "The reviewer reached the step limit without approving or requesting changes. Would you like to continue the review?",
+          requester: "reviewer",
+        });
+        this.eventLog = logAskUser(
+          this.eventLog,
+          "reviewer",
+          "Reached step limit without calling approve/request_changes. Pausing for user input.",
+        );
+        this.eventLog = syncLogState(this.eventLog, this.flowMachine);
+        await this.saveEventLog();
         return;
       }
 
@@ -516,7 +542,7 @@ export class OrchestrationController {
         (toolName) => {
           logger.debug("Tool called", { role, toolName });
         },
-        undefined, // Let agent run until it calls an orchestration tool
+        100, // Allow up to 100 steps before forcing a pause
         this.abortController.signal,
         toolset, // Pass custom toolset
         systemPrompt, // Pass orchestration-specific system prompt
@@ -811,7 +837,9 @@ export class OrchestrationController {
     const patterns = [
       // "Step 1: ..." or "- Step 1: ..." or "## Step 1: ..."
       /(?:^|\n)[-*]?\s*(?:#+\s*)?Step\s+(\d+)[:\s]+([^\n]+)/gi,
-      // Numbered lists: "1. ..." "2. ..."
+      // Numbered lists with parenthesis: "1) ..." "2) ..."
+      /(?:^|\n)(\d+)\)\s+([^\n]+)/g,
+      // Numbered lists with period: "1. ..." "2. ..."
       /(?:^|\n)(\d+)\.\s+([^\n]+)/g,
     ];
 
