@@ -23,6 +23,7 @@ import { startAnthropicOAuth } from "../auth";
 import {
   handleMapleSetup,
   handleOAuthCodeInput,
+  type AuthProvider,
 } from "../commands";
 import type { Config } from "../config";
 import { saveConfig } from "../config";
@@ -56,8 +57,6 @@ interface CommandPaletteEntry {
   detailLines?: string[];
   run?: () => Promise<void> | void;
 }
-
-type AuthProvider = "anthropic" | "openai";
 
 interface AuthFlowState {
   stage: "idle" | "starting" | "waiting" | "success" | "error" | "cancelled";

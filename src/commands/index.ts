@@ -1,4 +1,8 @@
 import { exchangeOAuthCode, startAnthropicOAuth } from "../auth";
+import {
+  exchangeAuthorizationCode as exchangeOpenAICode,
+  parseAuthorizationInput,
+} from "../openai-auth";
 import type {
   AgentCapability,
   AgentReturnMode,
@@ -1055,40 +1059,113 @@ async function handleAuthCommand(
   ui.appendOutput("  /auth status - Show current authentication\n");
 }
 
+export type AuthProvider = "anthropic" | "openai";
+
+export interface OAuthHandlerOptions {
+  suppressOutput?: boolean;
+  onStatus?: (message: string) => void;
+}
+
+export interface OAuthHandlerResult {
+  status: "success" | "failed";
+  message?: string;
+}
+
 export async function handleOAuthCodeInput(
   code: string,
   verifier: string,
   ui: UIAdapter,
   config: Config,
-): Promise<void> {
-  ui.appendOutput("\n\n🔄 Exchanging code for tokens...\n");
+  provider: AuthProvider = "anthropic",
+  expectedState?: string,
+  options?: OAuthHandlerOptions,
+): Promise<OAuthHandlerResult> {
+  const { suppressOutput = false, onStatus } = options ?? {};
+
+  const log = (msg: string) => {
+    if (!suppressOutput) {
+      ui.appendOutput(msg);
+    }
+    onStatus?.(msg.replace(/\n/g, " ").trim());
+  };
+
+  log("\n\n🔄 Exchanging code for tokens...\n");
 
   try {
-    const result = await exchangeOAuthCode(code.trim(), verifier);
+    if (provider === "openai") {
+      // Parse the code input (may include state after #)
+      const parsed = parseAuthorizationInput(code);
+      if (!parsed.code) {
+        log("❌ Invalid authorization code\n");
+        return { status: "failed", message: "Invalid authorization code" };
+      }
 
-    if (result.type === "failed") {
-      ui.appendOutput("❌ Failed to exchange OAuth code\n");
-      ui.appendOutput("Please try /auth login again\n");
-      return;
+      // Verify state if provided
+      if (expectedState && parsed.state && parsed.state !== expectedState) {
+        log("❌ State mismatch - possible CSRF attack\n");
+        return { status: "failed", message: "State mismatch" };
+      }
+
+      const result = await exchangeOpenAICode(parsed.code, verifier);
+
+      if (result.type === "failed") {
+        log("❌ Failed to exchange OpenAI OAuth code\n");
+        log("Please try again\n");
+        return { status: "failed", message: "Token exchange failed" };
+      }
+
+      // Save OpenAI OAuth credentials
+      config.openai = {
+        type: "oauth",
+        refresh: result.refresh!,
+        access: result.access!,
+        expires: result.expires!,
+        model: "gpt-5-codex",
+      };
+      config.activeProvider = "openai";
+
+      await saveConfig(config);
+
+      log("✓ Successfully authenticated with OpenAI!\n");
+      log("✓ Codex Pro access enabled\n");
+      if (!suppressOutput) {
+        ui.setStatus(`OpenAI linked • gpt-5-codex available`);
+      }
+
+      return { status: "success", message: "OpenAI account linked" };
+    } else {
+      // Anthropic OAuth
+      const result = await exchangeOAuthCode(code.trim(), verifier);
+
+      if (result.type === "failed") {
+        log("❌ Failed to exchange OAuth code\n");
+        log("Please try /auth login again\n");
+        return { status: "failed", message: "Token exchange failed" };
+      }
+
+      // Save OAuth credentials
+      config.anthropic = {
+        type: "oauth",
+        refresh: result.refresh!,
+        access: result.access!,
+        expires: result.expires!,
+        model: "claude-sonnet-4-5-20250929",
+      };
+      config.activeProvider = "anthropic";
+
+      await saveConfig(config);
+
+      log("✓ Successfully authenticated with Anthropic!\n");
+      log("✓ Using Claude Pro/Max subscription\n");
+      log(`✓ Active model: ${config.anthropic.model}\n\n`);
+      if (!suppressOutput) {
+        ui.setStatus(`Ready • ${config.anthropic.model} • Press Enter to send`);
+      }
+
+      return { status: "success", message: "Anthropic account linked" };
     }
-
-    // Save OAuth credentials
-    config.anthropic = {
-      type: "oauth",
-      refresh: result.refresh!,
-      access: result.access!,
-      expires: result.expires!,
-      model: "claude-sonnet-4-5-20250929",
-    };
-    config.activeProvider = "anthropic";
-
-    await saveConfig(config);
-
-    ui.appendOutput("✓ Successfully authenticated with Anthropic!\n");
-    ui.appendOutput("✓ Using Claude Pro/Max subscription\n");
-    ui.appendOutput(`✓ Active model: ${config.anthropic.model}\n\n`);
-    ui.setStatus(`Ready • ${config.anthropic.model} • Press Enter to send`);
   } catch (error: any) {
-    ui.appendOutput(`❌ Error: ${error.message}\n`);
+    log(`❌ Error: ${error.message}\n`);
+    return { status: "failed", message: error.message };
   }
 }

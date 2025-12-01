@@ -600,7 +600,8 @@ export class TUIAdapter implements UIAdapter {
             this.pendingOAuthSetup = undefined;
             this.clearInput();
             const { handleOAuthCodeInput } = await import("../commands");
-            await handleOAuthCodeInput(code, verifier, this, this.config);
+            // Pass "anthropic" as provider - this is the legacy Anthropic OAuth flow
+            await handleOAuthCodeInput(code, verifier, this, this.config, "anthropic");
           } else if (this.pendingMapleSetup) {
             const apiKey = message;
             const modelId = this.pendingMapleSetup.modelId;

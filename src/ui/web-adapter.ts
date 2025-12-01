@@ -111,7 +111,8 @@ export class WebAdapter implements UIAdapter {
               if (self.pendingOAuthSetup) {
                 const { verifier } = self.pendingOAuthSetup;
                 self.pendingOAuthSetup = undefined;
-                await handleOAuthCodeInput(text, verifier, self, self.config);
+                // Pass "anthropic" as provider - this is the legacy Anthropic OAuth flow
+                await handleOAuthCodeInput(text, verifier, self, self.config, "anthropic");
               } else if (self.pendingMapleSetup) {
                 const apiKey = text;
                 const modelId = self.pendingMapleSetup.modelId;
