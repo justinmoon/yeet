@@ -492,6 +492,46 @@ active_step: "2"
       expect(result.success).toBe(false);
       expect(result.error).toContain("Failed to load plan");
     });
+
+    test("restores changeRequestCount directly without triggering loop guard", async () => {
+      // Create log with changeRequestCount > maxChangeRequests (default 3)
+      // This would have tripped the loop guard if we replayed events
+      let log = createEventLog(planPath, "1");
+      log = logLifecycle(log, "started");
+      log = updateLogState(log, {
+        activeStep: "1",
+        currentState: "coder_active",
+        changeRequestCount: 5, // More than default maxChangeRequests (3)
+      });
+      await saveLog(planPath, log);
+
+      const result = await resumeOrchestration(planPath);
+
+      // Should succeed without triggering loop guard
+      expect(result.success).toBe(true);
+      expect(result.isFreshStart).toBe(false);
+      // Should NOT be in awaiting_user_input (which would indicate loop guard triggered)
+      expect(result.flowMachine!.getState()).toBe("coder_active");
+      // Counter should be restored
+      expect(result.flowMachine!.getChangeRequestCount()).toBe(5);
+    });
+
+    test("restores changeRequestCount when resuming in reviewer_active state", async () => {
+      let log = createEventLog(planPath, "1");
+      log = logLifecycle(log, "started");
+      log = updateLogState(log, {
+        activeStep: "1",
+        currentState: "reviewer_active",
+        changeRequestCount: 2,
+      });
+      await saveLog(planPath, log);
+
+      const result = await resumeOrchestration(planPath);
+
+      expect(result.success).toBe(true);
+      expect(result.flowMachine!.getState()).toBe("reviewer_active");
+      expect(result.flowMachine!.getChangeRequestCount()).toBe(2);
+    });
   });
 
   describe("syncLogState", () => {

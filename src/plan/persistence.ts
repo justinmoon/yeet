@@ -221,20 +221,9 @@ export async function resumeOrchestration(
     await flowMachine.forceState(resumeLog.currentState, "Resume from log");
   }
 
-  // Restore change request counter
-  for (let i = 0; i < resumeLog.changeRequestCount; i++) {
-    // Simulate the change requests to get the counter right
-    // This is a bit of a hack but keeps the FlowMachine encapsulated
-    const context = flowMachine.getContext();
-    if (context.state === "coder_active") {
-      await flowMachine.send({ type: "request_review" });
-      await flowMachine.send({ type: "request_changes", reason: "resumed" });
-    }
-  }
-
-  // If we're supposed to be in a different state, force it again
-  if (flowMachine.getState() !== resumeLog.currentState) {
-    await flowMachine.forceState(resumeLog.currentState, "Resume state correction");
+  // Restore change request counter directly to avoid triggering loop guard
+  if (resumeLog.changeRequestCount > 0) {
+    flowMachine.setChangeRequestCount(resumeLog.changeRequestCount);
   }
 
   // Log the resume

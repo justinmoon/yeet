@@ -106,6 +106,14 @@ export class FlowMachine {
   }
 
   /**
+   * Set the change request count directly.
+   * Used for resuming orchestration from a persisted state.
+   */
+  setChangeRequestCount(count: number): void {
+    this.context.changeRequestCount = count;
+  }
+
+  /**
    * Send an event to the state machine.
    *
    * @param event - The event to process

@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { StyledText } from "@opentui/core";
 import {
   createOrchestrationUIState,
   reduceOrchestrationUIState,
@@ -9,11 +10,52 @@ import {
 import {
   formatOrchestrationStatus,
   createOrchestrationStatusText,
+  formatAgentPrefix,
+  formatAgentMessage,
+  formatAgentToolCall,
+  formatAskUserPrompt,
+  formatStepHeader,
+  formatStepApproved,
+  formatChangeRequest,
+  formatLoopGuardWarning,
+  formatError,
+  formatOrchestrationStarted,
+  formatOrchestrationComplete,
+  formatAgentTransition,
+  orchestrationColors,
 } from "../../src/plan/ui-renderer";
 
-// Note: StyledText rendering functions (formatAgentPrefix, formatAgentMessage, etc.)
-// produce @opentui StyledText objects that are designed for TUI rendering.
-// We test the plain text functions here and rely on the TUI adapter for styled output.
+/**
+ * Helper to extract plain text content from StyledText.
+ * @opentui StyledText can be:
+ * - A string
+ * - A chunk object with { __isChunk: true, text: string, ... }
+ * - A template result with { chunks: [chunk, ...] }
+ * - An array of the above
+ */
+function toPlainText(styled: StyledText): string {
+  if (typeof styled === "string") {
+    return styled;
+  }
+  if (Array.isArray(styled)) {
+    return styled.map(toPlainText).join("");
+  }
+  if (styled && typeof styled === "object") {
+    // Handle template tag results with chunks array
+    if ("chunks" in styled && Array.isArray((styled as { chunks: unknown[] }).chunks)) {
+      return (styled as { chunks: StyledText[] }).chunks.map(toPlainText).join("");
+    }
+    // Handle @opentui chunk objects
+    if ("__isChunk" in styled && "text" in styled) {
+      return String((styled as { text: string }).text);
+    }
+    // Handle children property
+    if ("children" in styled && styled.children !== undefined) {
+      return toPlainText(styled.children as StyledText);
+    }
+  }
+  return "";
+}
 
 describe("OrchestrationUIState", () => {
   describe("createOrchestrationUIState", () => {
@@ -350,5 +392,263 @@ describe("UI State Transitions", () => {
 
     expect(state.awaitingUser).toBe(false);
     expect(state.userPrompt).toBeUndefined();
+  });
+});
+
+describe("StyledText Formatting Functions", () => {
+  describe("formatAgentPrefix", () => {
+    test("formats coder prefix", () => {
+      const result = formatAgentPrefix("coder");
+      const text = toPlainText(result);
+
+      expect(text).toContain("[coder]");
+    });
+
+    test("formats reviewer prefix", () => {
+      const result = formatAgentPrefix("reviewer");
+      const text = toPlainText(result);
+
+      expect(text).toContain("[reviewer]");
+    });
+
+    test("includes tool name when provided", () => {
+      const result = formatAgentPrefix("coder", "edit");
+      const text = toPlainText(result);
+
+      expect(text).toContain("[coder:edit]");
+    });
+
+    test("includes tool name for reviewer", () => {
+      const result = formatAgentPrefix("reviewer", "bash");
+      const text = toPlainText(result);
+
+      expect(text).toContain("[reviewer:bash]");
+    });
+  });
+
+  describe("formatAgentMessage", () => {
+    test("formats coder message with prefix", () => {
+      const result = formatAgentMessage("coder", "Starting implementation...");
+      const text = toPlainText(result);
+
+      expect(text).toContain("[coder]");
+      expect(text).toContain("Starting implementation...");
+    });
+
+    test("formats reviewer message with prefix", () => {
+      const result = formatAgentMessage("reviewer", "Reviewing changes...");
+      const text = toPlainText(result);
+
+      expect(text).toContain("[reviewer]");
+      expect(text).toContain("Reviewing changes...");
+    });
+  });
+
+  describe("formatAgentToolCall", () => {
+    test("formats tool call with agent and tool name prefix", () => {
+      const result = formatAgentToolCall("coder", "edit", "src/main.ts +10/-2");
+      const text = toPlainText(result);
+
+      expect(text).toContain("[coder:edit]");
+      expect(text).toContain("src/main.ts +10/-2");
+    });
+
+    test("formats reviewer tool call", () => {
+      const result = formatAgentToolCall("reviewer", "bash", "npm test");
+      const text = toPlainText(result);
+
+      expect(text).toContain("[reviewer:bash]");
+      expect(text).toContain("npm test");
+    });
+  });
+
+  describe("formatAskUserPrompt", () => {
+    test("formats ask-user prompt with coder requester", () => {
+      const result = formatAskUserPrompt("coder", "Which approach should I use?");
+      const text = toPlainText(result);
+
+      expect(text).toContain("[coder]");
+      expect(text).toContain("Question");
+      expect(text).toContain("Which approach should I use?");
+      expect(text).toContain("Waiting for your response");
+    });
+
+    test("formats ask-user prompt with reviewer requester", () => {
+      const result = formatAskUserPrompt("reviewer", "Should I approve this?");
+      const text = toPlainText(result);
+
+      expect(text).toContain("[reviewer]");
+      expect(text).toContain("Should I approve this?");
+    });
+
+    test("formats ask-user prompt with undefined requester", () => {
+      const result = formatAskUserPrompt(undefined, "General question");
+      const text = toPlainText(result);
+
+      expect(text).toContain("[agent]");
+      expect(text).toContain("General question");
+    });
+  });
+
+  describe("formatStepHeader", () => {
+    test("formats step header with step ID only", () => {
+      const result = formatStepHeader("2");
+      const text = toPlainText(result);
+
+      expect(text).toContain("Step 2");
+      expect(text).toContain("═══");
+    });
+
+    test("formats step header with total steps", () => {
+      const result = formatStepHeader("2", undefined, 5);
+      const text = toPlainText(result);
+
+      expect(text).toContain("Step 2/5");
+    });
+
+    test("includes step content when provided", () => {
+      const result = formatStepHeader("1", "Implement authentication", 3);
+      const text = toPlainText(result);
+
+      expect(text).toContain("Step 1/3");
+      expect(text).toContain("Implement authentication");
+    });
+
+    test("truncates long step content", () => {
+      const longContent = "A".repeat(100);
+      const result = formatStepHeader("1", longContent);
+      const text = toPlainText(result);
+
+      // Should be truncated with ellipsis
+      expect(text).toContain("...");
+      expect(text.length).toBeLessThan(longContent.length + 50);
+    });
+  });
+
+  describe("formatStepApproved", () => {
+    test("formats step approval message", () => {
+      const result = formatStepApproved("2");
+      const text = toPlainText(result);
+
+      expect(text).toContain("✓");
+      expect(text).toContain("Step 2");
+      expect(text).toContain("approved");
+    });
+  });
+
+  describe("formatChangeRequest", () => {
+    test("formats change request with count and reason", () => {
+      const result = formatChangeRequest("Fix the bug in line 42", 2, 3);
+      const text = toPlainText(result);
+
+      expect(text).toContain("↩");
+      expect(text).toContain("Changes requested");
+      expect(text).toContain("2/3");
+      expect(text).toContain("Fix the bug in line 42");
+    });
+  });
+
+  describe("formatLoopGuardWarning", () => {
+    test("formats loop guard warning with step and count", () => {
+      const result = formatLoopGuardWarning("2", 4);
+      const text = toPlainText(result);
+
+      expect(text).toContain("⚠️");
+      expect(text).toContain("Loop guard triggered");
+      expect(text).toContain("4");
+      expect(text).toContain("step 2");
+      expect(text).toContain("User intervention required");
+    });
+  });
+
+  describe("formatError", () => {
+    test("formats error message", () => {
+      const result = formatError("API timeout");
+      const text = toPlainText(result);
+
+      expect(text).toContain("❌");
+      expect(text).toContain("Error");
+      expect(text).toContain("API timeout");
+    });
+  });
+
+  describe("formatOrchestrationStarted", () => {
+    test("formats orchestration start message", () => {
+      const result = formatOrchestrationStarted("docs/feature/plan.md", "1");
+      const text = toPlainText(result);
+
+      expect(text).toContain("🎭");
+      expect(text).toContain("Orchestration started");
+      expect(text).toContain("docs/feature/plan.md");
+      expect(text).toContain("Step 1");
+    });
+  });
+
+  describe("formatOrchestrationComplete", () => {
+    test("formats completion message", () => {
+      const result = formatOrchestrationComplete();
+      const text = toPlainText(result);
+
+      expect(text).toContain("🎉");
+      expect(text).toContain("All steps completed");
+    });
+  });
+
+  describe("formatAgentTransition", () => {
+    test("formats transition to coder", () => {
+      const result = formatAgentTransition("reviewer", "coder");
+      const text = toPlainText(result);
+
+      expect(text).toContain("→");
+      expect(text).toContain("Coder");
+      expect(text).toContain("🔨");
+    });
+
+    test("formats transition to reviewer", () => {
+      const result = formatAgentTransition("coder", "reviewer");
+      const text = toPlainText(result);
+
+      expect(text).toContain("→");
+      expect(text).toContain("Reviewer");
+      expect(text).toContain("👀");
+    });
+
+    test("handles null fromAgent", () => {
+      const result = formatAgentTransition(null, "coder");
+      const text = toPlainText(result);
+
+      expect(text).toContain("Coder");
+    });
+  });
+
+  describe("orchestrationColors", () => {
+    test("coder color function exists and is callable", () => {
+      const colorFn = orchestrationColors.coder();
+      expect(typeof colorFn).toBe("function");
+
+      // Apply color to text
+      const result = colorFn("test");
+      expect(result).toBeDefined();
+    });
+
+    test("reviewer color function exists and is callable", () => {
+      const colorFn = orchestrationColors.reviewer();
+      expect(typeof colorFn).toBe("function");
+    });
+
+    test("step color function exists and is callable", () => {
+      const colorFn = orchestrationColors.step();
+      expect(typeof colorFn).toBe("function");
+    });
+
+    test("blocked color function exists and is callable", () => {
+      const colorFn = orchestrationColors.blocked();
+      expect(typeof colorFn).toBe("function");
+    });
+
+    test("error color function exists and is callable", () => {
+      const colorFn = orchestrationColors.error();
+      expect(typeof colorFn).toBe("function");
+    });
   });
 });
