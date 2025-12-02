@@ -2475,7 +2475,7 @@ export class TUISolidAdapter implements UIAdapter {
       if (event.type === "text" && event.content) {
         // Style the role prefix like agent output
         const prefix = semantic.historyAgentPrefix(`[${role}] `);
-        this.appendOutput(t`${prefix}${event.content}`);
+        this.appendOutput(t`${prefix}${event.content}\n`);
       } else if (event.type === "tool" && event.name) {
         // Store args for when result arrives
         pendingTools.set(event.name, (event.args as Record<string, unknown>) || {});
