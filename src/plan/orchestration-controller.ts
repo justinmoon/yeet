@@ -820,7 +820,13 @@ export class OrchestrationController {
           const result = event.result as ToolAction;
           if (result && typeof result === "object" && "action" in result) {
             orchestrationAction = result;
-            // Don't break here - let the agent complete cleanly
+            // For ask_user, we must stop immediately - don't let the agent continue
+            // and potentially overwrite this action with request_review/etc.
+            if (result.action === "ask_user") {
+              logger.info("ask_user detected, aborting agent to wait for user response");
+              this.abortController?.abort();
+              break;
+            }
           }
         }
 
@@ -830,7 +836,7 @@ export class OrchestrationController {
           throw new Error(event.error);
         }
 
-        // If we got an orchestration action, we can stop after this event cycle
+        // If we got an orchestration action and agent is done, we can exit
         if (orchestrationAction && event.type === "done") {
           break;
         }
@@ -838,9 +844,17 @@ export class OrchestrationController {
     } catch (error) {
       if ((error as Error).name === "AbortError") {
         logger.info("Agent aborted", { role });
-        return null;
+        // If we have an orchestration action (e.g., ask_user triggered the abort),
+        // return it instead of null so it gets processed
+        if (orchestrationAction) {
+          logger.info("Returning orchestration action after abort", { action: orchestrationAction.action });
+          // Fall through to return orchestrationAction below
+        } else {
+          return null;
+        }
+      } else {
+        throw error;
       }
-      throw error;
     } finally {
       this.abortController = undefined;
     }

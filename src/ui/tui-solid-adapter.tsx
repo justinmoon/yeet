@@ -2422,6 +2422,9 @@ export class TUISolidAdapter implements UIAdapter {
 
     this.hideCommandPalette();
 
+    // Track the last displayed prompt to avoid duplicates
+    let lastDisplayedPrompt: string | null = null;
+
     // Create status callback
     const onStatus = (status: OrchestrationStatus) => {
       this.orchestrationState = {
@@ -2450,13 +2453,17 @@ export class TUISolidAdapter implements UIAdapter {
       const orchestrationPrefix = `Step ${status.currentStep}/${status.totalSteps} | ${agentLabel}`;
       updateTokenCount(this, this.config, orchestrationPrefix);
 
-      // If awaiting user input, show the prompt
-      if (status.awaitingUserPrompt) {
+      // If awaiting user input, show the prompt (only if not already displayed)
+      if (status.awaitingUserPrompt && status.awaitingUserPrompt !== lastDisplayedPrompt) {
+        lastDisplayedPrompt = status.awaitingUserPrompt;
         this.appendOutput(
           `\n[orchestration] ${status.activeAgent || "System"} asks:\n` +
             `  ${status.awaitingUserPrompt}\n` +
             `  (Type your response and press Enter)\n\n`,
         );
+      } else if (!status.awaitingUserPrompt) {
+        // Clear the tracking when no longer awaiting
+        lastDisplayedPrompt = null;
       }
     };
 
