@@ -58,6 +58,9 @@ export interface FlowContext {
   /** Reviewer feedback from request_changes (passed to coder on next iteration) */
   reviewerFeedback?: string;
 
+  /** Coder summary from request_review (passed to reviewer on handoff) */
+  coderSummary?: string;
+
   /** History of state transitions for debugging/logging */
   transitionHistory: TransitionRecord[];
 }

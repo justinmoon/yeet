@@ -215,6 +215,15 @@ export function buildContextSeed(role: AgentRole, config: PromptConfig): string 
   if (role === "coder") {
     return `Please implement step "${config.activeStep}" according to the plan. Read the intent and spec files first to understand the context. When you have finished implementing the step, you MUST call \`request_review\` to submit your work.`;
   } else {
-    return `Please review step "${config.activeStep}". Check if the implementation meets the acceptance criteria in the plan. When you have completed your review, you MUST call either \`approve\` or \`request_changes\`.`;
+    // Reviewer context - explicit that coder has finished and is ready for review
+    return `The coder has just completed step "${config.activeStep}" and submitted it for review.
+
+Your task:
+1. Run \`git status\` and \`git log -1\` to verify there's a commit for this step
+2. Read the plan to understand the acceptance criteria for step ${config.activeStep}
+3. Verify the implementation meets those criteria
+4. Call \`approve\` if the step is complete, or \`request_changes(reason)\` if it needs work
+
+Important: The coder has ALREADY finished their work. You are reviewing completed work, not implementing anything yourself.`;
   }
 }

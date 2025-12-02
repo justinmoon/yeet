@@ -163,6 +163,9 @@ export class OrchestrationController {
   // Pending user message to inject into the next agent iteration
   private pendingUserMessage: string | null = null;
 
+  // Last coder text output (captured for handoff to reviewer)
+  private lastCoderText: string = "";
+
   constructor(controllerConfig: OrchestrationControllerConfig) {
     this.planPath = controllerConfig.planPath;
     this.planDir = dirname(controllerConfig.planPath);
@@ -758,9 +761,10 @@ export class OrchestrationController {
         // Emit output to UI
         this.onOutput?.(role, event);
 
-        // Capture text output for coder history
+        // Capture text output for coder history and reviewer handoff
         if (role === "coder" && event.type === "text" && event.content) {
           assistantTextBuffer += event.content;
+          this.lastCoderText = assistantTextBuffer;
         }
 
         // Track tool calls when they start
@@ -903,6 +907,12 @@ export class OrchestrationController {
       this.eventLog = logAskUser(this.eventLog, role, action.message);
     }
 
+    // Store coder summary on request_review for reviewer handoff
+    if (action.action === "request_review" && this.lastCoderText) {
+      this.flowMachine.getContext().coderSummary = this.lastCoderText;
+      logger.debug("Stored coder summary for reviewer", { length: this.lastCoderText.length });
+    }
+
     // Handle step changes on approve
     if (action.action === "approve" && result.triggerCoder) {
       const previousStep = this.flowMachine.getContext().activeStep;
@@ -967,6 +977,12 @@ export class OrchestrationController {
           content: `The reviewer has requested changes:\n\n${context.reviewerFeedback}\n\nPlease address this feedback. When done, commit your changes and call \`request_review\` again.`,
         });
       }
+    } else if (role === "reviewer" && context.coderSummary) {
+      // Reviewer with coder handoff - include coder's summary
+      messages.push({
+        role: "user",
+        content: `The coder has completed their implementation and requested a review for step "${config.activeStep}".\n\n**Coder's summary:**\n${context.coderSummary}\n\nPlease verify the implementation meets the acceptance criteria. Check that changes are committed (run \`git status\` and \`git log\`). When done, call \`approve\` or \`request_changes\`.`,
+      });
     } else {
       // Fresh start - use context seed
       const contextSeed = driver.getContextSeed();
@@ -1062,12 +1078,25 @@ export class OrchestrationController {
    * Build prompt config for current step.
    */
   private buildPromptConfig(activeStep: string): PromptConfig {
+    // Build prior history summary from flow context
+    let priorHistory: string | undefined;
+    if (this.flowMachine) {
+      const context = this.flowMachine.getContext();
+      if (context.changeRequestCount > 0) {
+        priorHistory = `This step has been through ${context.changeRequestCount} review cycle(s).`;
+        if (context.reviewerFeedback) {
+          priorHistory += `\n\nMost recent reviewer feedback:\n${context.reviewerFeedback}`;
+        }
+      }
+    }
+
     return {
       planPath: this.planPath,
       intentPath: join(this.planDir, "intent.md"),
       specPath: join(this.planDir, "spec.md"),
       activeStep,
       stepContent: this.getStepContent(activeStep),
+      priorHistory,
     };
   }
 

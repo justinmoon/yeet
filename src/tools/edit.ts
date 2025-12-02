@@ -1,7 +1,7 @@
 // @ts-nocheck - AI SDK v5 types are complex, but runtime works correctly
 import { jsonSchema, tool } from "ai";
 import z from "zod/v4";
-import { ensureWorkspaceWriteAccess } from "../workspace/state";
+import { ensureWorkspaceWriteAccess, resolveWorkspacePath } from "../workspace/state";
 import { createFileDiff } from "./diff-utils";
 
 const editSchema = z.object({
@@ -20,7 +20,8 @@ export const edit = tool({
   }: { path: string; oldText: string; newText: string }) => {
     try {
       ensureWorkspaceWriteAccess(`edit ${path}`);
-      const file = Bun.file(path);
+      const resolvedPath = resolveWorkspacePath(path);
+      const file = Bun.file(resolvedPath);
       const content = await file.text();
 
       if (!content.includes(oldText)) {
@@ -30,9 +31,9 @@ export const edit = tool({
       }
 
       const updated = content.replace(oldText, newText);
-      await Bun.write(path, updated);
+      await Bun.write(resolvedPath, updated);
 
-      const afterContent = await Bun.file(path).text();
+      const afterContent = await Bun.file(resolvedPath).text();
       const diff = createFileDiff(path, content, afterContent);
 
       return { success: true, message: `Updated ${path}`, diff };

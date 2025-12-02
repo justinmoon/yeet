@@ -1,7 +1,7 @@
 // @ts-nocheck - AI SDK v5 types are complex, but runtime works correctly
 import { jsonSchema, tool } from "ai";
 import z from "zod/v4";
-import { ensureWorkspaceWriteAccess } from "../workspace/state";
+import { ensureWorkspaceWriteAccess, resolveWorkspacePath } from "../workspace/state";
 import { createFileDiff } from "./diff-utils";
 
 const writeSchema = z.object({
@@ -15,13 +15,14 @@ export const write = tool({
   execute: async ({ path, content }: { path: string; content: string }) => {
     try {
       ensureWorkspaceWriteAccess(`write to ${path}`);
-      const file = Bun.file(path);
+      const resolvedPath = resolveWorkspacePath(path);
+      const file = Bun.file(resolvedPath);
       const existedBefore = await file.exists();
       const beforeContent = existedBefore ? await file.text() : "";
 
-      await Bun.write(path, content);
+      await Bun.write(resolvedPath, content);
 
-      const afterContent = await Bun.file(path).text();
+      const afterContent = await Bun.file(resolvedPath).text();
       const diff = createFileDiff(path, beforeContent, afterContent);
 
       return { success: true, message: `Created ${path}`, diff };

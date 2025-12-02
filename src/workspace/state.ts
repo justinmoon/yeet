@@ -39,3 +39,16 @@ export function getActiveWorkspaceBinding(): WorkspaceBinding {
 export function ensureWorkspaceWriteAccess(action: string): void {
   assertWorkspaceWriteAllowed(getActiveWorkspaceBinding(), action);
 }
+
+/**
+ * Resolve a path relative to the active workspace cwd.
+ * If the path is already absolute, returns it unchanged.
+ */
+export function resolveWorkspacePath(path: string): string {
+  const { isAbsolute, join } = require("node:path");
+  if (isAbsolute(path)) {
+    return path;
+  }
+  const binding = getActiveWorkspaceBinding();
+  return join(binding.cwd, path);
+}
