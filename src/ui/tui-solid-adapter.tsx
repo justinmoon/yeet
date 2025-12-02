@@ -953,33 +953,13 @@ export class TUISolidAdapter implements UIAdapter {
   appendOutput(text: string | StyledText): void {
     this.contentChunks.push(text);
     this.setOutputContent([...this.contentChunks]);
-
-    // Auto-scroll to bottom
-    if (this.scrollBoxEl) {
-      setTimeout(() => {
-        this.scrollBoxEl.scrollTop = Math.max(
-          0,
-          this.scrollBoxEl.scrollHeight -
-            (this.scrollBoxEl.viewport?.height || 0),
-        );
-      }, 0);
-    }
+    this.scrollToBottomIfNeeded();
   }
 
   addMessagePart(part: MessagePart): void {
     this.messageParts.push(part);
     this.setMessageParts([...this.messageParts]);
-
-    // Auto-scroll to bottom
-    if (this.scrollBoxEl) {
-      setTimeout(() => {
-        this.scrollBoxEl.scrollTop = Math.max(
-          0,
-          this.scrollBoxEl.scrollHeight -
-            (this.scrollBoxEl.viewport?.height || 0),
-        );
-      }, 0);
-    }
+    this.scrollToBottomIfNeeded();
   }
 
   clearOutput(): void {
@@ -1005,6 +985,37 @@ export class TUISolidAdapter implements UIAdapter {
   clearAttachments(): void {
     this.imageAttachments = [];
     this.updateAttachmentIndicator();
+  }
+
+  /**
+   * Check if user is scrolled to (or near) the bottom.
+   * Returns true if we should auto-scroll on new content.
+   */
+  private isNearBottom(): boolean {
+    if (!this.scrollBoxEl) return true;
+    const scrollTop = this.scrollBoxEl.scrollTop || 0;
+    const scrollHeight = this.scrollBoxEl.scrollHeight || 0;
+    const viewportHeight = this.scrollBoxEl.viewport?.height || 0;
+    // Consider "near bottom" if within 50 pixels of the bottom
+    const threshold = 50;
+    return scrollTop + viewportHeight >= scrollHeight - threshold;
+  }
+
+  /**
+   * Scroll to bottom only if user hasn't scrolled up.
+   */
+  private scrollToBottomIfNeeded(): void {
+    if (!this.scrollBoxEl) return;
+    // Only auto-scroll if user is near the bottom
+    if (this.isNearBottom()) {
+      setTimeout(() => {
+        this.scrollBoxEl.scrollTop = Math.max(
+          0,
+          this.scrollBoxEl.scrollHeight -
+            (this.scrollBoxEl.viewport?.height || 0),
+        );
+      }, 0);
+    }
   }
 
   updateTokenCount(): void {
