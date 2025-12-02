@@ -139,28 +139,21 @@ export function createToolFilter(
 /**
  * Filter a toolset to only include read-safe tools.
  *
+ * NOTE: Currently relaxed - both roles get all tools.
+ * The reviewer is told via system prompt to be read-only,
+ * but we don't enforce it at the tool level. Can tighten later.
+ *
  * @param tools - The tools to filter
  * @param role - The agent role
- * @returns Filtered tools with blocked tools removed
+ * @returns All tools (filtering disabled for now)
  */
 export function filterToolsForRole<T extends Record<string, unknown>>(
   tools: T,
-  role: AgentRole,
-): Partial<T> {
-  if (role === "coder") {
-    return tools;
-  }
-
-  // For reviewer, filter out write tools
-  const filtered: Record<string, unknown> = {};
-
-  for (const [name, tool] of Object.entries(tools)) {
-    if (!isWriteTool(name)) {
-      filtered[name] = tool;
-    }
-  }
-
-  return filtered as Partial<T>;
+  _role: AgentRole,
+): T {
+  // Relaxed: both roles get all tools
+  // Reviewer is instructed to be read-only via prompt
+  return tools;
 }
 
 /**

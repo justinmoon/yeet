@@ -41,7 +41,7 @@ import {
   logLifecycle,
   logStepChange,
 } from "./event-log";
-import { filterToolsForRole, createReadOnlyInterceptor } from "./tool-filter";
+import { filterToolsForRole } from "./tool-filter";
 import * as baseTools from "../tools";
 import { logger } from "../logger";
 import {
@@ -86,6 +86,12 @@ export type OutputCallback = (
 ) => void;
 
 /**
+ * Callback for error events.
+ * This is the single path for all orchestration errors to surface to the UI.
+ */
+export type ErrorCallback = (error: string, role?: AgentRole) => void;
+
+/**
  * Model configuration per role.
  */
 export interface RoleModelConfig {
@@ -113,6 +119,8 @@ export interface OrchestrationControllerConfig {
   onStatus?: StatusCallback;
   /** Callback for agent output */
   onOutput?: OutputCallback;
+  /** Callback for errors - the single path for all orchestration errors */
+  onError?: ErrorCallback;
   /** Flow machine configuration overrides */
   flowConfig?: Partial<FlowConfig>;
 }
@@ -132,6 +140,7 @@ export class OrchestrationController {
   private roleModels: RoleModelConfig;
   private onStatus?: StatusCallback;
   private onOutput?: OutputCallback;
+  private onError?: ErrorCallback;
   private flowConfigOverrides?: Partial<FlowConfig>;
 
   private controllerState: ControllerState = "idle";
@@ -151,6 +160,9 @@ export class OrchestrationController {
   // Coder conversation history (preserved across request_changes cycles)
   private coderHistory: Array<{ role: "user" | "assistant"; content: MessageContent }> = [];
 
+  // Pending user message to inject into the next agent iteration
+  private pendingUserMessage: string | null = null;
+
   constructor(controllerConfig: OrchestrationControllerConfig) {
     this.planPath = controllerConfig.planPath;
     this.planDir = dirname(controllerConfig.planPath);
@@ -158,7 +170,22 @@ export class OrchestrationController {
     this.roleModels = controllerConfig.roleModels || {};
     this.onStatus = controllerConfig.onStatus;
     this.onOutput = controllerConfig.onOutput;
+    this.onError = controllerConfig.onError;
     this.flowConfigOverrides = controllerConfig.flowConfig;
+  }
+
+  /**
+   * Emit an error event to the UI so users can see what went wrong.
+   * This is the single path for all orchestration errors.
+   */
+  private emitError(error: string, role?: AgentRole): void {
+    // Always log for post-mortem
+    logger.error("Orchestration error", { error, role });
+
+    // Surface to UI via dedicated callback
+    if (this.onError) {
+      this.onError(error, role);
+    }
   }
 
   /**
@@ -173,58 +200,73 @@ export class OrchestrationController {
 
     logger.info("OrchestrationController starting", { planPath: this.planPath });
 
-    // Load plan and extract steps
-    const plan = await loadPlan(this.planPath);
-    const stepResolver = createPlanBodyStepResolver(plan.body);
+    try {
+      // Load plan and extract steps
+      const plan = await loadPlan(this.planPath);
+      const stepResolver = createPlanBodyStepResolver(plan.body);
 
-    // Extract steps for UI
-    this.extractSteps(plan.body);
+      // Extract steps for UI
+      this.extractSteps(plan.body);
 
-    // Resume or start fresh
-    const resumeResult = await resumeOrchestration(
-      this.planPath,
-      this.flowConfigOverrides,
-    );
+      // Resume or start fresh
+      const resumeResult = await resumeOrchestration(
+        this.planPath,
+        this.flowConfigOverrides,
+      );
 
-    if (!resumeResult.success) {
+      if (!resumeResult.success) {
+        this.controllerState = "error";
+        this.emitStatus();
+        const errorMsg = resumeResult.error || "Failed to resume orchestration";
+        this.emitError(errorMsg);
+        throw new Error(errorMsg);
+      }
+
+      this.flowMachine = resumeResult.flowMachine!;
+      this.eventLog = resumeResult.log;
+
+      // Create tool executor
+      this.toolExecutor = new ToolExecutor(
+        this.flowMachine,
+        this.planPath,
+        stepResolver,
+      );
+
+      // Create agent drivers (modelAuth handled via agentConfig, not drivers)
+      const promptConfig = this.buildPromptConfig(plan.frontmatter.active_step);
+
+      this.coderDriver = createCoderDriver(
+        this.planDir,
+        promptConfig,
+      );
+
+      this.reviewerDriver = createReviewerDriver(
+        this.planDir,
+        promptConfig,
+        50, // maxHistoryMessages
+      );
+
+      // Emit initial status
+      this.controllerState = "running";
+      this.emitStatus();
+
+      // Save log
+      await this.saveEventLog();
+
+      // Start the orchestration loop
+      await this.runLoop();
+    } catch (error) {
+      // Make sure errors are surfaced to the UI
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error("Orchestration start/loop error", { error: errorMessage });
+
+      this.emitError(`Orchestration error: ${errorMessage}`);
       this.controllerState = "error";
       this.emitStatus();
-      throw new Error(resumeResult.error || "Failed to resume orchestration");
+
+      // Re-throw so caller can also handle
+      throw error;
     }
-
-    this.flowMachine = resumeResult.flowMachine!;
-    this.eventLog = resumeResult.log;
-
-    // Create tool executor
-    this.toolExecutor = new ToolExecutor(
-      this.flowMachine,
-      this.planPath,
-      stepResolver,
-    );
-
-    // Create agent drivers (modelAuth handled via agentConfig, not drivers)
-    const promptConfig = this.buildPromptConfig(plan.frontmatter.active_step);
-
-    this.coderDriver = createCoderDriver(
-      this.planDir,
-      promptConfig,
-    );
-
-    this.reviewerDriver = createReviewerDriver(
-      this.planDir,
-      promptConfig,
-      50, // maxHistoryMessages
-    );
-
-    // Emit initial status
-    this.controllerState = "running";
-    this.emitStatus();
-
-    // Save log
-    await this.saveEventLog();
-
-    // Start the orchestration loop
-    await this.runLoop();
   }
 
   /**
@@ -360,6 +402,104 @@ export class OrchestrationController {
   }
 
   /**
+   * Check if an agent is currently running.
+   */
+  isRunning(): boolean {
+    return this.controllerState === "running";
+  }
+
+  /**
+   * Get the currently active agent role (or null if not running).
+   */
+  getActiveRole(): AgentRole | null {
+    if (this.controllerState !== "running") {
+      return null;
+    }
+    const state = this.flowMachine.getState();
+    if (state === "coder_active") return "coder";
+    if (state === "reviewer_active") return "reviewer";
+    return null;
+  }
+
+  /**
+   * Inject a user message into the current agent's context.
+   *
+   * This will:
+   * 1. Abort the currently running agent
+   * 2. Store the message to be included in the next iteration
+   * 3. Resume the same agent with the message injected
+   */
+  async injectUserMessage(message: string): Promise<void> {
+    if (this.controllerState !== "running") {
+      logger.warn("injectUserMessage called but not running", {
+        state: this.controllerState,
+      });
+      // If awaiting user, treat as normal reply
+      if (this.controllerState === "awaiting_user") {
+        await this.handleUserReply(message);
+      }
+      return;
+    }
+
+    const activeRole = this.getActiveRole();
+    logger.info("Injecting user message", { message: message.slice(0, 100), activeRole });
+
+    // Store the message for the next iteration
+    this.pendingUserMessage = message;
+
+    // Abort the current agent
+    if (this.abortController) {
+      this.abortController.abort();
+    }
+
+    // Log the injection
+    this.eventLog = logUserResponse(this.eventLog, `[INTERRUPT] ${message}`);
+    await this.saveEventLog();
+
+    // The agent will be restarted by the loop after abort
+    // and will pick up the pending message in buildAgentMessages
+  }
+
+  /**
+   * Pause the current agent.
+   *
+   * This will abort the running agent and transition to awaiting_user state.
+   * The next user message will resume the same agent.
+   */
+  async pause(): Promise<void> {
+    if (this.controllerState !== "running") {
+      logger.warn("pause called but not running", { state: this.controllerState });
+      return;
+    }
+
+    const activeRole = this.getActiveRole();
+    logger.info("Pausing orchestration", { activeRole });
+
+    // Abort the current agent
+    if (this.abortController) {
+      this.abortController.abort();
+    }
+
+    // Transition to awaiting_user_input via ask_user event
+    const flowState = this.flowMachine.getState();
+    if (flowState === "coder_active" || flowState === "reviewer_active") {
+      const requester: AgentRole = flowState === "coder_active" ? "coder" : "reviewer";
+      await this.flowMachine.send({
+        type: "ask_user",
+        message: "Paused by user. Send a message to continue.",
+        requester,
+      });
+
+      this.eventLog = logAskUser(this.eventLog, requester, "Paused by user");
+      this.eventLog = syncLogState(this.eventLog, this.flowMachine);
+      await this.saveEventLog();
+    }
+
+    this.controllerState = "awaiting_user";
+    this.emitStatus();
+  }
+
+  /**
    * Main orchestration loop.
    */
   private async runLoop(): Promise<void> {
@@ -367,29 +507,48 @@ export class OrchestrationController {
       const state = this.flowMachine.getState();
       logger.debug("Orchestration loop iteration", { state });
 
-      switch (state) {
-        case "coder_active":
-          await this.runCoderIteration();
-          break;
+      try {
+        switch (state) {
+          case "coder_active":
+            await this.runCoderIteration();
+            break;
 
-        case "reviewer_active":
-          await this.runReviewerIteration();
-          break;
+          case "reviewer_active":
+            await this.runReviewerIteration();
+            break;
 
-        case "awaiting_user_input":
-          this.controllerState = "awaiting_user";
-          this.emitStatus();
-          return; // Exit loop, wait for user reply
+          case "awaiting_user_input":
+            this.controllerState = "awaiting_user";
+            this.emitStatus();
+            return; // Exit loop, wait for user reply
 
-        case "error":
-          this.controllerState = "error";
-          this.emitStatus();
-          return; // Exit loop, need user intervention
+          case "error":
+            this.controllerState = "error";
+            this.emitStatus();
+            return; // Exit loop, need user intervention
 
-        default:
-          logger.error("Unknown flow state", { state });
-          this.controllerState = "error";
-          return;
+          default:
+            this.emitError(`Unknown flow state: ${state}`);
+            this.controllerState = "error";
+            return;
+        }
+      } catch (error) {
+        // Log the error and transition to error state
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        logger.error("Orchestration loop error", { error: errorMessage, state });
+
+        // Log to event log
+        this.eventLog = logError(this.eventLog, errorMessage);
+        await this.saveEventLog();
+
+        // Transition to error state via flow machine
+        await this.flowMachine.send({ type: "system_error", error: errorMessage });
+
+        this.controllerState = "error";
+        this.emitStatus();
+
+        // Re-throw so TUI can display the error
+        throw error;
       }
     }
   }
@@ -452,6 +611,26 @@ export class OrchestrationController {
 
       // Process the action
       await this.processToolAction(role, action);
+    } catch (error) {
+      // Surface error to UI and transition to awaiting_user_input
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error("Coder iteration error", { error: errorMessage });
+
+      // Emit error to UI
+      this.emitError(`Coder error: ${errorMessage}`, role);
+
+      // Log to event log
+      this.eventLog = logError(this.eventLog, `Coder error: ${errorMessage}`);
+
+      // Transition to awaiting_user_input so user can decide how to proceed
+      await this.flowMachine.send({
+        type: "ask_user",
+        message: `Coder encountered an error: ${errorMessage}\n\nWould you like to retry or stop?`,
+        requester: "coder",
+      });
+      this.eventLog = logAskUser(this.eventLog, "coder", `Error occurred: ${errorMessage}`);
+      this.eventLog = syncLogState(this.eventLog, this.flowMachine);
+      await this.saveEventLog();
     } finally {
       // Restore original workspace
       this.restoreWorkspace();
@@ -465,7 +644,7 @@ export class OrchestrationController {
     const role: AgentRole = "reviewer";
     logger.info("Running reviewer iteration");
 
-    // Bind workspace to plan directory with read-only access for reviewer
+    // Bind workspace to plan directory
     this.setWorkspaceForRole(role);
 
     try {
@@ -480,7 +659,7 @@ export class OrchestrationController {
       // Build config with role-specific model
       const agentConfig = this.buildAgentConfig(role);
 
-      // Build toolset with orchestration tools (reviewer is read-only)
+      // Build toolset with orchestration tools
       const toolset = this.buildToolset(role);
 
       // Get system prompt from driver
@@ -516,6 +695,26 @@ export class OrchestrationController {
 
       // Process the action
       await this.processToolAction(role, action);
+    } catch (error) {
+      // Surface error to UI and transition to awaiting_user_input
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      logger.error("Reviewer iteration error", { error: errorMessage });
+
+      // Emit error to UI
+      this.emitError(`Reviewer error: ${errorMessage}`, role);
+
+      // Log to event log
+      this.eventLog = logError(this.eventLog, `Reviewer error: ${errorMessage}`);
+
+      // Transition to awaiting_user_input so user can decide how to proceed
+      await this.flowMachine.send({
+        type: "ask_user",
+        message: `Reviewer encountered an error: ${errorMessage}\n\nWould you like to retry or stop?`,
+        requester: "reviewer",
+      });
+      this.eventLog = logAskUser(this.eventLog, "reviewer", `Error occurred: ${errorMessage}`);
+      this.eventLog = syncLogState(this.eventLog, this.flowMachine);
+      await this.saveEventLog();
     } finally {
       // Restore original workspace
       this.restoreWorkspace();
@@ -763,6 +962,16 @@ export class OrchestrationController {
       });
     }
 
+    // If there's a pending user message (from interrupt), add it
+    if (this.pendingUserMessage) {
+      messages.push({
+        role: "user",
+        content: `[User interrupt]: ${this.pendingUserMessage}`,
+      });
+      // Clear the pending message after adding it
+      this.pendingUserMessage = null;
+    }
+
     return messages;
   }
 
@@ -824,30 +1033,9 @@ export class OrchestrationController {
       role,
     );
 
-    // For reviewer, wrap bash with read-only interceptor to block write commands at runtime
-    if (role === "reviewer" && filteredBaseTools.bash) {
-      const interceptor = createReadOnlyInterceptor(role);
-      const originalBash = filteredBaseTools.bash as any;
-
-      // Create a wrapper that checks commands before execution
-      const wrappedBash = {
-        ...originalBash,
-        execute: async (args: { command: string }, options: any) => {
-          const check = interceptor.check("bash", args);
-          if (!check.allowed) {
-            return {
-              blocked: true,
-              reason: check.reason || "Write operations not allowed in reviewer mode",
-              stdout: "",
-              stderr: check.reason || "Blocked",
-              exitCode: 1,
-            };
-          }
-          return originalBash.execute(args, options);
-        },
-      };
-      filteredBaseTools.bash = wrappedBash;
-    }
+    // Note: Previously we wrapped bash for reviewer with read-only interceptor.
+    // Relaxed for now to allow reviewer to run any bash command (including git).
+    // Can be tightened later if needed.
 
     // Merge: orchestration tools + filtered base tools
     return {
@@ -925,19 +1113,21 @@ export class OrchestrationController {
 
   /**
    * Set workspace binding for a specific role.
-   * Coder gets write access, reviewer gets read-only.
+   * Both roles get write access for now (relaxed constraints).
    */
   private setWorkspaceForRole(role: AgentRole): void {
     // Save original workspace to restore later
     this.originalWorkspace = getActiveWorkspaceBinding();
 
     // Create workspace binding for this role
+    // Note: Both roles get write access. Reviewer is told via prompt to be read-only,
+    // but we don't enforce it. This allows reviewer to run git commands for verification.
     const binding: WorkspaceBinding = {
       id: `ws:orchestration:${role}:${this.planDir}`,
       cwd: this.planDir,
-      isolationMode: role === "reviewer" ? "sandbox" : "shared",
-      allowWrites: role === "coder",
-      label: `${role} workspace (${role === "coder" ? "writable" : "read-only"})`,
+      isolationMode: "shared",
+      allowWrites: true,
+      label: `${role} workspace`,
     };
 
     setActiveWorkspaceBinding(binding);

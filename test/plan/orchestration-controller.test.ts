@@ -275,12 +275,12 @@ Build a simple feature with tests.
   });
 });
 
-describe("OrchestrationController Reviewer Read-Only", () => {
+describe("OrchestrationController Reviewer Tools", () => {
   let tmpDir: string;
   let planPath: string;
 
   beforeEach(async () => {
-    tmpDir = await mkdtemp(join(tmpdir(), "orchestration-readonly-"));
+    tmpDir = await mkdtemp(join(tmpdir(), "orchestration-tools-"));
     planPath = join(tmpDir, "plan.md");
 
     await writeFile(
@@ -303,7 +303,7 @@ active_step: "1"
     }
   });
 
-  test("reviewer toolset excludes write and edit tools", () => {
+  test("both roles have full toolset (relaxed constraints)", () => {
     const controller = new OrchestrationController({
       planPath,
       config: createTestConfig(),
@@ -315,11 +315,9 @@ active_step: "1"
     const reviewerTools = buildToolset("reviewer");
     const coderTools = buildToolset("coder");
 
-    // Reviewer should NOT have write/edit
-    expect(reviewerTools.write).toBeUndefined();
-    expect(reviewerTools.edit).toBeUndefined();
-
-    // Coder should have write/edit
+    // Both roles now have write/edit (relaxed constraints)
+    expect(reviewerTools.write).toBeDefined();
+    expect(reviewerTools.edit).toBeDefined();
     expect(coderTools.write).toBeDefined();
     expect(coderTools.edit).toBeDefined();
 
@@ -341,7 +339,7 @@ active_step: "1"
     expect(coderTools.request_review).toBeDefined();
   });
 
-  test("reviewer bash tool blocks write commands", async () => {
+  test("both roles have full bash access (relaxed constraints)", async () => {
     const controller = new OrchestrationController({
       planPath,
       config: createTestConfig(),
@@ -349,22 +347,11 @@ active_step: "1"
 
     const buildToolset = (controller as any).buildToolset.bind(controller);
     const reviewerTools = buildToolset("reviewer");
+    const coderTools = buildToolset("coder");
 
-    // Reviewer should have bash (but wrapped)
+    // Both should have bash
     expect(reviewerTools.bash).toBeDefined();
-
-    // Test that write commands are blocked
-    const bashTool = reviewerTools.bash as { execute: (args: any, options: any) => Promise<any> };
-
-    // These should be blocked
-    const writeResult = await bashTool.execute({ command: "rm -rf /tmp/test" }, {});
-    expect(writeResult.blocked).toBe(true);
-
-    const gitResult = await bashTool.execute({ command: "git commit -m 'test'" }, {});
-    expect(gitResult.blocked).toBe(true);
-
-    const redirectResult = await bashTool.execute({ command: "echo test > file.txt" }, {});
-    expect(redirectResult.blocked).toBe(true);
+    expect(coderTools.bash).toBeDefined();
   });
 });
 
@@ -425,7 +412,7 @@ active_step: "1"
     expect(restoredWorkspace.cwd).toBe(originalWorkspace.cwd);
   });
 
-  test("setWorkspaceForRole sets read-only for reviewer", () => {
+  test("setWorkspaceForRole sets writable for reviewer (relaxed constraints)", () => {
     const controller = new OrchestrationController({
       planPath,
       config: createTestConfig(),
@@ -440,8 +427,9 @@ active_step: "1"
 
     const reviewerWorkspace = getActiveWorkspaceBinding();
     expect(reviewerWorkspace.cwd).toBe(tmpDir);
-    expect(reviewerWorkspace.allowWrites).toBe(false);
-    expect(reviewerWorkspace.isolationMode).toBe("sandbox");
+    // Relaxed: reviewer now has write access
+    expect(reviewerWorkspace.allowWrites).toBe(true);
+    expect(reviewerWorkspace.isolationMode).toBe("shared");
 
     // Restore
     restoreWorkspace();
@@ -489,5 +477,165 @@ active_step: "1"
 
     // Just verify callback is set up
     expect(controller).toBeDefined();
+  });
+
+  test("onError callback is invoked for errors", () => {
+    const errors: Array<{ error: string; role?: AgentRole }> = [];
+
+    const controller = new OrchestrationController({
+      planPath,
+      config: createTestConfig(),
+      onError: (error, role) => {
+        errors.push({ error, role });
+      },
+    });
+
+    // Access private emitError method for testing
+    const emitError = (controller as any).emitError.bind(controller);
+
+    // Test error emission
+    emitError("Test error message", "coder");
+    expect(errors).toHaveLength(1);
+    expect(errors[0].error).toBe("Test error message");
+    expect(errors[0].role).toBe("coder");
+
+    // Test error without role
+    emitError("Another error");
+    expect(errors).toHaveLength(2);
+    expect(errors[1].error).toBe("Another error");
+    expect(errors[1].role).toBeUndefined();
+  });
+});
+
+describe("OrchestrationController Interrupt and Pause", () => {
+  let tmpDir: string;
+  let planPath: string;
+
+  beforeEach(async () => {
+    tmpDir = await mkdtemp(join(tmpdir(), "orchestration-interrupt-"));
+    planPath = join(tmpDir, "plan.md");
+
+    await writeFile(
+      planPath,
+      `---
+active_step: "1"
+---
+
+- Step 1: Test step
+`,
+    );
+
+    await writeFile(join(tmpDir, "intent.md"), "# Intent\nTest intent.");
+    await writeFile(join(tmpDir, "spec.md"), "# Spec\nTest spec.");
+  });
+
+  afterEach(async () => {
+    if (tmpDir && existsSync(tmpDir)) {
+      await rm(tmpDir, { recursive: true, force: true });
+    }
+  });
+
+  test("isRunning returns false initially", () => {
+    const controller = new OrchestrationController({
+      planPath,
+      config: createTestConfig(),
+    });
+
+    expect(controller.isRunning()).toBe(false);
+  });
+
+  test("getActiveRole returns null when not running", () => {
+    const controller = new OrchestrationController({
+      planPath,
+      config: createTestConfig(),
+    });
+
+    expect(controller.getActiveRole()).toBeNull();
+  });
+
+  test("injectUserMessage falls back to handleUserReply when awaiting", async () => {
+    const controller = new OrchestrationController({
+      planPath,
+      config: createTestConfig(),
+    });
+
+    // When not running but awaiting, should delegate to handleUserReply
+    // Just verify it doesn't throw
+    await controller.injectUserMessage("test message");
+  });
+
+  test("injectUserMessage does nothing when idle", async () => {
+    const controller = new OrchestrationController({
+      planPath,
+      config: createTestConfig(),
+    });
+
+    // When idle (not running, not awaiting), should just warn and return
+    await controller.injectUserMessage("test message");
+    expect(controller.isRunning()).toBe(false);
+  });
+
+  test("pause does nothing when not running", async () => {
+    const controller = new OrchestrationController({
+      planPath,
+      config: createTestConfig(),
+    });
+
+    // Should just warn and return
+    await controller.pause();
+    expect(controller.isRunning()).toBe(false);
+  });
+
+  test("buildAgentMessages includes pending user message", () => {
+    const controller = new OrchestrationController({
+      planPath,
+      config: createTestConfig(),
+    });
+
+    // Access private fields for testing
+    (controller as any).pendingUserMessage = "test interrupt message";
+    (controller as any).flowMachine = {
+      getContext: () => ({ activeStep: "1" }),
+    };
+    (controller as any).coderDriver = {
+      requiresUserMessageInjection: () => false,
+      getContextSeed: () => "Start working on step 1",
+    };
+
+    const buildAgentMessages = (controller as any).buildAgentMessages.bind(controller);
+    const messages = buildAgentMessages("coder");
+
+    // Should include the pending message
+    const lastMessage = messages[messages.length - 1];
+    expect(lastMessage.role).toBe("user");
+    expect(lastMessage.content).toContain("[User interrupt]");
+    expect(lastMessage.content).toContain("test interrupt message");
+
+    // Pending message should be cleared
+    expect((controller as any).pendingUserMessage).toBeNull();
+  });
+
+  test("buildAgentMessages works without pending message", () => {
+    const controller = new OrchestrationController({
+      planPath,
+      config: createTestConfig(),
+    });
+
+    // Access private fields for testing
+    (controller as any).pendingUserMessage = null;
+    (controller as any).flowMachine = {
+      getContext: () => ({ activeStep: "1" }),
+    };
+    (controller as any).coderDriver = {
+      requiresUserMessageInjection: () => false,
+      getContextSeed: () => "Start working on step 1",
+    };
+
+    const buildAgentMessages = (controller as any).buildAgentMessages.bind(controller);
+    const messages = buildAgentMessages("coder");
+
+    // Should have context seed but no interrupt message
+    expect(messages.length).toBe(1);
+    expect(messages[0].content).toBe("Start working on step 1");
   });
 });

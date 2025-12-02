@@ -338,7 +338,9 @@ export function createCoderDriver(
 }
 
 /**
- * Create a reviewer driver with read-only workspace.
+ * Create a reviewer driver.
+ * Note: Reviewer now has write access (relaxed constraints).
+ * Read-only behavior is instructed via prompt, not enforced.
  */
 export function createReviewerDriver(
   cwd: string,
@@ -350,8 +352,8 @@ export function createReviewerDriver(
     role: "reviewer",
     workspace: {
       cwd,
-      allowWrites: false,
-      label: "reviewer workspace (read-only)",
+      allowWrites: true,
+      label: "reviewer workspace",
     },
     prompt: promptConfig,
     maxHistoryMessages,

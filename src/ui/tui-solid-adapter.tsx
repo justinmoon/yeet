@@ -581,6 +581,18 @@ export class TUISolidAdapter implements UIAdapter {
                             `\n[orchestration] Error handling reply: ${error.message}\n\n`,
                           );
                         }
+                      } else if (this.orchestrationController?.isRunning()) {
+                        // Orchestration is running - inject message into current agent
+                        const activeRole = this.orchestrationController.getActiveRole();
+                        this.clearInput();
+                        this.appendOutput(`[you → ${activeRole}] ${message}\n\n`);
+                        try {
+                          await this.orchestrationController.injectUserMessage(message);
+                        } catch (error: any) {
+                          this.appendOutput(
+                            `\n[orchestration] Error injecting message: ${error.message}\n\n`,
+                          );
+                        }
                       } else if (this.pendingOAuthSetup) {
                         const code = message;
                         const verifier = this.pendingOAuthSetup.verifier;
@@ -618,7 +630,20 @@ export class TUISolidAdapter implements UIAdapter {
                       e.preventDefault();
                     }
                   } else if (e.name === "escape") {
-                    if (this.isGenerating && this.abortController) {
+                    // Check if orchestration is running - pause it
+                    if (this.orchestrationController?.isRunning()) {
+                      const activeRole = this.orchestrationController.getActiveRole();
+                      this.appendOutput(
+                        `\n\n⏸️  Pausing ${activeRole}... (send a message to continue)\n`,
+                      );
+                      try {
+                        await this.orchestrationController.pause();
+                      } catch (error: any) {
+                        this.appendOutput(
+                          `\n[orchestration] Error pausing: ${error.message}\n\n`,
+                        );
+                      }
+                    } else if (this.isGenerating && this.abortController) {
                       this.abortController.abort();
                       this.appendOutput(
                         "\n\n⚠️  Generation cancelled by user\n",
@@ -2411,7 +2436,7 @@ export class TUISolidAdapter implements UIAdapter {
             : status.flowState === "awaiting_user_input"
               ? "Awaiting input"
               : "Paused";
-      const orchestrationPrefix = `Step ${status.currentStep}/${status.totalSteps} · ${agentLabel}`;
+      const orchestrationPrefix = `Step ${status.currentStep}/${status.totalSteps} | ${agentLabel}`;
       updateTokenCount(this, this.config, orchestrationPrefix);
 
       // If awaiting user input, show the prompt
@@ -2507,6 +2532,13 @@ export class TUISolidAdapter implements UIAdapter {
       }
     };
 
+    // Create error callback - single path for all orchestration errors
+    const onError = (error: string, role?: AgentRole) => {
+      const prefix = role ? `[${role}]` : "[orchestration]";
+      const errorStyle = semantic.error(`${prefix} ⚠️  Error: ${error}`);
+      this.appendOutput(t`\n${errorStyle}\n\n`);
+    };
+
     // Create and start the controller
     try {
       this.orchestrationController = new OrchestrationController({
@@ -2514,6 +2546,7 @@ export class TUISolidAdapter implements UIAdapter {
         config: this.config,
         onStatus,
         onOutput,
+        onError,
       });
 
       const relativePlanPath = path.relative(cwd, planPath);
@@ -2653,7 +2686,7 @@ export class TUISolidAdapter implements UIAdapter {
             ? "Reviewer"
             : "Paused";
       this.setStatus(
-        `Orchestration · Step ${state.currentStep}/${state.totalSteps} · ${agentLabel}`,
+        `Orchestration | Step ${state.currentStep}/${state.totalSteps} | ${agentLabel}`,
       );
     }
   }
