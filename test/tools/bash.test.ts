@@ -32,4 +32,32 @@ describe("tool.bash", () => {
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toBeTruthy();
   });
+
+  test("times out when command exceeds timeout", async () => {
+    const start = Date.now();
+    const result = await bash.execute(
+      { command: "sleep 5", timeout: 1000 },
+      {} as any,
+    );
+    const duration = Date.now() - start;
+
+    expect(result.timedOut).toBe(true);
+    expect(result.exitCode).toBe(124);
+    expect(result.error).toContain("timed out");
+    expect(result.error).toContain("retry with a longer timeout");
+    expect(duration).toBeLessThan(2000);
+  });
+
+  test("completes before timeout when command is fast", async () => {
+    const start = Date.now();
+    const result = await bash.execute(
+      { command: "sleep 1", timeout: 3000 },
+      {} as any,
+    );
+    const duration = Date.now() - start;
+
+    expect(result.exitCode).toBe(0);
+    expect(result.timedOut).toBeUndefined();
+    expect(duration).toBeLessThan(2000);
+  });
 });
