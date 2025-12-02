@@ -55,6 +55,9 @@ export interface FlowContext {
   /** Error message when in error state */
   errorMessage?: string;
 
+  /** Reviewer feedback from request_changes (passed to coder on next iteration) */
+  reviewerFeedback?: string;
+
   /** History of state transitions for debugging/logging */
   transitionHistory: TransitionRecord[];
 }

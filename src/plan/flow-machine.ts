@@ -211,6 +211,9 @@ export class FlowMachine {
         // Increment change request counter
         this.context.changeRequestCount++;
 
+        // Store the reviewer's feedback for the coder
+        this.context.reviewerFeedback = event.reason;
+
         // Check loop guard - on 4th request (count > maxChangeRequests), halt
         if (this.context.changeRequestCount > this.config.maxChangeRequests) {
           this.context.userPrompt =

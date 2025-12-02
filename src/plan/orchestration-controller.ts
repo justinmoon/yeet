@@ -148,6 +148,9 @@ export class OrchestrationController {
   private coderDriver!: ReturnType<typeof createCoderDriver>;
   private reviewerDriver!: ReturnType<typeof createReviewerDriver>;
 
+  // Coder conversation history (preserved across request_changes cycles)
+  private coderHistory: Array<{ role: "user" | "assistant"; content: MessageContent }> = [];
+
   constructor(controllerConfig: OrchestrationControllerConfig) {
     this.planPath = controllerConfig.planPath;
     this.planDir = dirname(controllerConfig.planPath);
@@ -521,6 +524,7 @@ export class OrchestrationController {
 
   /**
    * Run agent and capture orchestration tool action.
+   * Also captures conversation history for the coder (to preserve across request_changes).
    */
   private async runAgentWithTools(
     role: AgentRole,
@@ -534,6 +538,9 @@ export class OrchestrationController {
 
     // Track pending tool calls to match with results
     const pendingToolCalls = new Map<string, { name: string; args: unknown; timestamp: number }>();
+
+    // Capture assistant text for conversation history (coder only)
+    let assistantTextBuffer = "";
 
     try {
       const generator = runAgent(
@@ -551,6 +558,11 @@ export class OrchestrationController {
       for await (const event of generator) {
         // Emit output to UI
         this.onOutput?.(role, event);
+
+        // Capture text output for coder history
+        if (role === "coder" && event.type === "text" && event.content) {
+          assistantTextBuffer += event.content;
+        }
 
         // Track tool calls when they start
         if (event.type === "tool" && event.name) {
@@ -634,6 +646,22 @@ export class OrchestrationController {
       this.abortController = undefined;
     }
 
+    // For coder: save conversation history (input messages + assistant response)
+    // This is used to preserve context across request_changes cycles
+    if (role === "coder" && assistantTextBuffer) {
+      // Start fresh or append to existing history
+      if (this.coderHistory.length === 0) {
+        // First run - save the initial messages
+        this.coderHistory = [...messages];
+      }
+      // Add assistant's response
+      this.coderHistory.push({
+        role: "assistant",
+        content: assistantTextBuffer,
+      });
+      logger.debug("Saved coder history", { messageCount: this.coderHistory.length });
+    }
+
     return orchestrationAction;
   }
 
@@ -674,6 +702,10 @@ export class OrchestrationController {
           "Step approved",
         );
       }
+      // Clear coder history and reviewer feedback for the new step (fresh context)
+      this.coderHistory = [];
+      this.flowMachine.getContext().reviewerFeedback = undefined;
+      logger.debug("Cleared coder history for new step", { newStep });
     }
 
     // Sync and save log
@@ -686,14 +718,15 @@ export class OrchestrationController {
 
   /**
    * Build messages for agent.
+   *
+   * For coder: preserves conversation history across request_changes cycles,
+   * and injects reviewer feedback when resuming after changes requested.
    */
   private buildAgentMessages(
     role: AgentRole,
   ): Array<{ role: "user" | "assistant"; content: MessageContent }> {
     const driver = role === "coder" ? this.coderDriver : this.reviewerDriver;
-
-    // Start with context seed
-    const contextSeed = driver.getContextSeed();
+    const context = this.flowMachine.getContext();
 
     // If model requires user message injection, add instructions first
     const messages: Array<{ role: "user" | "assistant"; content: MessageContent }> = [];
@@ -709,10 +742,26 @@ export class OrchestrationController {
       });
     }
 
-    messages.push({
-      role: "user",
-      content: contextSeed,
-    });
+    // For coder: use preserved history if we have it (request_changes cycle)
+    if (role === "coder" && this.coderHistory.length > 0) {
+      // Add the preserved conversation history
+      messages.push(...this.coderHistory);
+
+      // Add reviewer feedback as a new user message
+      if (context.reviewerFeedback) {
+        messages.push({
+          role: "user",
+          content: `The reviewer has requested changes:\n\n${context.reviewerFeedback}\n\nPlease address this feedback. When done, commit your changes and call \`request_review\` again.`,
+        });
+      }
+    } else {
+      // Fresh start - use context seed
+      const contextSeed = driver.getContextSeed();
+      messages.push({
+        role: "user",
+        content: contextSeed,
+      });
+    }
 
     return messages;
   }
