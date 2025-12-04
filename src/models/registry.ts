@@ -11,6 +11,13 @@ export interface ModelInfo {
 export const MODELS: ModelInfo[] = [
   // Anthropic models
   {
+    id: "claude-opus-4-5-20251101",
+    provider: "anthropic",
+    name: "Claude Opus 4.5",
+    pricing: "$15/$75",
+    contextWindow: 200000,
+  },
+  {
     id: "claude-sonnet-4-5-20250929",
     provider: "anthropic",
     name: "Claude Sonnet 4.5",
@@ -132,16 +139,30 @@ export const MODELS: ModelInfo[] = [
   },
   // OpenAI models (ChatGPT Pro/Codex)
   {
-    id: "gpt-5",
+    id: "gpt-5.1-codex-max",
     provider: "openai",
-    name: "GPT-5",
+    name: "GPT-5.1 Codex Max",
     pricing: "ChatGPT Pro",
     contextWindow: 128000,
   },
   {
-    id: "gpt-5-codex",
+    id: "gpt-5.1-codex",
     provider: "openai",
-    name: "GPT-5 Codex",
+    name: "GPT-5.1 Codex",
+    pricing: "ChatGPT Pro",
+    contextWindow: 128000,
+  },
+  {
+    id: "gpt-5.1-codex-mini",
+    provider: "openai",
+    name: "GPT-5.1 Codex Mini",
+    pricing: "ChatGPT Pro",
+    contextWindow: 128000,
+  },
+  {
+    id: "gpt-5.1",
+    provider: "openai",
+    name: "GPT-5.1",
     pricing: "ChatGPT Pro",
     contextWindow: 128000,
   },
@@ -159,7 +180,7 @@ export function getModelsByProvider(
 
 const DEFAULT_MODEL_IDS = {
   anthropic: "claude-sonnet-4-5-20250929",
-  openai: "gpt-5-codex",
+  openai: "gpt-5.1-codex-max",
   opencode: "grok-code",
   maple: "mistral-small-3-1-24b",
 };
