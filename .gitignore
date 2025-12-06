@@ -42,3 +42,6 @@ worktrees
 # Video files
 video.*
 Library/
+
+# yeet
+.orchestration/
